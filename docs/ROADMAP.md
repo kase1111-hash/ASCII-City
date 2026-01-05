@@ -169,25 +169,28 @@ See [DESIGN.md](DESIGN.md) for complete specifications.
 
 ---
 
-### Phase 9: Audio & TTS
+### Phase 9: Audio & TTS ✓
 
 **Goal**: Full audio experience.
 
 See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 
 #### Deliverables
-- [ ] TTS character voice system
-- [ ] Voice personality customization
-- [ ] Post-TTS sound processing
-- [ ] Ambient sound generation
-- [ ] Sound effect library
+- [x] TTS character voice system (CharacterVoice, VoiceParameters, archetypes)
+- [x] Voice personality customization (emotional modulation, speech quirks)
+- [x] Post-TTS sound processing (effects chain, presets)
+- [x] Ambient sound generation (weather, tension, atmospheric layers)
+- [x] Sound effect library (categorized sounds, procedural generation)
+- [x] Comprehensive test coverage (231 audio tests)
 
 ### Success Criteria
-- Each character has distinct voice
-- Sound effects enhance atmosphere
-- Audio maintains accessibility
+- Each character has distinct voice ✓
+- Sound effects enhance atmosphere ✓
+- Audio maintains accessibility ✓
 
 ---
+
+## Current Phase
 
 ### Phase 10: Extensibility & Modding
 
@@ -233,7 +236,7 @@ See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 1. **Playable at Each Phase** - No phase ends without working game
 2. **Memory First** - Core memory system is foundation of everything
 3. **Behavioral Circuits** - Unified model for all entity interactions
-4. **Test Continuously** - Each system testable in isolation (currently 969 tests)
+4. **Test Continuously** - Each system testable in isolation (currently 2560 tests)
 5. **Document As Built** - Keep docs current with implementation
 6. **Seed Reproducibility** - All randomness must be deterministic
 7. **LLM Fallback** - Systems work without LLM, enhanced with it
@@ -247,12 +250,12 @@ See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 | 1 ✓ | 274 | Core narrative loop |
 | 2 ✓ | 462 | NPC simulation |
 | 3 ✓ | 969 | Polish & replayability |
-| 4 | TBD | Behavioral circuits |
-| 5 | TBD | ASCII Art Studio |
-| 6 | TBD | Voice control |
-| 7 | TBD | NPC intelligence |
-| 8 | TBD | Zoom inspection |
-| 9 | TBD | Audio system |
+| 4 ✓ | 1200+ | Behavioral circuits |
+| 5 ✓ | 1400+ | ASCII Art Studio |
+| 6 ✓ | 1700+ | Voice control |
+| 7 ✓ | 1900+ | NPC intelligence |
+| 8 ✓ | 2100+ | Zoom inspection |
+| 9 ✓ | 2560 | Audio system |
 | 10 | TBD | Modding support |
 
 ---
