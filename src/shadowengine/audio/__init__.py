@@ -1,71 +1,177 @@
 """
-Audio Synthesis System - Phase 9: Audio & TTS
+Audio & TTS System - Full audio experience.
 
-This module provides comprehensive audio synthesis capabilities for the ShadowEngine,
-including text-to-speech for character voices, procedural sound generation,
-post-processing effects, and atmospheric audio.
+Phase 9 Implementation: Text-to-speech character voices,
+sound effects, ambient audio, and atmospheric soundscapes.
 
-Key Components:
-- TTSEngine: Text-to-speech synthesis with multiple backend support
-- VoiceProfile: Character voice personality customization
-- EffectsChain: Post-processing pipeline for audio effects
-- MotifGenerator: Procedural music/theme generation
-- AmbientEngine: Environmental and atmospheric sound
-- AudioSynthesizer: Unified synthesis coordinator
+Core principle: Each character has a distinct voice,
+and the world sounds alive.
 """
 
-from .tts import (
-    TTSEngine, TTSResult, TTSStatus, TTSConfig,
-    CoquiTTSEngine, PiperTTSEngine, MockTTSEngine,
-    create_tts_engine
-)
+# Voice System
 from .voice import (
-    VoiceProfile, VoiceParameter, EmotionalState,
-    VoiceModulator, VoiceLibrary, CharacterVoice
+    CharacterVoice,
+    VoiceParameters,
+    VoiceGender,
+    VoiceAge,
+    Accent,
+    EmotionalState,
+    VoiceFactory,
+    ARCHETYPE_VOICE_TEMPLATES,
+    EMOTION_MODULATIONS
 )
+
+# TTS Engines
+from .tts_engine import (
+    TTSEngine,
+    TTSEngineType,
+    TTSEngineManager,
+    TTSEngineError,
+    TTSRequest,
+    AudioData,
+    AudioFormat,
+    MockTTSEngine,
+    CoquiTTSEngine,
+    PiperTTSEngine
+)
+
+# Effects
 from .effects import (
-    Effect, EffectType, EffectParameter,
-    EffectsChain, EffectPreset,
-    PitchShift, TimeStretch, Reverb, Distortion,
-    EQ, Delay, Compression, Tremolo
+    AudioEffect,
+    EffectsChain,
+    EffectType,
+    EffectParameters,
+    PitchShiftEffect,
+    PitchShiftParams,
+    DistortionEffect,
+    DistortionParams,
+    ReverbEffect,
+    ReverbParams,
+    DelayEffect,
+    DelayParams,
+    FilterEffect,
+    FilterParams,
+    TelephoneEffect,
+    RadioEffect,
+    create_preset_chain,
+    EFFECT_PRESETS
 )
-from .motif import (
-    Motif, MotifType, MusicalKey, TimeSignature,
-    MotifGenerator, ThemeEngine, TensionMapper,
-    Note, Chord, Rhythm
+
+# Sound System
+from .sound import (
+    SoundEffect,
+    SoundCategory,
+    SoundTrigger,
+    SoundProperties,
+    SoundGenerator,
+    SoundInstance,
+    SoundMixer
 )
-from .ambient import (
-    AmbientLayer, AmbientConfig, AmbientType,
-    AmbientEngine, WeatherAudio, LocationAudio,
+
+# Ambience
+from .ambience import (
+    AmbientLayer,
+    AmbiencePreset,
+    AmbienceType,
+    AmbienceManager,
+    WeatherType,
+    TimeOfDay,
+    WeatherAudio,
     TensionAudio
 )
-from .synthesis import (
-    AudioSynthesizer, SynthesisResult, SynthesisConfig,
-    AudioEvent, AudioPriority, AudioMixer
+
+# Sound Library
+from .library import (
+    SoundLibrary,
+    SoundID,
+    SoundDefinition,
+    SOUND_LIBRARY
+)
+
+# Audio Engine
+from .audio_engine import (
+    AudioEngine,
+    AudioChannel,
+    ChannelSettings,
+    SpeechRequest,
+    AudioState,
+    create_audio_engine
 )
 
 __all__ = [
-    # TTS
-    'TTSEngine', 'TTSResult', 'TTSStatus', 'TTSConfig',
-    'CoquiTTSEngine', 'PiperTTSEngine', 'MockTTSEngine',
-    'create_tts_engine',
     # Voice
-    'VoiceProfile', 'VoiceParameter', 'EmotionalState',
-    'VoiceModulator', 'VoiceLibrary', 'CharacterVoice',
+    "CharacterVoice",
+    "VoiceParameters",
+    "VoiceGender",
+    "VoiceAge",
+    "Accent",
+    "EmotionalState",
+    "VoiceFactory",
+    "ARCHETYPE_VOICE_TEMPLATES",
+    "EMOTION_MODULATIONS",
+
+    # TTS
+    "TTSEngine",
+    "TTSEngineType",
+    "TTSEngineManager",
+    "TTSEngineError",
+    "TTSRequest",
+    "AudioData",
+    "AudioFormat",
+    "MockTTSEngine",
+    "CoquiTTSEngine",
+    "PiperTTSEngine",
+
     # Effects
-    'Effect', 'EffectType', 'EffectParameter',
-    'EffectsChain', 'EffectPreset',
-    'PitchShift', 'TimeStretch', 'Reverb', 'Distortion',
-    'EQ', 'Delay', 'Compression', 'Tremolo',
-    # Motif
-    'Motif', 'MotifType', 'MusicalKey', 'TimeSignature',
-    'MotifGenerator', 'ThemeEngine', 'TensionMapper',
-    'Note', 'Chord', 'Rhythm',
-    # Ambient
-    'AmbientLayer', 'AmbientConfig', 'AmbientType',
-    'AmbientEngine', 'WeatherAudio', 'LocationAudio',
-    'TensionAudio',
-    # Synthesis
-    'AudioSynthesizer', 'SynthesisResult', 'SynthesisConfig',
-    'AudioEvent', 'AudioPriority', 'AudioMixer',
+    "AudioEffect",
+    "EffectsChain",
+    "EffectType",
+    "EffectParameters",
+    "PitchShiftEffect",
+    "PitchShiftParams",
+    "DistortionEffect",
+    "DistortionParams",
+    "ReverbEffect",
+    "ReverbParams",
+    "DelayEffect",
+    "DelayParams",
+    "FilterEffect",
+    "FilterParams",
+    "TelephoneEffect",
+    "RadioEffect",
+    "create_preset_chain",
+    "EFFECT_PRESETS",
+
+    # Sound
+    "SoundEffect",
+    "SoundCategory",
+    "SoundTrigger",
+    "SoundProperties",
+    "SoundGenerator",
+    "SoundInstance",
+    "SoundMixer",
+
+    # Ambience
+    "AmbientLayer",
+    "AmbiencePreset",
+    "AmbienceType",
+    "AmbienceManager",
+    "WeatherType",
+    "TimeOfDay",
+    "WeatherAudio",
+    "TensionAudio",
+
+    # Library
+    "SoundLibrary",
+    "SoundID",
+    "SoundDefinition",
+    "SOUND_LIBRARY",
+
+    # Engine
+    "AudioEngine",
+    "AudioChannel",
+    "ChannelSettings",
+    "SpeechRequest",
+    "AudioState",
+    "create_audio_engine",
 ]

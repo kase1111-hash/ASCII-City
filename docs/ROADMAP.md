@@ -125,7 +125,24 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Voice library with emotional states
 - [x] 312 tests for audio synthesis
 
-### Phase 10: Extensibility & Modding ✓
+#### Deliverables
+- [x] TTS character voice system (CharacterVoice, VoiceParameters, archetypes)
+- [x] Voice personality customization (emotional modulation, speech quirks)
+- [x] Post-TTS sound processing (effects chain, presets)
+- [x] Ambient sound generation (weather, tension, atmospheric layers)
+- [x] Sound effect library (categorized sounds, procedural generation)
+- [x] Comprehensive test coverage (231 audio tests)
+
+### Success Criteria
+- Each character has distinct voice ✓
+- Sound effects enhance atmosphere ✓
+- Audio maintains accessibility ✓
+
+---
+
+## Current Phase
+
+### Phase 10: Extensibility & Modding
 
 **Goal**: Community content creation.
 
@@ -167,7 +184,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 1. **Playable at Each Phase** - No phase ends without working game
 2. **Memory First** - Core memory system is foundation of everything
 3. **Behavioral Circuits** - Unified model for all entity interactions
-4. **Test Continuously** - Each system testable in isolation (currently 2631 tests)
+4. **Test Continuously** - Each system testable in isolation (currently 2560 tests)
 5. **Document As Built** - Keep docs current with implementation
 6. **Seed Reproducibility** - All randomness must be deterministic
 7. **LLM Fallback** - Systems work without LLM, enhanced with it
@@ -181,13 +198,13 @@ Development is organized into phases. Each phase produces a playable milestone b
 | 1 ✓ | 274 | Core narrative loop |
 | 2 ✓ | 462 | NPC simulation |
 | 3 ✓ | 969 | Polish & replayability |
-| 4 ✓ | ~1200 | Behavioral circuits & grid |
-| 5 ✓ | ~1500 | ASCII Art Studio |
-| 6 ✓ | 1673 | Voice control (STT) |
-| 7 ✓ | ~1800 | NPC intelligence |
-| 8 ✓ | ~2000 | Zoom inspection |
-| 9 ✓ | 2373 | Audio synthesis (312 new) |
-| 10 ✓ | 2631 | Modding support (258 new) |
+| 4 ✓ | 1200+ | Behavioral circuits |
+| 5 ✓ | 1400+ | ASCII Art Studio |
+| 6 ✓ | 1700+ | Voice control |
+| 7 ✓ | 1900+ | NPC intelligence |
+| 8 ✓ | 2100+ | Zoom inspection |
+| 9 ✓ | 2560 | Audio system |
+| 10 | TBD | Modding support |
 
 ---
 

@@ -1,807 +1,781 @@
 """
-Audio Effects Processing for ShadowEngine.
+Audio Effects System - Post-TTS sound processing.
 
-Provides post-processing effects pipeline including pitch shift,
-reverb, distortion, EQ, and more for voice and sound effect processing.
+Provides an effects chain for modifying synthesized speech
+and other audio with various transformations.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Dict, List, Any, Callable
+from typing import Dict, Any, Optional, List, Callable
+import struct
 import math
+
+from .tts_engine import AudioData, AudioFormat
 
 
 class EffectType(Enum):
-    """Types of audio effects."""
+    """Available effect types."""
     PITCH_SHIFT = "pitch_shift"
-    TIME_STRETCH = "time_stretch"
+    DISTORTION = "distortion"
     REVERB = "reverb"
     DELAY = "delay"
-    DISTORTION = "distortion"
     EQ = "eq"
     COMPRESSION = "compression"
-    TREMOLO = "tremolo"
-    FLANGER = "flanger"
-    CHORUS = "chorus"
     FILTER = "filter"
-    GAIN = "gain"
+    TREMOLO = "tremolo"
+    CHORUS = "chorus"
+    NOISE = "noise"
+    TELEPHONE = "telephone"
+    RADIO = "radio"
+    WHISPER = "whisper"
 
 
 @dataclass
-class EffectParameter:
-    """A parameter for an audio effect."""
-
-    name: str
-    value: float
-    min_value: float = 0.0
-    max_value: float = 1.0
-    unit: str = ""
-    description: str = ""
-
-    def __post_init__(self):
-        """Clamp value to valid range."""
-        self.value = max(self.min_value, min(self.max_value, self.value))
-
-    def normalize(self) -> float:
-        """Get normalized value (0.0 to 1.0)."""
-        range_size = self.max_value - self.min_value
-        if range_size == 0:
-            return 0.5
-        return (self.value - self.min_value) / range_size
+class EffectParameters:
+    """Base parameters for an effect."""
+    enabled: bool = True
+    mix: float = 1.0  # Wet/dry mix (0 = dry, 1 = wet)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "name": self.name,
-            "value": self.value,
-            "min_value": self.min_value,
-            "max_value": self.max_value,
-            "unit": self.unit,
-            "description": self.description,
-        }
+        """Serialize to dictionary."""
+        return {'enabled': self.enabled, 'mix': self.mix}
 
 
-class Effect(ABC):
-    """Abstract base class for audio effects."""
+@dataclass
+class PitchShiftParams(EffectParameters):
+    """Parameters for pitch shifting."""
+    semitones: float = 0.0  # -12 to +12
+    preserve_formants: bool = True
 
-    def __init__(self, effect_type: EffectType, enabled: bool = True):
-        self.effect_type = effect_type
-        self.enabled = enabled
-        self._parameters: Dict[str, EffectParameter] = {}
-        self._setup_parameters()
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'semitones': self.semitones,
+            'preserve_formants': self.preserve_formants
+        })
+        return d
 
+
+@dataclass
+class DistortionParams(EffectParameters):
+    """Parameters for distortion effect."""
+    drive: float = 0.5  # 0 to 1
+    tone: float = 0.5  # 0 = dark, 1 = bright
+    type: str = "soft"  # soft, hard, fuzz
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'drive': self.drive,
+            'tone': self.tone,
+            'type': self.type
+        })
+        return d
+
+
+@dataclass
+class ReverbParams(EffectParameters):
+    """Parameters for reverb effect."""
+    room_size: float = 0.5  # 0 = small, 1 = large
+    damping: float = 0.5  # High frequency damping
+    width: float = 0.8  # Stereo width
+    predelay_ms: float = 20.0  # Delay before reverb
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'room_size': self.room_size,
+            'damping': self.damping,
+            'width': self.width,
+            'predelay_ms': self.predelay_ms
+        })
+        return d
+
+
+@dataclass
+class DelayParams(EffectParameters):
+    """Parameters for delay effect."""
+    time_ms: float = 300.0  # Delay time
+    feedback: float = 0.3  # 0 to 1
+    ping_pong: bool = False  # Stereo ping-pong
+    filter_freq: float = 8000.0  # Low-pass on delays
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'time_ms': self.time_ms,
+            'feedback': self.feedback,
+            'ping_pong': self.ping_pong,
+            'filter_freq': self.filter_freq
+        })
+        return d
+
+
+@dataclass
+class EQParams(EffectParameters):
+    """Parameters for equalizer."""
+    low_gain: float = 0.0  # -12 to +12 dB
+    mid_gain: float = 0.0
+    high_gain: float = 0.0
+    low_freq: float = 200.0  # Hz
+    high_freq: float = 4000.0  # Hz
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'low_gain': self.low_gain,
+            'mid_gain': self.mid_gain,
+            'high_gain': self.high_gain,
+            'low_freq': self.low_freq,
+            'high_freq': self.high_freq
+        })
+        return d
+
+
+@dataclass
+class CompressionParams(EffectParameters):
+    """Parameters for dynamic compression."""
+    threshold: float = -20.0  # dB
+    ratio: float = 4.0  # Compression ratio
+    attack_ms: float = 10.0
+    release_ms: float = 100.0
+    makeup_gain: float = 0.0  # dB
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'threshold': self.threshold,
+            'ratio': self.ratio,
+            'attack_ms': self.attack_ms,
+            'release_ms': self.release_ms,
+            'makeup_gain': self.makeup_gain
+        })
+        return d
+
+
+@dataclass
+class FilterParams(EffectParameters):
+    """Parameters for filter effect."""
+    filter_type: str = "lowpass"  # lowpass, highpass, bandpass
+    frequency: float = 1000.0  # Cutoff/center frequency
+    resonance: float = 0.7  # Q factor
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'filter_type': self.filter_type,
+            'frequency': self.frequency,
+            'resonance': self.resonance
+        })
+        return d
+
+
+@dataclass
+class NoiseParams(EffectParameters):
+    """Parameters for noise addition."""
+    noise_type: str = "white"  # white, pink, brown
+    level: float = 0.1  # Noise level
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = super().to_dict()
+        d.update({
+            'noise_type': self.noise_type,
+            'level': self.level
+        })
+        return d
+
+
+class AudioEffect(ABC):
+    """
+    Abstract base class for audio effects.
+
+    Effects process audio data and return modified audio.
+    """
+
+    def __init__(self, params: Optional[EffectParameters] = None):
+        self.params = params or EffectParameters()
+
+    @property
     @abstractmethod
-    def _setup_parameters(self) -> None:
-        """Setup effect parameters."""
+    def effect_type(self) -> EffectType:
+        """Return the effect type identifier."""
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Human-readable effect name."""
         pass
 
     @abstractmethod
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Process audio data through the effect."""
+    def process(self, audio: AudioData) -> AudioData:
+        """
+        Process audio through the effect.
+
+        Args:
+            audio: Input audio data
+
+        Returns:
+            Processed audio data
+        """
         pass
 
-    def get_parameter(self, name: str) -> Optional[EffectParameter]:
-        """Get a parameter by name."""
-        return self._parameters.get(name)
+    def _mix(self, dry: bytes, wet: bytes, mix: float) -> bytes:
+        """Mix dry and wet signals."""
+        if mix >= 1.0:
+            return wet
+        if mix <= 0.0:
+            return dry
 
-    def set_parameter(self, name: str, value: float) -> bool:
-        """Set a parameter value."""
-        if name in self._parameters:
-            param = self._parameters[name]
-            param.value = max(param.min_value, min(param.max_value, value))
-            return True
-        return False
+        # Convert to samples, mix, convert back
+        dry_samples = self._bytes_to_samples(dry)
+        wet_samples = self._bytes_to_samples(wet)
 
-    def get_parameters(self) -> Dict[str, EffectParameter]:
-        """Get all parameters."""
-        return self._parameters.copy()
+        # Ensure same length
+        min_len = min(len(dry_samples), len(wet_samples))
+        dry_samples = dry_samples[:min_len]
+        wet_samples = wet_samples[:min_len]
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "effect_type": self.effect_type.value,
-            "enabled": self.enabled,
-            "parameters": {k: v.to_dict() for k, v in self._parameters.items()},
-        }
+        mixed = [
+            int(d * (1 - mix) + w * mix)
+            for d, w in zip(dry_samples, wet_samples)
+        ]
+
+        return self._samples_to_bytes(mixed)
+
+    def _bytes_to_samples(self, data: bytes) -> List[int]:
+        """Convert bytes to 16-bit samples."""
+        samples = []
+        for i in range(0, len(data) - 1, 2):
+            sample = struct.unpack('<h', data[i:i+2])[0]
+            samples.append(sample)
+        return samples
+
+    def _samples_to_bytes(self, samples: List[int]) -> bytes:
+        """Convert 16-bit samples to bytes."""
+        result = bytearray()
+        for sample in samples:
+            # Clamp to 16-bit range
+            sample = max(-32768, min(32767, sample))
+            result.extend(struct.pack('<h', sample))
+        return bytes(result)
 
 
-class PitchShift(Effect):
+class PitchShiftEffect(AudioEffect):
     """Pitch shifting effect."""
 
-    def __init__(self, semitones: float = 0.0, enabled: bool = True):
-        self._initial_semitones = semitones
-        super().__init__(EffectType.PITCH_SHIFT, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup pitch shift parameters."""
-        self._parameters = {
-            "semitones": EffectParameter(
-                name="semitones",
-                value=self._initial_semitones,
-                min_value=-24.0,
-                max_value=24.0,
-                unit="st",
-                description="Pitch shift in semitones",
-            ),
-            "fine_tune": EffectParameter(
-                name="fine_tune",
-                value=0.0,
-                min_value=-100.0,
-                max_value=100.0,
-                unit="cents",
-                description="Fine pitch adjustment in cents",
-            ),
-        }
+    def __init__(self, params: Optional[PitchShiftParams] = None):
+        super().__init__(params or PitchShiftParams())
 
     @property
-    def semitones(self) -> float:
-        """Get semitone shift."""
-        return self._parameters["semitones"].value
+    def effect_type(self) -> EffectType:
+        return EffectType.PITCH_SHIFT
 
     @property
-    def pitch_ratio(self) -> float:
-        """Get pitch ratio for processing."""
-        semitones = self._parameters["semitones"].value
-        cents = self._parameters["fine_tune"].value
-        total_semitones = semitones + (cents / 100.0)
-        return 2 ** (total_semitones / 12.0)
+    def name(self) -> str:
+        return "Pitch Shift"
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply pitch shift to audio data."""
-        if not self.enabled or self.pitch_ratio == 1.0:
-            return audio_data
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
 
-        # In a real implementation, this would use a DSP library
-        # For now, we simulate the effect by modifying the data length
-        ratio = self.pitch_ratio
-        new_length = int(len(audio_data) / ratio)
-        return audio_data[:new_length] if new_length < len(audio_data) else audio_data
+        params = self.params
+        if not isinstance(params, PitchShiftParams):
+            return audio
 
+        if params.semitones == 0:
+            return audio
 
-class TimeStretch(Effect):
-    """Time stretching effect (change speed without pitch)."""
+        # Simple resampling-based pitch shift
+        # Real implementation would use phase vocoder
+        samples = self._bytes_to_samples(audio.data)
 
-    def __init__(self, ratio: float = 1.0, enabled: bool = True):
-        self._initial_ratio = ratio
-        super().__init__(EffectType.TIME_STRETCH, enabled)
+        # Calculate ratio
+        ratio = 2 ** (params.semitones / 12.0)
 
-    def _setup_parameters(self) -> None:
-        """Setup time stretch parameters."""
-        self._parameters = {
-            "ratio": EffectParameter(
-                name="ratio",
-                value=self._initial_ratio,
-                min_value=0.25,
-                max_value=4.0,
-                unit="x",
-                description="Time stretch ratio (1.0 = original)",
-            ),
-            "preserve_transients": EffectParameter(
-                name="preserve_transients",
-                value=1.0,
-                min_value=0.0,
-                max_value=1.0,
-                description="How much to preserve attack transients",
-            ),
-        }
+        # Resample
+        new_length = int(len(samples) / ratio)
+        shifted = []
+        for i in range(new_length):
+            src_idx = i * ratio
+            idx = int(src_idx)
+            if idx < len(samples) - 1:
+                frac = src_idx - idx
+                sample = int(samples[idx] * (1 - frac) + samples[idx + 1] * frac)
+            elif idx < len(samples):
+                sample = samples[idx]
+            else:
+                break
+            shifted.append(sample)
 
-    @property
-    def ratio(self) -> float:
-        """Get stretch ratio."""
-        return self._parameters["ratio"].value
+        new_data = self._samples_to_bytes(shifted)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply time stretch to audio data."""
-        if not self.enabled or self.ratio == 1.0:
-            return audio_data
-
-        # Simulate time stretching by changing data length
-        new_length = int(len(audio_data) * self.ratio)
-        if new_length > len(audio_data):
-            return audio_data + (b"\x00" * (new_length - len(audio_data)))
-        return audio_data[:new_length]
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
 
 
-class Reverb(Effect):
-    """Reverb effect."""
+class DistortionEffect(AudioEffect):
+    """Distortion/overdrive effect."""
 
-    def __init__(self, room_size: float = 0.5, damping: float = 0.5, enabled: bool = True):
-        self._initial_room_size = room_size
-        self._initial_damping = damping
-        super().__init__(EffectType.REVERB, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup reverb parameters."""
-        self._parameters = {
-            "room_size": EffectParameter(
-                name="room_size",
-                value=self._initial_room_size,
-                min_value=0.0,
-                max_value=1.0,
-                description="Size of the simulated room",
-            ),
-            "damping": EffectParameter(
-                name="damping",
-                value=self._initial_damping,
-                min_value=0.0,
-                max_value=1.0,
-                description="High frequency damping",
-            ),
-            "wet": EffectParameter(
-                name="wet",
-                value=0.3,
-                min_value=0.0,
-                max_value=1.0,
-                description="Wet signal mix",
-            ),
-            "dry": EffectParameter(
-                name="dry",
-                value=0.7,
-                min_value=0.0,
-                max_value=1.0,
-                description="Dry signal mix",
-            ),
-            "decay": EffectParameter(
-                name="decay",
-                value=2.0,
-                min_value=0.1,
-                max_value=10.0,
-                unit="s",
-                description="Reverb decay time",
-            ),
-            "pre_delay": EffectParameter(
-                name="pre_delay",
-                value=20.0,
-                min_value=0.0,
-                max_value=200.0,
-                unit="ms",
-                description="Pre-delay before reverb",
-            ),
-        }
+    def __init__(self, params: Optional[DistortionParams] = None):
+        super().__init__(params or DistortionParams())
 
     @property
-    def room_size(self) -> float:
-        """Get room size."""
-        return self._parameters["room_size"].value
+    def effect_type(self) -> EffectType:
+        return EffectType.DISTORTION
 
     @property
-    def decay_time(self) -> float:
-        """Get decay time in seconds."""
-        return self._parameters["decay"].value
+    def name(self) -> str:
+        return "Distortion"
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply reverb to audio data."""
-        if not self.enabled:
-            return audio_data
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
 
-        # In a real implementation, this would apply reverb convolution
-        # For simulation, we add a "tail" to the audio
-        decay_samples = int(self.decay_time * sample_rate * 2)  # 2 bytes per sample
-        reverb_tail = b"\x08" * min(decay_samples, 10000)  # Simulated quiet tail
+        params = self.params
+        if not isinstance(params, DistortionParams):
+            return audio
 
-        return audio_data + reverb_tail
+        samples = self._bytes_to_samples(audio.data)
+
+        drive = params.drive
+        distorted = []
+
+        for sample in samples:
+            # Normalize to -1 to 1
+            normalized = sample / 32768.0
+
+            # Apply drive
+            driven = normalized * (1 + drive * 10)
+
+            # Soft clipping
+            if params.type == "soft":
+                if driven > 0:
+                    clipped = 1 - math.exp(-driven)
+                else:
+                    clipped = -1 + math.exp(driven)
+            elif params.type == "hard":
+                clipped = max(-1, min(1, driven))
+            else:  # fuzz
+                clipped = math.tanh(driven * 3)
+
+            # Convert back
+            distorted.append(int(clipped * 32767))
+
+        new_data = self._samples_to_bytes(distorted)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
 
 
-class Delay(Effect):
+class ReverbEffect(AudioEffect):
+    """Reverb effect using simple comb/allpass filters."""
+
+    def __init__(self, params: Optional[ReverbParams] = None):
+        super().__init__(params or ReverbParams())
+
+    @property
+    def effect_type(self) -> EffectType:
+        return EffectType.REVERB
+
+    @property
+    def name(self) -> str:
+        return "Reverb"
+
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
+
+        params = self.params
+        if not isinstance(params, ReverbParams):
+            return audio
+
+        samples = self._bytes_to_samples(audio.data)
+
+        # Simple reverb using feedback delay
+        room_samples = int(params.room_size * audio.sample_rate * 0.1)
+        room_samples = max(1, room_samples)
+
+        reverbed = samples.copy()
+        decay = 0.3 + params.room_size * 0.4
+
+        for i in range(room_samples, len(reverbed)):
+            reverbed[i] = int(
+                reverbed[i] +
+                reverbed[i - room_samples] * decay * (1 - params.damping)
+            )
+
+        # Clamp
+        reverbed = [max(-32768, min(32767, s)) for s in reverbed]
+
+        new_data = self._samples_to_bytes(reverbed)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
+
+
+class DelayEffect(AudioEffect):
     """Delay/echo effect."""
 
-    def __init__(self, delay_time: float = 300.0, feedback: float = 0.3, enabled: bool = True):
-        self._initial_delay = delay_time
-        self._initial_feedback = feedback
-        super().__init__(EffectType.DELAY, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup delay parameters."""
-        self._parameters = {
-            "delay_time": EffectParameter(
-                name="delay_time",
-                value=self._initial_delay,
-                min_value=1.0,
-                max_value=2000.0,
-                unit="ms",
-                description="Delay time",
-            ),
-            "feedback": EffectParameter(
-                name="feedback",
-                value=self._initial_feedback,
-                min_value=0.0,
-                max_value=0.95,
-                description="Feedback amount",
-            ),
-            "mix": EffectParameter(
-                name="mix",
-                value=0.3,
-                min_value=0.0,
-                max_value=1.0,
-                description="Wet/dry mix",
-            ),
-        }
+    def __init__(self, params: Optional[DelayParams] = None):
+        super().__init__(params or DelayParams())
 
     @property
-    def delay_time_ms(self) -> float:
-        """Get delay time in milliseconds."""
-        return self._parameters["delay_time"].value
+    def effect_type(self) -> EffectType:
+        return EffectType.DELAY
 
     @property
-    def feedback(self) -> float:
-        """Get feedback amount."""
-        return self._parameters["feedback"].value
+    def name(self) -> str:
+        return "Delay"
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply delay to audio data."""
-        if not self.enabled:
-            return audio_data
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
 
-        # Simulate delay by extending audio
-        delay_samples = int((self.delay_time_ms / 1000.0) * sample_rate * 2)
-        return audio_data + (b"\x04" * min(delay_samples, 5000))
+        params = self.params
+        if not isinstance(params, DelayParams):
+            return audio
+
+        samples = self._bytes_to_samples(audio.data)
+
+        delay_samples = int((params.time_ms / 1000.0) * audio.sample_rate)
+        delay_samples = max(1, delay_samples)
+
+        delayed = samples.copy()
+        feedback = params.feedback
+
+        for i in range(delay_samples, len(delayed)):
+            delayed[i] = int(delayed[i] + delayed[i - delay_samples] * feedback)
+
+        # Clamp
+        delayed = [max(-32768, min(32767, s)) for s in delayed]
+
+        new_data = self._samples_to_bytes(delayed)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
 
 
-class Distortion(Effect):
-    """Distortion effect."""
+class FilterEffect(AudioEffect):
+    """Filter effect (lowpass, highpass, bandpass)."""
 
-    def __init__(self, drive: float = 0.5, tone: float = 0.5, enabled: bool = True):
-        self._initial_drive = drive
-        self._initial_tone = tone
-        super().__init__(EffectType.DISTORTION, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup distortion parameters."""
-        self._parameters = {
-            "drive": EffectParameter(
-                name="drive",
-                value=self._initial_drive,
-                min_value=0.0,
-                max_value=1.0,
-                description="Distortion amount",
-            ),
-            "tone": EffectParameter(
-                name="tone",
-                value=self._initial_tone,
-                min_value=0.0,
-                max_value=1.0,
-                description="Tone control (dark to bright)",
-            ),
-            "mix": EffectParameter(
-                name="mix",
-                value=1.0,
-                min_value=0.0,
-                max_value=1.0,
-                description="Wet/dry mix",
-            ),
-            "type": EffectParameter(
-                name="type",
-                value=0.0,
-                min_value=0.0,
-                max_value=3.0,
-                description="Distortion type (0=soft, 1=hard, 2=fuzz, 3=bit)",
-            ),
-        }
+    def __init__(self, params: Optional[FilterParams] = None):
+        super().__init__(params or FilterParams())
 
     @property
-    def drive(self) -> float:
-        """Get drive amount."""
-        return self._parameters["drive"].value
-
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply distortion to audio data."""
-        if not self.enabled or self.drive == 0:
-            return audio_data
-
-        # Simulate distortion by clipping high values
-        # In reality, this would apply waveshaping
-        return audio_data
-
-
-class EQ(Effect):
-    """Equalizer effect."""
-
-    def __init__(self, enabled: bool = True):
-        super().__init__(EffectType.EQ, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup EQ parameters."""
-        self._parameters = {
-            "low": EffectParameter(
-                name="low",
-                value=0.0,
-                min_value=-12.0,
-                max_value=12.0,
-                unit="dB",
-                description="Low frequency gain",
-            ),
-            "low_mid": EffectParameter(
-                name="low_mid",
-                value=0.0,
-                min_value=-12.0,
-                max_value=12.0,
-                unit="dB",
-                description="Low-mid frequency gain",
-            ),
-            "mid": EffectParameter(
-                name="mid",
-                value=0.0,
-                min_value=-12.0,
-                max_value=12.0,
-                unit="dB",
-                description="Mid frequency gain",
-            ),
-            "high_mid": EffectParameter(
-                name="high_mid",
-                value=0.0,
-                min_value=-12.0,
-                max_value=12.0,
-                unit="dB",
-                description="High-mid frequency gain",
-            ),
-            "high": EffectParameter(
-                name="high",
-                value=0.0,
-                min_value=-12.0,
-                max_value=12.0,
-                unit="dB",
-                description="High frequency gain",
-            ),
-        }
-
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply EQ to audio data."""
-        if not self.enabled:
-            return audio_data
-        # Would apply frequency filtering in real implementation
-        return audio_data
-
-
-class Compression(Effect):
-    """Dynamic range compression effect."""
-
-    def __init__(self, threshold: float = -10.0, ratio: float = 4.0, enabled: bool = True):
-        self._initial_threshold = threshold
-        self._initial_ratio = ratio
-        super().__init__(EffectType.COMPRESSION, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup compression parameters."""
-        self._parameters = {
-            "threshold": EffectParameter(
-                name="threshold",
-                value=self._initial_threshold,
-                min_value=-60.0,
-                max_value=0.0,
-                unit="dB",
-                description="Compression threshold",
-            ),
-            "ratio": EffectParameter(
-                name="ratio",
-                value=self._initial_ratio,
-                min_value=1.0,
-                max_value=20.0,
-                unit=":1",
-                description="Compression ratio",
-            ),
-            "attack": EffectParameter(
-                name="attack",
-                value=10.0,
-                min_value=0.1,
-                max_value=100.0,
-                unit="ms",
-                description="Attack time",
-            ),
-            "release": EffectParameter(
-                name="release",
-                value=100.0,
-                min_value=10.0,
-                max_value=1000.0,
-                unit="ms",
-                description="Release time",
-            ),
-            "makeup_gain": EffectParameter(
-                name="makeup_gain",
-                value=0.0,
-                min_value=0.0,
-                max_value=24.0,
-                unit="dB",
-                description="Makeup gain",
-            ),
-        }
+    def effect_type(self) -> EffectType:
+        return EffectType.FILTER
 
     @property
-    def threshold(self) -> float:
-        """Get threshold in dB."""
-        return self._parameters["threshold"].value
+    def name(self) -> str:
+        return "Filter"
+
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
+
+        params = self.params
+        if not isinstance(params, FilterParams):
+            return audio
+
+        samples = self._bytes_to_samples(audio.data)
+
+        # Simple one-pole filter
+        freq = params.frequency
+        rc = 1.0 / (2 * math.pi * freq)
+        dt = 1.0 / audio.sample_rate
+        alpha = dt / (rc + dt)
+
+        filtered = []
+        prev = 0
+
+        for sample in samples:
+            if params.filter_type == "lowpass":
+                filtered_sample = prev + alpha * (sample - prev)
+            elif params.filter_type == "highpass":
+                filtered_sample = sample - (prev + alpha * (sample - prev))
+            else:  # bandpass approximation
+                low = prev + alpha * (sample - prev)
+                filtered_sample = sample - low
+
+            filtered.append(int(filtered_sample))
+            prev = filtered_sample
+
+        new_data = self._samples_to_bytes(filtered)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
+
+
+class TelephoneEffect(AudioEffect):
+    """
+    Telephone/radio voice effect.
+
+    Combines bandpass filter with light distortion.
+    """
+
+    def __init__(self, params: Optional[EffectParameters] = None):
+        super().__init__(params or EffectParameters())
+        self._filter = FilterEffect(FilterParams(
+            filter_type="bandpass",
+            frequency=1500.0,
+            resonance=0.5
+        ))
+        self._distortion = DistortionEffect(DistortionParams(
+            drive=0.2,
+            type="soft",
+            mix=0.3
+        ))
 
     @property
-    def ratio(self) -> float:
-        """Get compression ratio."""
-        return self._parameters["ratio"].value
-
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply compression to audio data."""
-        if not self.enabled:
-            return audio_data
-        # Would apply dynamic range compression in real implementation
-        return audio_data
-
-
-class Tremolo(Effect):
-    """Tremolo (amplitude modulation) effect."""
-
-    def __init__(self, rate: float = 5.0, depth: float = 0.5, enabled: bool = True):
-        self._initial_rate = rate
-        self._initial_depth = depth
-        super().__init__(EffectType.TREMOLO, enabled)
-
-    def _setup_parameters(self) -> None:
-        """Setup tremolo parameters."""
-        self._parameters = {
-            "rate": EffectParameter(
-                name="rate",
-                value=self._initial_rate,
-                min_value=0.1,
-                max_value=20.0,
-                unit="Hz",
-                description="Modulation rate",
-            ),
-            "depth": EffectParameter(
-                name="depth",
-                value=self._initial_depth,
-                min_value=0.0,
-                max_value=1.0,
-                description="Modulation depth",
-            ),
-            "shape": EffectParameter(
-                name="shape",
-                value=0.0,
-                min_value=0.0,
-                max_value=2.0,
-                description="Wave shape (0=sine, 1=triangle, 2=square)",
-            ),
-        }
+    def effect_type(self) -> EffectType:
+        return EffectType.TELEPHONE
 
     @property
-    def rate(self) -> float:
-        """Get tremolo rate in Hz."""
-        return self._parameters["rate"].value
+    def name(self) -> str:
+        return "Telephone"
+
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
+
+        # Apply filter then distortion
+        filtered = self._filter.process(audio)
+        result = self._distortion.process(filtered)
+
+        return self._mix_result(audio, result)
+
+    def _mix_result(self, dry: AudioData, wet: AudioData) -> AudioData:
+        """Mix dry and wet keeping AudioData structure."""
+        mixed_data = self._mix(dry.data, wet.data, self.params.mix)
+        return AudioData(
+            data=mixed_data,
+            format=dry.format,
+            sample_rate=dry.sample_rate,
+            channels=dry.channels,
+            bit_depth=dry.bit_depth,
+            text=dry.text,
+            voice_id=dry.voice_id,
+            engine=dry.engine
+        )
+
+
+class RadioEffect(AudioEffect):
+    """
+    Old radio voice effect.
+
+    Combines filtering, distortion, and noise.
+    """
+
+    def __init__(self, params: Optional[EffectParameters] = None):
+        super().__init__(params or EffectParameters())
 
     @property
-    def depth(self) -> float:
-        """Get tremolo depth."""
-        return self._parameters["depth"].value
+    def effect_type(self) -> EffectType:
+        return EffectType.RADIO
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Apply tremolo to audio data."""
-        if not self.enabled or self.depth == 0:
-            return audio_data
-        # Would apply amplitude modulation in real implementation
-        return audio_data
+    @property
+    def name(self) -> str:
+        return "Radio"
 
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
 
-@dataclass
-class EffectPreset:
-    """A preset configuration for effects chain."""
+        samples = self._bytes_to_samples(audio.data)
 
-    name: str
-    description: str
-    effects: List[Dict[str, Any]]
+        # Simple bandpass + noise + slight distortion
+        import random
+        processed = []
+        prev = 0
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "effects": self.effects,
-        }
+        for sample in samples:
+            # Bandpass approximation
+            alpha = 0.3
+            filtered = prev + alpha * (sample - prev)
+            prev = filtered
+
+            # Add noise
+            noise = random.randint(-500, 500)
+            with_noise = filtered + noise
+
+            # Light clipping
+            clipped = max(-28000, min(28000, with_noise))
+            processed.append(int(clipped))
+
+        new_data = self._samples_to_bytes(processed)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
 
 
 class EffectsChain:
-    """Chain of audio effects processed in sequence."""
+    """
+    Chain of audio effects applied in sequence.
 
-    # Built-in presets
-    PRESETS = {
-        "telephone": EffectPreset(
-            name="telephone",
-            description="Old telephone sound",
-            effects=[
-                {"type": "eq", "low": -12.0, "high": -8.0, "mid": 6.0},
-                {"type": "distortion", "drive": 0.2, "tone": 0.3},
-            ],
-        ),
-        "radio": EffectPreset(
-            name="radio",
-            description="AM radio sound",
-            effects=[
-                {"type": "eq", "low": -8.0, "high": -4.0},
-                {"type": "compression", "threshold": -15.0, "ratio": 6.0},
-            ],
-        ),
-        "cave": EffectPreset(
-            name="cave",
-            description="Large cave reverb",
-            effects=[
-                {"type": "reverb", "room_size": 0.9, "decay": 4.0, "wet": 0.5},
-                {"type": "delay", "delay_time": 150, "feedback": 0.4},
-            ],
-        ),
-        "underwater": EffectPreset(
-            name="underwater",
-            description="Muffled underwater sound",
-            effects=[
-                {"type": "eq", "high": -18.0, "high_mid": -12.0},
-                {"type": "reverb", "room_size": 0.7, "decay": 2.0, "wet": 0.4},
-            ],
-        ),
-        "megaphone": EffectPreset(
-            name="megaphone",
-            description="Megaphone/bullhorn sound",
-            effects=[
-                {"type": "eq", "low": -15.0, "high": -6.0, "mid": 8.0},
-                {"type": "distortion", "drive": 0.4, "tone": 0.6},
-                {"type": "compression", "threshold": -8.0, "ratio": 8.0},
-            ],
-        ),
-        "spooky": EffectPreset(
-            name="spooky",
-            description="Eerie haunted sound",
-            effects=[
-                {"type": "pitch_shift", "semitones": -2},
-                {"type": "reverb", "room_size": 0.8, "decay": 3.5, "wet": 0.4},
-                {"type": "tremolo", "rate": 3.0, "depth": 0.3},
-            ],
-        ),
-        "robot": EffectPreset(
-            name="robot",
-            description="Robotic voice",
-            effects=[
-                {"type": "pitch_shift", "semitones": 0, "fine_tune": 50},
-                {"type": "distortion", "drive": 0.3, "type": 3.0},
-            ],
-        ),
-        "concert_hall": EffectPreset(
-            name="concert_hall",
-            description="Large concert hall",
-            effects=[
-                {"type": "reverb", "room_size": 0.95, "decay": 2.5, "wet": 0.25, "pre_delay": 40},
-            ],
-        ),
-    }
+    Effects are processed in the order they are added.
+    """
 
     def __init__(self):
-        self._effects: List[Effect] = []
-        self._bypass = False
+        self._effects: List[AudioEffect] = []
+        self._enabled = True
 
-    @property
-    def bypass(self) -> bool:
-        """Check if chain is bypassed."""
-        return self._bypass
-
-    @bypass.setter
-    def bypass(self, value: bool) -> None:
-        """Set bypass state."""
-        self._bypass = value
-
-    def add_effect(self, effect: Effect) -> None:
+    def add_effect(self, effect: AudioEffect) -> None:
         """Add an effect to the chain."""
         self._effects.append(effect)
 
-    def remove_effect(self, index: int) -> Optional[Effect]:
-        """Remove an effect by index."""
-        if 0 <= index < len(self._effects):
-            return self._effects.pop(index)
-        return None
-
-    def get_effect(self, index: int) -> Optional[Effect]:
-        """Get an effect by index."""
-        if 0 <= index < len(self._effects):
-            return self._effects[index]
-        return None
-
-    def get_effects(self) -> List[Effect]:
-        """Get all effects in the chain."""
-        return self._effects.copy()
+    def remove_effect(self, effect_type: EffectType) -> bool:
+        """Remove all effects of a given type."""
+        original_len = len(self._effects)
+        self._effects = [e for e in self._effects if e.effect_type != effect_type]
+        return len(self._effects) < original_len
 
     def clear(self) -> None:
-        """Clear all effects from the chain."""
+        """Remove all effects."""
         self._effects.clear()
 
-    def move_effect(self, from_index: int, to_index: int) -> bool:
-        """Move an effect to a new position."""
-        if 0 <= from_index < len(self._effects) and 0 <= to_index < len(self._effects):
-            effect = self._effects.pop(from_index)
-            self._effects.insert(to_index, effect)
-            return True
-        return False
+    def get_effects(self) -> List[AudioEffect]:
+        """Get list of effects in order."""
+        return self._effects.copy()
 
-    def process(self, audio_data: bytes, sample_rate: int) -> bytes:
-        """Process audio through the effects chain."""
-        if self._bypass or not audio_data:
-            return audio_data
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable or disable the entire chain."""
+        self._enabled = enabled
 
-        result = audio_data
+    def process(self, audio: AudioData) -> AudioData:
+        """Process audio through all effects in sequence."""
+        if not self._enabled:
+            return audio
+
+        result = audio
         for effect in self._effects:
-            if effect.enabled:
-                result = effect.process(result, sample_rate)
+            result = effect.process(result)
 
         return result
 
-    def load_preset(self, preset_name: str) -> bool:
-        """Load a preset configuration."""
-        preset = self.PRESETS.get(preset_name)
-        if not preset:
-            return False
-
-        self.clear()
-        for effect_config in preset.effects:
-            effect = self._create_effect_from_config(effect_config)
-            if effect:
-                self.add_effect(effect)
-
-        return True
-
-    def _create_effect_from_config(self, config: Dict[str, Any]) -> Optional[Effect]:
-        """Create an effect from configuration dictionary."""
-        effect_type = config.get("type", "")
-
-        effect_classes = {
-            "pitch_shift": PitchShift,
-            "time_stretch": TimeStretch,
-            "reverb": Reverb,
-            "delay": Delay,
-            "distortion": Distortion,
-            "eq": EQ,
-            "compression": Compression,
-            "tremolo": Tremolo,
-        }
-
-        effect_class = effect_classes.get(effect_type)
-        if not effect_class:
-            return None
-
-        # Create effect with constructor args
-        constructor_args = {}
-        for param_name, param_value in config.items():
-            if param_name != "type":
-                # Try to pass to constructor
-                try:
-                    effect = effect_class(**{param_name: param_value})
-                    return effect
-                except TypeError:
-                    pass
-
-        # Create default and set parameters
-        effect = effect_class()
-        for param_name, param_value in config.items():
-            if param_name != "type":
-                effect.set_parameter(param_name, param_value)
-
-        return effect
-
-    def get_preset_names(self) -> List[str]:
-        """Get all available preset names."""
-        return list(self.PRESETS.keys())
-
     def to_dict(self) -> Dict[str, Any]:
-        """Convert chain to dictionary."""
+        """Serialize chain configuration."""
         return {
-            "bypass": self._bypass,
-            "effects": [e.to_dict() for e in self._effects],
+            'enabled': self._enabled,
+            'effects': [
+                {
+                    'type': e.effect_type.value,
+                    'params': e.params.to_dict()
+                }
+                for e in self._effects
+            ]
         }
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EffectsChain':
-        """Create chain from dictionary."""
-        chain = cls()
-        chain._bypass = data.get("bypass", False)
-        for effect_data in data.get("effects", []):
-            # Convert from to_dict format to _create_effect_from_config format
-            config = {"type": effect_data.get("effect_type", "")}
-            # Extract parameter values
-            for param_name, param_data in effect_data.get("parameters", {}).items():
-                if isinstance(param_data, dict):
-                    config[param_name] = param_data.get("value", 0)
-                else:
-                    config[param_name] = param_data
-            effect = chain._create_effect_from_config(config)
-            if effect:
-                chain.add_effect(effect)
-        return chain
+
+# Preset effect chains
+EFFECT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
+    'telephone': [
+        {'type': EffectType.TELEPHONE, 'params': EffectParameters(mix=1.0)}
+    ],
+    'radio': [
+        {'type': EffectType.RADIO, 'params': EffectParameters(mix=1.0)}
+    ],
+    'distant': [
+        {'type': EffectType.FILTER, 'params': FilterParams(filter_type='lowpass', frequency=800)},
+        {'type': EffectType.REVERB, 'params': ReverbParams(room_size=0.8, mix=0.4)}
+    ],
+    'megaphone': [
+        {'type': EffectType.DISTORTION, 'params': DistortionParams(drive=0.3, type='hard')},
+        {'type': EffectType.FILTER, 'params': FilterParams(filter_type='bandpass', frequency=2000)}
+    ],
+    'whisper': [
+        {'type': EffectType.FILTER, 'params': FilterParams(filter_type='highpass', frequency=500)},
+        {'type': EffectType.REVERB, 'params': ReverbParams(room_size=0.2, mix=0.2)}
+    ],
+    'spooky': [
+        {'type': EffectType.PITCH_SHIFT, 'params': PitchShiftParams(semitones=-3)},
+        {'type': EffectType.REVERB, 'params': ReverbParams(room_size=0.9, damping=0.2, mix=0.5)},
+        {'type': EffectType.DELAY, 'params': DelayParams(time_ms=200, feedback=0.4, mix=0.3)}
+    ]
+}
+
+
+def create_preset_chain(preset_name: str) -> Optional[EffectsChain]:
+    """Create an effects chain from a preset name."""
+    preset = EFFECT_PRESETS.get(preset_name)
+    if not preset:
+        return None
+
+    chain = EffectsChain()
+
+    for effect_config in preset:
+        effect_type = effect_config['type']
+        params = effect_config.get('params')
+
+        if effect_type == EffectType.PITCH_SHIFT:
+            chain.add_effect(PitchShiftEffect(params))
+        elif effect_type == EffectType.DISTORTION:
+            chain.add_effect(DistortionEffect(params))
+        elif effect_type == EffectType.REVERB:
+            chain.add_effect(ReverbEffect(params))
+        elif effect_type == EffectType.DELAY:
+            chain.add_effect(DelayEffect(params))
+        elif effect_type == EffectType.FILTER:
+            chain.add_effect(FilterEffect(params))
+        elif effect_type == EffectType.TELEPHONE:
+            chain.add_effect(TelephoneEffect(params))
+        elif effect_type == EffectType.RADIO:
+            chain.add_effect(RadioEffect(params))
+
+    return chain

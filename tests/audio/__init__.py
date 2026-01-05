@@ -1,1 +1,1 @@
-"""Tests for audio synthesis system."""
+"""Tests for the audio system (Phase 9)."""

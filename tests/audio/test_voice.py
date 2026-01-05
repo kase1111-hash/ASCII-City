@@ -1,359 +1,277 @@
-"""
-Tests for Voice Personality system.
-"""
+"""Tests for the voice system."""
 
 import pytest
 from src.shadowengine.audio.voice import (
-    VoiceProfile, VoiceParameter, EmotionalState,
-    VoiceModulator, VoiceLibrary, CharacterVoice,
-    EMOTION_MODIFIERS,
+    CharacterVoice,
+    VoiceParameters,
+    VoiceGender,
+    VoiceAge,
+    Accent,
+    EmotionalState,
+    VoiceFactory,
+    ARCHETYPE_VOICE_TEMPLATES,
+    EMOTION_MODULATIONS
 )
 
 
-class TestVoiceParameter:
-    """Tests for VoiceParameter."""
+class TestVoiceParameters:
+    """Tests for VoiceParameters."""
 
-    def test_create_parameter(self):
-        """Can create voice parameter."""
-        param = VoiceParameter(
-            name="pitch",
-            value=0.5,
-            min_value=-1.0,
-            max_value=1.0,
-        )
-        assert param.name == "pitch"
-        assert param.value == 0.5
+    def test_default_parameters(self):
+        """Test default parameter values."""
+        params = VoiceParameters()
+        assert params.pitch == 0.5
+        assert params.speed == 0.5
+        assert params.volume == 0.8
+        assert params.breathiness == 0.2
+        assert params.roughness == 0.1
 
-    def test_clamp_value(self):
-        """Value is clamped to range."""
-        param = VoiceParameter("test", value=2.0, max_value=1.0)
-        assert param.value == 1.0
+    def test_parameter_clamping(self):
+        """Test that parameters are clamped to valid range."""
+        params = VoiceParameters(pitch=1.5, speed=-0.5, volume=2.0)
+        assert params.pitch == 1.0
+        assert params.speed == 0.0
+        assert params.volume == 1.0
 
-        param = VoiceParameter("test", value=-2.0, min_value=-1.0)
-        assert param.value == -1.0
+    def test_to_dict(self):
+        """Test serialization to dictionary."""
+        params = VoiceParameters(pitch=0.3, speed=0.7)
+        d = params.to_dict()
+        assert d['pitch'] == 0.3
+        assert d['speed'] == 0.7
 
-    def test_normalize(self):
-        """Can normalize value to 0-1 range."""
-        param = VoiceParameter("test", value=0.0, min_value=-1.0, max_value=1.0)
-        assert param.normalize() == 0.5
+    def test_from_dict(self):
+        """Test deserialization from dictionary."""
+        d = {'pitch': 0.4, 'speed': 0.6, 'breathiness': 0.3}
+        params = VoiceParameters.from_dict(d)
+        assert params.pitch == 0.4
+        assert params.speed == 0.6
+        assert params.breathiness == 0.3
 
-        param = VoiceParameter("test", value=1.0, min_value=0.0, max_value=1.0)
-        assert param.normalize() == 1.0
+    def test_blend(self):
+        """Test blending two parameter sets."""
+        params1 = VoiceParameters(pitch=0.0, speed=1.0)
+        params2 = VoiceParameters(pitch=1.0, speed=0.0)
 
-    def test_apply_modifier(self):
-        """Can apply modifier to value."""
-        param = VoiceParameter("test", value=0.5, min_value=0.0, max_value=1.0)
+        blended = params1.blend(params2, 0.5)
+        assert blended.pitch == pytest.approx(0.5)
+        assert blended.speed == pytest.approx(0.5)
 
-        new_value = param.apply_modifier(0.3)
-        assert new_value == 0.8
+    def test_blend_factor_extremes(self):
+        """Test blend at factor extremes."""
+        params1 = VoiceParameters(pitch=0.2)
+        params2 = VoiceParameters(pitch=0.8)
 
-        # Clamped to max
-        new_value = param.apply_modifier(0.7)
-        assert new_value == 1.0
-
-    def test_serialization(self):
-        """Parameter can be serialized."""
-        param = VoiceParameter("pitch", 0.5, -1.0, 1.0, default=0.0)
-        data = param.to_dict()
-
-        assert data["name"] == "pitch"
-        assert data["value"] == 0.5
-        assert data["default"] == 0.0
-
-
-class TestVoiceProfile:
-    """Tests for VoiceProfile."""
-
-    def test_create_profile(self, voice_profile):
-        """Can create voice profile."""
-        assert voice_profile.voice_id == "test_voice"
-        assert voice_profile.base_voice == "male_1"
-        assert voice_profile.pitch == 0.0
-
-    def test_pitch_multiplier(self):
-        """Can get pitch multiplier."""
-        profile = VoiceProfile(voice_id="test", pitch=0.0)
-        assert profile.get_pitch_multiplier() == 1.0
-
-        profile = VoiceProfile(voice_id="test", pitch=1.0)
-        assert profile.get_pitch_multiplier() == 1.5
-
-        profile = VoiceProfile(voice_id="test", pitch=-1.0)
-        assert profile.get_pitch_multiplier() == 0.5
-
-    def test_speed_multiplier(self):
-        """Can get speed multiplier."""
-        profile = VoiceProfile(voice_id="test", speed=0.0)
-        assert profile.get_speed_multiplier() == 1.0
-
-        profile = VoiceProfile(voice_id="test", speed=0.5)
-        assert profile.get_speed_multiplier() == 1.25
-
-    def test_get_parameters(self, voice_profile):
-        """Can get all parameters."""
-        params = voice_profile.get_parameters()
-
-        assert "pitch" in params
-        assert "speed" in params
-        assert "breathiness" in params
-        assert "roughness" in params
-
-    def test_apply_emotion(self, voice_profile):
-        """Can apply emotional state."""
-        happy_profile = voice_profile.apply_emotion(EmotionalState.HAPPY)
-
-        # Happy should increase pitch
-        assert happy_profile.pitch > voice_profile.pitch
-
-    def test_apply_emotion_angry(self, voice_profile):
-        """Angry emotion affects voice correctly."""
-        angry_profile = voice_profile.apply_emotion(EmotionalState.ANGRY)
-
-        # Angry should increase roughness
-        assert angry_profile.roughness > voice_profile.roughness
-
-    def test_apply_emotion_sad(self, voice_profile):
-        """Sad emotion affects voice correctly."""
-        sad_profile = voice_profile.apply_emotion(EmotionalState.SAD)
-
-        # Sad should lower pitch and speed
-        assert sad_profile.pitch < voice_profile.pitch
-        assert sad_profile.speed < voice_profile.speed
-
-    def test_emotional_range_scaling(self):
-        """Emotional range scales effect of emotions."""
-        low_range = VoiceProfile(voice_id="test", emotional_range=0.2)
-        high_range = VoiceProfile(voice_id="test", emotional_range=1.0)
-
-        low_happy = low_range.apply_emotion(EmotionalState.HAPPY)
-        high_happy = high_range.apply_emotion(EmotionalState.HAPPY)
-
-        # Higher range = bigger pitch change
-        assert abs(high_happy.pitch) > abs(low_happy.pitch)
-
-    def test_serialization(self, gruff_voice_profile):
-        """Profile can be serialized and deserialized."""
-        data = gruff_voice_profile.to_dict()
-        restored = VoiceProfile.from_dict(data)
-
-        assert restored.voice_id == gruff_voice_profile.voice_id
-        assert restored.pitch == gruff_voice_profile.pitch
-        assert restored.roughness == gruff_voice_profile.roughness
+        assert params1.blend(params2, 0.0).pitch == pytest.approx(0.2)
+        assert params1.blend(params2, 1.0).pitch == pytest.approx(0.8)
 
 
 class TestCharacterVoice:
     """Tests for CharacterVoice."""
 
-    def test_create_character_voice(self, character_voice):
-        """Can create character voice."""
-        assert character_voice.character_id == "test_char"
-        assert character_voice.profile is not None
+    def test_create_voice(self):
+        """Test creating a character voice."""
+        voice = CharacterVoice(
+            character_id="char_001",
+            name="Detective Smith"
+        )
+        assert voice.character_id == "char_001"
+        assert voice.name == "Detective Smith"
+        assert voice.gender == VoiceGender.NEUTRAL
+        assert voice.emotional_state == EmotionalState.NEUTRAL
 
-    def test_set_emotion(self, character_voice):
-        """Can set emotion."""
-        character_voice.set_emotion(EmotionalState.FEARFUL)
-        assert character_voice.current_emotion == EmotionalState.FEARFUL
+    def test_voice_with_parameters(self):
+        """Test voice with custom parameters."""
+        params = VoiceParameters(pitch=0.3, roughness=0.4)
+        voice = CharacterVoice(
+            character_id="char_002",
+            name="Gangster Tony",
+            gender=VoiceGender.MALE,
+            age=VoiceAge.ADULT,
+            accent=Accent.BROOKLYN,
+            base_params=params
+        )
+        assert voice.base_params.pitch == 0.3
+        assert voice.base_params.roughness == 0.4
+        assert voice.accent == Accent.BROOKLYN
 
-    def test_get_effective_profile(self, character_voice):
-        """Can get effective profile with emotion applied."""
-        character_voice.set_emotion(EmotionalState.NERVOUS)
-        profile = character_voice.get_effective_profile()
+    def test_set_emotion(self):
+        """Test setting emotional state."""
+        voice = CharacterVoice(character_id="c1", name="Test")
+        voice.set_emotion(EmotionalState.ANGRY, 0.8)
+        assert voice.emotional_state == EmotionalState.ANGRY
+        assert voice.emotion_intensity == 0.8
 
-        # Nervous should be reflected in profile
-        assert profile.pitch > character_voice.profile.pitch
+    def test_emotion_intensity_clamping(self):
+        """Test emotion intensity is clamped."""
+        voice = CharacterVoice(character_id="c1", name="Test")
+        voice.set_emotion(EmotionalState.FEARFUL, 1.5)
+        assert voice.emotion_intensity == 1.0
 
-    def test_apply_stress(self, character_voice):
-        """Can apply stress."""
-        character_voice.apply_stress(0.5)
-        assert character_voice.stress_level == 0.5
+        voice.set_emotion(EmotionalState.SAD, -0.5)
+        assert voice.emotion_intensity == 0.0
 
-        # Stress affects effective profile
-        profile = character_voice.get_effective_profile()
-        assert profile.pitch > character_voice.profile.pitch
+    def test_get_effective_params_neutral(self):
+        """Test effective params with neutral emotion."""
+        voice = CharacterVoice(
+            character_id="c1",
+            name="Test",
+            base_params=VoiceParameters(pitch=0.5)
+        )
+        params = voice.get_effective_params()
+        assert params.pitch == pytest.approx(0.5, abs=0.01)
 
-    def test_stress_clamped(self, character_voice):
-        """Stress is clamped to 0-1."""
-        character_voice.apply_stress(2.0)
-        assert character_voice.stress_level == 1.0
+    def test_get_effective_params_emotional(self):
+        """Test effective params with emotional modulation."""
+        voice = CharacterVoice(
+            character_id="c1",
+            name="Test",
+            base_params=VoiceParameters(pitch=0.5, speed=0.5)
+        )
+        voice.set_emotion(EmotionalState.ANGRY, 1.0)
+        params = voice.get_effective_params()
 
-        character_voice.apply_stress(-2.0)
-        assert character_voice.stress_level == 0.0
+        # Angry should increase roughness and emphasis
+        assert params.roughness > voice.base_params.roughness
+        assert params.emphasis_strength > voice.base_params.emphasis_strength
 
-    def test_apply_fatigue(self, character_voice):
-        """Can apply fatigue."""
-        character_voice.apply_fatigue(0.7)
-        assert character_voice.fatigue_level == 0.7
+    def test_serialization(self):
+        """Test voice serialization round-trip."""
+        original = CharacterVoice(
+            character_id="c1",
+            name="Test Voice",
+            gender=VoiceGender.FEMALE,
+            age=VoiceAge.YOUNG,
+            accent=Accent.SOUTHERN,
+            base_params=VoiceParameters(pitch=0.6, breathiness=0.3),
+            speech_quirks=["drawl", "elongation"],
+            catchphrases=["Well, I declare..."]
+        )
+        original.set_emotion(EmotionalState.HAPPY, 0.7)
 
-        # Fatigue should slow down speech
-        profile = character_voice.get_effective_profile()
-        assert profile.speed < character_voice.profile.speed
+        d = original.to_dict()
+        restored = CharacterVoice.from_dict(d)
 
-    def test_recover(self, character_voice):
-        """Can recover from stress and fatigue."""
-        character_voice.apply_stress(0.8)
-        character_voice.apply_fatigue(0.6)
-
-        character_voice.recover(0.3)
-
-        assert character_voice.stress_level == 0.5
-        assert character_voice.fatigue_level == 0.3
-
-    def test_serialization(self, character_voice):
-        """Character voice can be serialized."""
-        character_voice.set_emotion(EmotionalState.ANGRY)
-        character_voice.apply_stress(0.4)
-
-        data = character_voice.to_dict()
-        restored = CharacterVoice.from_dict(data)
-
-        assert restored.character_id == character_voice.character_id
-        assert restored.current_emotion == EmotionalState.ANGRY
-        assert restored.stress_level == 0.4
-
-
-class TestVoiceModulator:
-    """Tests for VoiceModulator."""
-
-    def test_create_modulator(self, voice_modulator):
-        """Can create modulator."""
-        assert voice_modulator is not None
-
-    def test_natural_variation(self, voice_modulator, voice_profile):
-        """Can add natural variation."""
-        varied = voice_modulator.add_natural_variation(voice_profile, 0.1)
-
-        # Should be slightly different
-        assert varied.pitch != voice_profile.pitch or varied.speed != voice_profile.speed
-
-    def test_deterministic_variation(self, voice_profile):
-        """Same seed produces same variation."""
-        mod1 = VoiceModulator(seed=100)
-        mod2 = VoiceModulator(seed=100)
-
-        varied1 = mod1.add_natural_variation(voice_profile)
-        varied2 = mod2.add_natural_variation(voice_profile)
-
-        assert varied1.pitch == varied2.pitch
-
-    def test_apply_whisper(self, voice_modulator, voice_profile):
-        """Can apply whisper effect."""
-        whispered = voice_modulator.apply_whisper(voice_profile)
-
-        assert whispered.breathiness == 1.0
-        assert whispered.pitch > voice_profile.pitch
-
-    def test_apply_shout(self, voice_modulator, voice_profile):
-        """Can apply shout effect."""
-        shouted = voice_modulator.apply_shout(voice_profile)
-
-        assert shouted.pitch > voice_profile.pitch
-        assert shouted.roughness > voice_profile.roughness
-
-    def test_age_voice_older(self, voice_modulator, voice_profile):
-        """Can age voice older."""
-        aged = voice_modulator.age_voice(voice_profile, 30)
-
-        assert aged.pitch < voice_profile.pitch
-        assert aged.speed < voice_profile.speed
-
-    def test_age_voice_younger(self, voice_modulator, voice_profile):
-        """Can de-age voice."""
-        young = voice_modulator.age_voice(voice_profile, -20)
-
-        assert young.pitch > voice_profile.pitch
+        assert restored.character_id == original.character_id
+        assert restored.name == original.name
+        assert restored.gender == original.gender
+        assert restored.age == original.age
+        assert restored.accent == original.accent
+        assert restored.base_params.pitch == pytest.approx(original.base_params.pitch)
+        assert restored.emotional_state == original.emotional_state
+        assert restored.speech_quirks == original.speech_quirks
 
 
-class TestVoiceLibrary:
-    """Tests for VoiceLibrary."""
+class TestVoiceFactory:
+    """Tests for VoiceFactory."""
 
-    def test_create_library(self, voice_library):
-        """Can create library."""
-        assert voice_library is not None
+    def test_create_from_archetype_detective(self):
+        """Test creating detective voice."""
+        voice = VoiceFactory.create_from_archetype(
+            "det_001", "Sam Spade", "detective", seed=42
+        )
+        assert voice.character_id == "det_001"
+        assert voice.name == "Sam Spade"
+        assert voice.gender == VoiceGender.MALE
+        assert voice.age == VoiceAge.MIDDLE
 
-    def test_has_presets(self, voice_library):
-        """Library has presets."""
-        presets = voice_library.get_preset_names()
-        assert len(presets) >= 5
-        assert "gruff_male" in presets
-        assert "young_female" in presets
+    def test_create_from_archetype_femme_fatale(self):
+        """Test creating femme fatale voice."""
+        voice = VoiceFactory.create_from_archetype(
+            "ff_001", "Veronica Lake", "femme_fatale", seed=42
+        )
+        assert voice.gender == VoiceGender.FEMALE
+        assert voice.age == VoiceAge.YOUNG
+        assert voice.base_params.breathiness > 0.3
 
-    def test_get_preset(self, voice_library):
-        """Can get preset profile."""
-        profile = voice_library.get_preset("gruff_male")
-        assert profile is not None
-        assert profile.roughness > 0
+    def test_create_from_archetype_gangster(self):
+        """Test creating gangster voice."""
+        voice = VoiceFactory.create_from_archetype(
+            "gang_001", "Big Tony", "gangster", seed=42
+        )
+        assert voice.accent == Accent.BROOKLYN
+        assert voice.base_params.roughness > 0.2
 
-    def test_register_profile(self, voice_library, voice_profile):
-        """Can register custom profile."""
-        voice_library.register_profile(voice_profile)
+    def test_create_from_unknown_archetype(self):
+        """Test fallback for unknown archetype."""
+        voice = VoiceFactory.create_from_archetype(
+            "unk_001", "Unknown", "nonexistent_archetype", seed=42
+        )
+        # Should use default template
+        assert voice.character_id == "unk_001"
 
-        retrieved = voice_library.get_profile("test_voice")
-        assert retrieved is not None
-        assert retrieved.voice_id == "test_voice"
+    def test_create_random(self):
+        """Test creating random voice."""
+        voice = VoiceFactory.create_random("rand_001", "Random Character", seed=42)
+        assert voice.character_id == "rand_001"
+        # Should have some variation from defaults
+        assert voice.gender in list(VoiceGender)
+        assert voice.age in list(VoiceAge)
 
-    def test_create_character_voice(self, voice_library, voice_profile):
-        """Can create character voice from profile."""
-        voice = voice_library.create_character_voice("detective", voice_profile)
+    def test_seed_reproducibility(self):
+        """Test that seed produces reproducible results."""
+        voice1 = VoiceFactory.create_from_archetype("c1", "Test", "detective", seed=123)
+        voice2 = VoiceFactory.create_from_archetype("c1", "Test", "detective", seed=123)
 
-        assert voice.character_id == "detective"
-        assert voice.profile == voice_profile
+        assert voice1.base_params.pitch == pytest.approx(voice2.base_params.pitch)
+        assert voice1.base_params.speed == pytest.approx(voice2.base_params.speed)
 
-    def test_get_character_voice(self, voice_library, voice_profile):
-        """Can retrieve character voice."""
-        voice_library.create_character_voice("suspect", voice_profile)
+    def test_different_seeds_different_voices(self):
+        """Test that different seeds produce different voices."""
+        voice1 = VoiceFactory.create_random("c1", "Test", seed=100)
+        voice2 = VoiceFactory.create_random("c1", "Test", seed=200)
 
-        voice = voice_library.get_character_voice("suspect")
-        assert voice is not None
-        assert voice.character_id == "suspect"
-
-    def test_generate_random_profile(self, voice_library):
-        """Can generate random profile."""
-        profile = voice_library.generate_random_profile(seed=42)
-        assert profile is not None
-        assert profile.voice_id.startswith("random_")
-
-    def test_generate_random_gender(self, voice_library):
-        """Can generate random profile with gender."""
-        male_profile = voice_library.generate_random_profile(seed=42, gender="male")
-        assert male_profile.base_voice in ["male_1", "male_2"]
-
-        female_profile = voice_library.generate_random_profile(seed=42, gender="female")
-        assert female_profile.base_voice in ["female_1", "female_2"]
-
-    def test_deterministic_random(self, voice_library):
-        """Random profiles are deterministic with same seed."""
-        profile1 = voice_library.generate_random_profile(seed=123)
-        profile2 = voice_library.generate_random_profile(seed=123)
-
-        assert profile1.pitch == profile2.pitch
-        assert profile1.base_voice == profile2.base_voice
-
-    def test_serialization(self, voice_library, voice_profile):
-        """Library can be serialized."""
-        voice_library.register_profile(voice_profile)
-        voice_library.create_character_voice("npc", voice_profile)
-
-        data = voice_library.to_dict()
-        restored = VoiceLibrary.from_dict(data)
-
-        assert restored.get_profile("test_voice") is not None
-        assert restored.get_character_voice("npc") is not None
+        # At least some parameters should differ
+        params_differ = (
+            voice1.base_params.pitch != voice2.base_params.pitch or
+            voice1.base_params.speed != voice2.base_params.speed or
+            voice1.gender != voice2.gender
+        )
+        assert params_differ
 
 
-class TestEmotionModifiers:
-    """Tests for emotion modifier constants."""
+class TestArchetypeTemplates:
+    """Tests for archetype voice templates."""
 
-    def test_all_emotions_have_modifiers(self):
-        """All emotional states have defined modifiers."""
+    def test_all_archetypes_exist(self):
+        """Test that expected archetypes are defined."""
+        expected = [
+            'default', 'detective', 'femme_fatale', 'gangster',
+            'informant', 'bartender', 'politician', 'elderly_witness',
+            'street_kid', 'corrupt_cop', 'nightclub_singer'
+        ]
+        for archetype in expected:
+            assert archetype in ARCHETYPE_VOICE_TEMPLATES
+
+    def test_template_has_required_fields(self):
+        """Test templates have minimum required fields."""
+        for name, template in ARCHETYPE_VOICE_TEMPLATES.items():
+            assert 'pitch' in template, f"{name} missing pitch"
+            assert 'speed' in template, f"{name} missing speed"
+            assert 'breathiness' in template, f"{name} missing breathiness"
+            assert 'roughness' in template, f"{name} missing roughness"
+
+    def test_template_values_in_range(self):
+        """Test template values are in valid range."""
+        for name, template in ARCHETYPE_VOICE_TEMPLATES.items():
+            assert 0 <= template['pitch'] <= 1, f"{name} pitch out of range"
+            assert 0 <= template['speed'] <= 1, f"{name} speed out of range"
+
+
+class TestEmotionModulations:
+    """Tests for emotion modulation values."""
+
+    def test_all_emotions_have_modulation(self):
+        """Test all emotions have modulation defined."""
         for emotion in EmotionalState:
-            assert emotion in EMOTION_MODIFIERS
+            assert emotion in EMOTION_MODULATIONS
 
-    def test_neutral_has_no_effect(self):
-        """Neutral emotion has no modifiers."""
-        assert EMOTION_MODIFIERS[EmotionalState.NEUTRAL] == {}
+    def test_neutral_is_empty(self):
+        """Test neutral emotion has no modulation."""
+        assert EMOTION_MODULATIONS[EmotionalState.NEUTRAL] == {}
 
-    def test_emotional_modifiers_in_range(self):
-        """All modifier values are in reasonable range."""
-        for emotion, modifiers in EMOTION_MODIFIERS.items():
-            for key, value in modifiers.items():
-                assert -1.0 <= value <= 1.0, f"{emotion}.{key} = {value} out of range"
+    def test_modulation_values_reasonable(self):
+        """Test modulation values are within reasonable range."""
+        for emotion, mods in EMOTION_MODULATIONS.items():
+            for param, value in mods.items():
+                assert -0.5 <= value <= 0.5, f"{emotion}.{param} = {value} out of range"
