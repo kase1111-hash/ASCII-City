@@ -15,6 +15,7 @@ from .narrative import NarrativeSpine, SpineGenerator, ConflictType
 from .interaction import CommandParser, Command, CommandType, Hotspot
 from .render import Scene, Location, Renderer
 from .environment import Environment, WeatherType, TimePeriod
+from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 
 
 class GameState:
@@ -49,6 +50,11 @@ class Game:
             width=self.config.screen_width,
             height=self.config.screen_height
         )
+        # Audio engine for TTS speech (uses mock TTS by default)
+        self.audio_engine: Optional[AudioEngine] = None
+        if self.config.enable_audio:
+            self.audio_engine = create_audio_engine(use_mock_tts=True)
+        self.speech_enabled = self.config.enable_speech
 
     def new_game(self, seed: int = None) -> None:
         """Start a new game."""
@@ -61,6 +67,56 @@ class Game:
         """Add a character to the game."""
         self.state.characters[character.id] = character
         self.state.memory.register_character(character.id)
+
+        # Register character voice with audio engine
+        if self.audio_engine:
+            # Map character archetype to voice archetype
+            voice_archetype = self._get_voice_archetype(character.archetype)
+            self.audio_engine.create_voice_from_archetype(
+                character_id=character.id,
+                name=character.name,
+                archetype=voice_archetype
+            )
+
+    def _get_voice_archetype(self, archetype: Archetype) -> str:
+        """Map character archetype to voice archetype."""
+        mapping = {
+            Archetype.GUILTY: "gangster",
+            Archetype.INNOCENT: "bartender",
+            Archetype.OUTSIDER: "politician",
+            Archetype.WITNESS: "informant",
+            Archetype.ACCOMPLICE: "street_kid",
+            Archetype.CORRUPT: "corrupt_cop",
+        }
+        return mapping.get(archetype, "default")
+
+    def speak_dialogue(self, character_id: str, text: str, mood: str = "") -> None:
+        """Speak dialogue using TTS if enabled."""
+        if not self.speech_enabled or not self.audio_engine:
+            return
+
+        # Map mood string to audio emotion
+        emotion_mapping = {
+            "angrily": AudioEmotion.ANGRY,
+            "sadly": AudioEmotion.SAD,
+            "nervously": AudioEmotion.NERVOUS,
+            "desperately": AudioEmotion.FEARFUL,
+            "defensively": AudioEmotion.SUSPICIOUS,
+            "defeated": AudioEmotion.TIRED,
+            "happily": AudioEmotion.HAPPY,
+            "excitedly": AudioEmotion.EXCITED,
+        }
+        emotion = emotion_mapping.get(mood.lower()) if mood else None
+
+        # Synthesize and queue speech
+        self.audio_engine.speak(character_id, text, emotion)
+
+    def _show_dialogue(self, character: Character, text: str, mood: str = "") -> None:
+        """Display dialogue and speak it using TTS."""
+        # Render to screen
+        self.renderer.render_dialogue(character.name, text, mood)
+        # Speak with TTS
+        self.speak_dialogue(character.id, text, mood)
 
     def add_location(self, location: Location, is_indoor: bool = True, **env_kwargs) -> None:
         """Add a location to the game."""
@@ -432,28 +488,28 @@ class Game:
 
         if character.state.is_cracked and character.secret_truth:
             # Reveal secret if cracked
-            self.renderer.render_dialogue(
-                character.name,
+            self._show_dialogue(
+                character,
                 f"Fine! You want the truth? {character.secret_truth}",
                 "desperately"
             )
         elif topic in character.exhausted_topics:
-            self.renderer.render_dialogue(
-                character.name,
+            self._show_dialogue(
+                character,
                 "I've already told you everything I know about that.",
                 mood_mod
             )
         else:
             # Normal response
             if character.public_lie and not character.will_cooperate():
-                self.renderer.render_dialogue(
-                    character.name,
+                self._show_dialogue(
+                    character,
                     character.public_lie,
                     mood_mod
                 )
             else:
-                self.renderer.render_dialogue(
-                    character.name,
+                self._show_dialogue(
+                    character,
                     f"About {topic}? I suppose I can tell you what I know.",
                     mood_mod
                 )
@@ -480,15 +536,15 @@ class Game:
             self.renderer.render_narration(
                 f"{character.name} breaks down under your pressure!"
             )
-            self.renderer.render_dialogue(
-                character.name,
+            self._show_dialogue(
+                character,
                 f"Stop! I'll tell you everything! {character.secret_truth}",
                 "desperately"
             )
         else:
             mood_mod = character.get_response_mood_modifier()
-            self.renderer.render_dialogue(
-                character.name,
+            self._show_dialogue(
+                character,
                 "You don't scare me... much.",
                 mood_mod
             )
@@ -508,8 +564,8 @@ class Game:
             if is_correct:
                 self.renderer.render_narration("Your accusation hits home!")
                 character.state.is_cracked = True
-                self.renderer.render_dialogue(
-                    character.name,
+                self._show_dialogue(
+                    character,
                     f"How did you know? Yes... {character.secret_truth}",
                     "defeated"
                 )
@@ -519,16 +575,16 @@ class Game:
                 )
                 self.state.is_running = False
             else:
-                self.renderer.render_dialogue(
-                    character.name,
+                self._show_dialogue(
+                    character,
                     "You think you're so clever, but you can't prove anything!",
                     "defensively"
                 )
                 self.renderer.render_narration(explanation)
         else:
             # Wrong person
-            self.renderer.render_dialogue(
-                character.name,
+            self._show_dialogue(
+                character,
                 "What?! You're completely wrong! I didn't do anything!",
                 "angrily"
             )

@@ -33,6 +33,13 @@ class GameConfig:
     npc_trust_threshold_modifier: float = 1.0  # Higher = harder to crack NPCs
     evidence_decay_rate: float = 0.1  # How fast outdoor evidence degrades
 
+    # Audio settings
+    enable_audio: bool = True  # Enable audio engine
+    enable_speech: bool = True  # Enable TTS for dialogue
+    master_volume: float = 0.8
+    speech_volume: float = 1.0
+    ambient_volume: float = 0.5
+
     def save(self, path: str) -> None:
         """Save config to JSON file."""
         with open(path, 'w') as f:
