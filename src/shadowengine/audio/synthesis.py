@@ -11,7 +11,7 @@ from typing import Optional, Dict, List, Any, Callable
 import time
 
 from .tts import TTSEngine, TTSResult, TTSConfig, create_tts_engine
-from .voice import VoiceProfile, VoiceLibrary, CharacterVoice, EmotionalState
+from .voice import VoiceProfile, VoiceLibrary, CharacterVoiceTTS as CharacterVoice, EmotionalState
 from .effects import EffectsChain, Effect, EffectType
 from .motif import Motif, MotifGenerator, ThemeEngine, TensionMapper
 from .ambient import AmbientEngine, AmbientLayer, AmbientConfig
