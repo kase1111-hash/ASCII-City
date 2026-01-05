@@ -14,6 +14,7 @@ from .character import Character, Archetype, DialogueManager, DialogueTopic
 from .narrative import NarrativeSpine, SpineGenerator, ConflictType
 from .interaction import CommandParser, Command, CommandType, Hotspot
 from .render import Scene, Location, Renderer
+from .environment import Environment, WeatherType, TimePeriod
 
 
 class GameState:
@@ -30,6 +31,7 @@ class GameState:
         self.is_running: bool = True
         self.in_conversation: bool = False
         self.conversation_partner: Optional[str] = None
+        self.environment: Environment = Environment()
 
 
 class Game:
@@ -52,15 +54,23 @@ class Game:
         """Start a new game."""
         self.state = GameState()
         self.state.memory.game_seed = seed
+        if seed is not None:
+            self.state.environment.set_seed(seed)
 
     def add_character(self, character: Character) -> None:
         """Add a character to the game."""
         self.state.characters[character.id] = character
         self.state.memory.register_character(character.id)
 
-    def add_location(self, location: Location) -> None:
+    def add_location(self, location: Location, is_indoor: bool = True, **env_kwargs) -> None:
         """Add a location to the game."""
         self.state.locations[location.id] = location
+        # Register location for environment tracking
+        self.state.environment.register_location(
+            location.id,
+            is_indoor=is_indoor,
+            **env_kwargs
+        )
 
     def set_start_location(self, location_id: str) -> None:
         """Set the starting location."""
@@ -298,7 +308,25 @@ class Game:
 
     def _handle_wait(self) -> None:
         """Pass time."""
+        # Advance environment time
+        changes = self.state.environment.update(15)  # 15 minutes pass
+
         self.renderer.render_narration("Time passes...")
+
+        # Report any significant changes
+        if changes.get("period_changed"):
+            period = changes["period_changed"]
+            self.renderer.render_narration(period.get_description())
+
+        if changes.get("weather_changed"):
+            weather_desc = self.state.environment.weather.get_description()
+            self.renderer.render_narration(weather_desc)
+
+        # Handle triggered events
+        for event in changes.get("time_events", []):
+            if event.description:
+                self.renderer.render_narration(event.description)
+
         self.state.memory.advance_time(5)
         self.renderer.wait_for_key()
 
@@ -516,5 +544,23 @@ class Game:
             "discoveries": len(self.state.memory.player.discoveries),
             "inventory_items": len(self.state.inventory),
             "characters_met": len(self.state.memory.player.talked_to),
-            "moral_shade": self.state.memory.player.get_dominant_shade().value
+            "moral_shade": self.state.memory.player.get_dominant_shade().value,
+            "environment": self.state.environment.get_display_status(),
+            "visibility": self.state.environment.get_visibility(
+                self.state.current_location_id
+            ),
         }
+
+    def set_weather(self, weather_type: WeatherType, **kwargs) -> None:
+        """Set the current weather."""
+        self.state.environment.set_weather(weather_type, **kwargs)
+
+    def set_time(self, hour: int, minute: int = 0) -> None:
+        """Set the current game time."""
+        self.state.environment.time.set_time(hour, minute)
+
+    def get_environment_description(self) -> list[str]:
+        """Get atmospheric description for current location."""
+        return self.state.environment.get_atmospheric_description(
+            self.state.current_location_id
+        )

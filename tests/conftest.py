@@ -19,6 +19,11 @@ from shadowengine.interaction import CommandParser, Hotspot, HotspotType
 from shadowengine.render import Scene, Location, Renderer
 from shadowengine.game import Game, GameState
 from shadowengine.config import GameConfig
+from shadowengine.environment import (
+    Environment, LocationEnvironment,
+    TimeSystem, TimePeriod, TimeEvent,
+    WeatherSystem, WeatherState, WeatherType
+)
 
 
 # =============================================================================
@@ -360,3 +365,47 @@ class TestHelpers:
 def helpers():
     """Test helper methods."""
     return TestHelpers()
+
+
+# =============================================================================
+# Environment Fixtures
+# =============================================================================
+
+@pytest.fixture
+def time_system():
+    """Fresh time system."""
+    return TimeSystem()
+
+
+@pytest.fixture
+def weather_system():
+    """Fresh weather system."""
+    return WeatherSystem()
+
+
+@pytest.fixture
+def environment():
+    """Fresh environment coordinator."""
+    return Environment()
+
+
+@pytest.fixture
+def populated_environment():
+    """Environment with locations registered."""
+    env = Environment()
+    env.set_seed(42)
+    env.time.set_time(12, 0)  # Noon
+    env.register_location("study", is_indoor=True, has_lighting=True)
+    env.register_location("garden", is_indoor=False, has_shelter=False)
+    env.register_location("basement", is_indoor=True, has_lighting=False, is_dark=True)
+    return env
+
+
+@pytest.fixture
+def stormy_environment():
+    """Environment with storm weather."""
+    env = Environment()
+    env.time.set_time(22, 0)  # Night
+    env.weather.set_weather(WeatherType.STORM, immediate=True)
+    env.register_location("manor", is_indoor=True)
+    return env
