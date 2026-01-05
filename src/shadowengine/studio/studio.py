@@ -89,9 +89,9 @@ class Studio:
         usage_stats: Optional[UsageStats] = None
     ):
         self.player_id = player_id
-        self.asset_pool = asset_pool or AssetPool()
-        self.gallery = gallery or Gallery()
-        self.usage_stats = usage_stats or UsageStats()
+        self.asset_pool = asset_pool if asset_pool is not None else AssetPool()
+        self.gallery = gallery if gallery is not None else Gallery()
+        self.usage_stats = usage_stats if usage_stats is not None else UsageStats()
 
         # Current work
         self._current_art: Optional[ASCIIArt] = None
