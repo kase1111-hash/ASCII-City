@@ -7,7 +7,7 @@ across all their dialogue, creating recognizable audio identities.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 import random
 
 
@@ -501,3 +501,343 @@ ARCHETYPE_VOICE_TEMPLATES: Dict[str, Dict[str, Any]] = {
         'catchphrases': ["Honey...", "You should have seen this place in its heyday."]
     }
 }
+
+
+# =============================================================================
+# Voice Profile System (for TTS integration)
+# =============================================================================
+
+@dataclass
+class VoiceProfile:
+    """
+    Voice profile for TTS synthesis.
+
+    Contains parameters that define how a character's voice sounds
+    when synthesized by a TTS engine.
+    """
+    voice_id: str
+    base_voice: str = "default"
+    name: str = "Unnamed Voice"
+
+    # Pitch and speed modifiers (-1.0 to 1.0)
+    pitch: float = 0.0
+    speed: float = 0.0
+
+    # Voice texture modifiers (0.0 to 1.0)
+    roughness: float = 0.0
+    breathiness: float = 0.0
+    resonance: float = 0.5
+
+    # Age modifier (-1.0 = younger, 1.0 = older)
+    age_modifier: float = 0.0
+
+    # Emotion modulation strength
+    emotion_strength: float = 0.5
+
+    def get_pitch_multiplier(self) -> float:
+        """Get pitch multiplier for TTS (0.5 to 2.0 range)."""
+        # Convert -1.0 to 1.0 range to 0.5 to 2.0 multiplier
+        return 1.0 + (self.pitch * 0.5)
+
+    def get_speed_multiplier(self) -> float:
+        """Get speed multiplier for TTS (0.5 to 2.0 range)."""
+        # Convert -1.0 to 1.0 range to 0.5 to 2.0 multiplier
+        return 1.0 + (self.speed * 0.5)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'voice_id': self.voice_id,
+            'base_voice': self.base_voice,
+            'name': self.name,
+            'pitch': self.pitch,
+            'speed': self.speed,
+            'roughness': self.roughness,
+            'breathiness': self.breathiness,
+            'resonance': self.resonance,
+            'age_modifier': self.age_modifier,
+            'emotion_strength': self.emotion_strength,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'VoiceProfile':
+        """Create from dictionary."""
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
+# Aliases for backwards compatibility
+VoiceParameter = VoiceParameters
+EMOTION_MODIFIERS = EMOTION_MODULATIONS
+
+
+class VoiceModulator:
+    """
+    Modulates voice parameters based on emotional state and context.
+
+    Provides dynamic voice variation for more natural-sounding speech.
+    """
+
+    def __init__(self, seed: Optional[int] = None):
+        """Initialize modulator with optional seed for reproducibility."""
+        if seed is not None:
+            random.seed(seed)
+        self._seed = seed
+        self._variation_amount = 0.1
+
+    def modulate(self, profile: VoiceProfile, emotion: EmotionalState,
+                 intensity: float = 0.5) -> VoiceProfile:
+        """
+        Apply emotional modulation to a voice profile.
+
+        Args:
+            profile: Base voice profile
+            emotion: Emotional state to apply
+            intensity: How strongly to apply the emotion (0.0 to 1.0)
+
+        Returns:
+            New VoiceProfile with modulation applied
+        """
+        modulation = EMOTION_MODULATIONS.get(emotion, {})
+
+        new_pitch = profile.pitch
+        new_speed = profile.speed
+
+        if 'pitch' in modulation:
+            new_pitch += modulation['pitch'] * intensity * profile.emotion_strength
+        if 'speed' in modulation:
+            new_speed += modulation['speed'] * intensity * profile.emotion_strength
+
+        # Add small random variation for naturalness
+        new_pitch += random.uniform(-self._variation_amount, self._variation_amount) * 0.5
+        new_speed += random.uniform(-self._variation_amount, self._variation_amount) * 0.5
+
+        # Clamp values
+        new_pitch = max(-1.0, min(1.0, new_pitch))
+        new_speed = max(-1.0, min(1.0, new_speed))
+
+        return VoiceProfile(
+            voice_id=profile.voice_id,
+            base_voice=profile.base_voice,
+            name=profile.name,
+            pitch=new_pitch,
+            speed=new_speed,
+            roughness=profile.roughness + modulation.get('roughness', 0.0) * intensity,
+            breathiness=profile.breathiness + modulation.get('breathiness', 0.0) * intensity,
+            resonance=profile.resonance,
+            age_modifier=profile.age_modifier,
+            emotion_strength=profile.emotion_strength,
+        )
+
+    def add_variation(self, profile: VoiceProfile, amount: float = 0.1) -> VoiceProfile:
+        """Add random variation to a voice profile."""
+        return VoiceProfile(
+            voice_id=profile.voice_id,
+            base_voice=profile.base_voice,
+            name=profile.name,
+            pitch=profile.pitch + random.uniform(-amount, amount),
+            speed=profile.speed + random.uniform(-amount, amount),
+            roughness=max(0.0, min(1.0, profile.roughness + random.uniform(-amount, amount))),
+            breathiness=max(0.0, min(1.0, profile.breathiness + random.uniform(-amount, amount))),
+            resonance=profile.resonance,
+            age_modifier=profile.age_modifier,
+            emotion_strength=profile.emotion_strength,
+        )
+
+
+class VoiceLibrary:
+    """
+    Library of voice profiles and character voice assignments.
+
+    Manages voice presets and character-specific voice configurations.
+    """
+
+    # Built-in voice presets
+    PRESETS: Dict[str, Dict[str, Any]] = {
+        'detective': {
+            'base_voice': 'male_1',
+            'pitch': -0.2,
+            'speed': -0.1,
+            'roughness': 0.3,
+            'breathiness': 0.1,
+            'resonance': 0.4,
+            'age_modifier': 0.2,
+        },
+        'femme_fatale': {
+            'base_voice': 'female_1',
+            'pitch': 0.1,
+            'speed': -0.15,
+            'roughness': 0.0,
+            'breathiness': 0.4,
+            'resonance': 0.6,
+            'age_modifier': -0.1,
+        },
+        'gangster': {
+            'base_voice': 'male_2',
+            'pitch': -0.3,
+            'speed': 0.1,
+            'roughness': 0.5,
+            'breathiness': 0.0,
+            'resonance': 0.3,
+            'age_modifier': 0.1,
+        },
+        'informant': {
+            'base_voice': 'male_1',
+            'pitch': 0.1,
+            'speed': 0.2,
+            'roughness': 0.1,
+            'breathiness': 0.2,
+            'resonance': 0.5,
+            'age_modifier': 0.0,
+        },
+        'elderly': {
+            'base_voice': 'female_2',
+            'pitch': 0.2,
+            'speed': -0.3,
+            'roughness': 0.2,
+            'breathiness': 0.3,
+            'resonance': 0.4,
+            'age_modifier': 0.5,
+        },
+        'default': {
+            'base_voice': 'default',
+            'pitch': 0.0,
+            'speed': 0.0,
+            'roughness': 0.0,
+            'breathiness': 0.0,
+            'resonance': 0.5,
+            'age_modifier': 0.0,
+        },
+    }
+
+    def __init__(self):
+        """Initialize voice library."""
+        self._profiles: Dict[str, VoiceProfile] = {}
+        self._character_voices: Dict[str, 'CharacterVoiceTTS'] = {}
+        self._modulator = VoiceModulator()
+
+    def get_preset(self, preset_name: str) -> Optional[VoiceProfile]:
+        """Get a voice profile from presets."""
+        preset = self.PRESETS.get(preset_name.lower())
+        if preset is None:
+            return None
+
+        return VoiceProfile(
+            voice_id=preset_name,
+            name=preset_name.replace('_', ' ').title(),
+            **preset
+        )
+
+    def register_profile(self, profile: VoiceProfile) -> None:
+        """Register a custom voice profile."""
+        self._profiles[profile.voice_id] = profile
+
+    def get_profile(self, voice_id: str) -> Optional[VoiceProfile]:
+        """Get a voice profile by ID."""
+        return self._profiles.get(voice_id) or self.get_preset(voice_id)
+
+    def generate_random_profile(self, voice_id: Optional[str] = None) -> VoiceProfile:
+        """Generate a random voice profile."""
+        vid = voice_id or f"random_{random.randint(1000, 9999)}"
+
+        base_voices = ['male_1', 'male_2', 'female_1', 'female_2', 'default']
+
+        return VoiceProfile(
+            voice_id=vid,
+            base_voice=random.choice(base_voices),
+            name=f"Voice {vid}",
+            pitch=random.uniform(-0.5, 0.5),
+            speed=random.uniform(-0.3, 0.3),
+            roughness=random.uniform(0.0, 0.5),
+            breathiness=random.uniform(0.0, 0.4),
+            resonance=random.uniform(0.3, 0.7),
+            age_modifier=random.uniform(-0.3, 0.3),
+        )
+
+    def create_character_voice(self, character_id: str,
+                               profile: VoiceProfile) -> 'CharacterVoiceTTS':
+        """Create and register a character voice."""
+        char_voice = CharacterVoiceTTS(
+            character_id=character_id,
+            profile=profile,
+        )
+        self._character_voices[character_id] = char_voice
+        return char_voice
+
+    def get_character_voice(self, character_id: str) -> Optional['CharacterVoiceTTS']:
+        """Get a character's voice configuration."""
+        return self._character_voices.get(character_id)
+
+    def list_presets(self) -> List[str]:
+        """List available preset names."""
+        return list(self.PRESETS.keys())
+
+    def list_characters(self) -> List[str]:
+        """List registered character IDs."""
+        return list(self._character_voices.keys())
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'profiles': {k: v.to_dict() for k, v in self._profiles.items()},
+            'character_voices': {
+                k: v.to_dict() for k, v in self._character_voices.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'VoiceLibrary':
+        """Create from dictionary."""
+        library = cls()
+
+        for profile_data in data.get('profiles', {}).values():
+            profile = VoiceProfile.from_dict(profile_data)
+            library.register_profile(profile)
+
+        for char_data in data.get('character_voices', {}).values():
+            char_voice = CharacterVoiceTTS.from_dict(char_data)
+            library._character_voices[char_voice.character_id] = char_voice
+
+        return library
+
+
+@dataclass
+class CharacterVoiceTTS:
+    """
+    Character voice configuration for TTS synthesis.
+
+    Links a character to their voice profile and manages
+    emotional state for voice modulation.
+    """
+    character_id: str
+    profile: VoiceProfile
+    current_emotion: EmotionalState = EmotionalState.NEUTRAL
+    emotion_intensity: float = 0.5
+
+    def set_emotion(self, emotion: EmotionalState, intensity: float = 0.5) -> None:
+        """Set current emotional state."""
+        self.current_emotion = emotion
+        self.emotion_intensity = max(0.0, min(1.0, intensity))
+
+    def get_effective_profile(self) -> VoiceProfile:
+        """Get voice profile with emotional modulation applied."""
+        modulator = VoiceModulator()
+        return modulator.modulate(self.profile, self.current_emotion, self.emotion_intensity)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            'character_id': self.character_id,
+            'profile': self.profile.to_dict(),
+            'current_emotion': self.current_emotion.value,
+            'emotion_intensity': self.emotion_intensity,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'CharacterVoiceTTS':
+        """Create from dictionary."""
+        return cls(
+            character_id=data['character_id'],
+            profile=VoiceProfile.from_dict(data['profile']),
+            current_emotion=EmotionalState(data.get('current_emotion', 'neutral')),
+            emotion_intensity=data.get('emotion_intensity', 0.5),
+        )

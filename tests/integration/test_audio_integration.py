@@ -12,7 +12,7 @@ from src.shadowengine.audio.synthesis import (
     AudioSynthesizer, SynthesisConfig, AudioPriority, AudioEvent,
 )
 from src.shadowengine.audio.voice import (
-    VoiceProfile, VoiceLibrary, EmotionalState, CharacterVoice,
+    VoiceProfile, VoiceLibrary, EmotionalState, CharacterVoiceTTS as CharacterVoice,
 )
 from src.shadowengine.audio.effects import EffectsChain, PitchShift, Reverb
 from src.shadowengine.audio.motif import ThemeEngine, MotifGenerator, MusicalKey

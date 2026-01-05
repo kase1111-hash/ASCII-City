@@ -9,7 +9,7 @@ from src.shadowengine.audio.tts import (
 )
 from src.shadowengine.audio.voice import (
     VoiceProfile, VoiceParameter, EmotionalState,
-    VoiceModulator, VoiceLibrary, CharacterVoice,
+    VoiceModulator, VoiceLibrary, CharacterVoiceTTS as CharacterVoice,
 )
 from src.shadowengine.audio.effects import (
     Effect, EffectsChain, EffectPreset,

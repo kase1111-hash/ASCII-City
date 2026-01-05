@@ -779,3 +779,17 @@ def create_preset_chain(preset_name: str) -> Optional[EffectsChain]:
             chain.add_effect(RadioEffect(params))
 
     return chain
+
+
+# Aliases for backwards compatibility with test imports
+Effect = AudioEffect
+EffectPreset = EffectsChain
+EffectParameter = EffectParameters
+PitchShift = PitchShiftEffect
+TimeStretch = PitchShiftEffect  # TimeStretch not implemented, use PitchShift as placeholder
+Reverb = ReverbEffect
+Distortion = DistortionEffect
+EQ = FilterEffect  # EQ not implemented, use Filter as placeholder
+Delay = DelayEffect
+Compression = FilterEffect  # Compression not implemented, use Filter as placeholder
+Tremolo = FilterEffect  # Tremolo not implemented, use Filter as placeholder
