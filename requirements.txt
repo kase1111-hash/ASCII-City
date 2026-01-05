@@ -1,0 +1,31 @@
+# ShadowEngine Dependencies
+# ==========================
+
+# Core (no external dependencies for base game)
+# Python 3.10+ required
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Optional: Audio (uncomment if using audio features)
+# numpy>=1.24.0
+# sounddevice>=0.4.6
+
+# Optional: Speech-to-Text (uncomment if using voice input)
+# openai-whisper>=20231117
+# vosk>=0.3.45
+
+# Optional: Text-to-Speech (uncomment if using TTS)
+# pyttsx3>=2.90
+# coqui-tts>=0.22.0
+
+# Optional: LLM - Ollama client (built-in, no dependency needed)
+# For OpenAI API support:
+# openai>=1.0.0
+
+# Development
+# -----------
+# black>=23.0.0
+# mypy>=1.0.0
+# ruff>=0.1.0
