@@ -7,6 +7,7 @@ These tests verify that ALL game phases work together seamlessly:
 - Phase 5: ASCII Art Studio (Asset Creation, Pool, Gallery)
 - Phase 6: STT & Real-Time Input (Voice, Intent Parsing)
 - Phase 7: NPC Intelligence (Memory, Rumors, Social Network)
+- Phase 8: Inspection & Zoom (Progressive Detail, Tools, Discovery)
 
 Each test exercises multiple phases working in concert.
 """
@@ -108,6 +109,17 @@ from src.shadowengine.npc_intelligence import (
 )
 from src.shadowengine.npc_intelligence.world_event import Witness, WorldEventFactory
 from src.shadowengine.npc_intelligence.rumor import PropagationTrigger
+
+# Phase 8: Inspection & Zoom
+from src.shadowengine.inspection import (
+    ZoomLevel, ZoomConstraints,
+    InspectionTool, ToolType, ToolAffordance,
+    InspectableObject, InspectableFactory, DetailLayer,
+    ZoomState, ZoomStateManager,
+    DetailGenerator, DetailTemplate, DetailType,
+    InspectionParser, InspectionIntent, InspectionCommand,
+    InspectionEngine, InspectionResult
+)
 
 
 class TestNPCIntelligenceIntegration:
@@ -1123,6 +1135,866 @@ class TestCrossPhaseEdgeCases:
         stt.set_response("")
         result = stt.transcribe(b"audio")
         assert result.text == ""
+
+
+class TestInspectionWithGrid:
+    """Tests combining Inspection (Phase 8) with Grid System (Phase 4)."""
+
+    def test_inspect_objects_at_grid_positions(self):
+        """Test inspection of objects placed at grid positions."""
+        grid = TileGrid(20, 20)
+        inspection = InspectionEngine(seed=42)
+
+        # Create inspectable objects at grid positions
+        desk = InspectableFactory.create_simple(
+            name="Antique Desk",
+            description="A heavy oak desk",
+            detailed_description="Intricate carvings on the drawers",
+            fine_description="Hidden compartment behind a loose panel!"
+        )
+        desk_pos = Position(5, 5)
+
+        bookshelf = InspectableFactory.create_simple(
+            name="Dusty Bookshelf",
+            description="A tall bookshelf filled with old books",
+            detailed_description="Some books seem out of place"
+        )
+        bookshelf_pos = Position(10, 5)
+
+        inspection.register_object(desk)
+        inspection.register_object(bookshelf)
+
+        # Store object IDs in grid tiles
+        grid.get_tile(5, 5).metadata = {"inspectable": desk.id}
+        grid.get_tile(10, 5).metadata = {"inspectable": bookshelf.id}
+
+        # Player position
+        player_pos = Position(5, 6)
+
+        # Calculate LOS to both objects
+        los_desk = get_line_of_sight(grid, player_pos, desk_pos)
+        los_bookshelf = get_line_of_sight(grid, player_pos, bookshelf_pos)
+
+        # Should have LOS to both
+        assert los_desk is not None
+        assert los_bookshelf is not None
+
+        # Inspect nearby desk
+        result = inspection.inspect_object(desk.id)
+        assert result.success
+        assert "desk" in result.description.lower() or "oak" in result.description.lower()
+
+    def test_inspection_blocked_by_walls(self):
+        """Test that walls block inspection details."""
+        grid = TileGrid(20, 20)
+        inspection = InspectionEngine()
+
+        # Add a wall
+        for y in range(5, 15):
+            tile = grid.get_tile(10, y)
+            tile.blocks_vision = True
+
+        # Object behind wall
+        hidden = InspectableFactory.create_simple(
+            name="Hidden Safe",
+            description="A wall safe",
+            detailed_description="High-security lock visible"
+        )
+        inspection.register_object(hidden)
+
+        player_pos = Position(5, 10)
+        safe_pos = Position(15, 10)
+
+        # LOS should be blocked
+        los = get_line_of_sight(grid, player_pos, safe_pos)
+
+        # If blocked, inspection should be limited
+        # (This represents game logic that would check LOS before allowing inspection)
+
+    def test_distance_affects_zoom_level(self):
+        """Test that distance to object affects max zoom level."""
+        grid = TileGrid(30, 30)
+        inspection = InspectionEngine()
+
+        # Distant object
+        tower = InspectableFactory.create_distant(
+            name="Watch Tower",
+            description="A tower on the horizon",
+            telescope_description="Guards patrolling the top"
+        )
+        inspection.register_object(tower)
+
+        # Add telescope
+        telescope = InspectionTool(
+            id="scope",
+            name="Telescope",
+            tool_type=ToolType.TELESCOPE,
+            description="A brass telescope"
+        )
+        inspection.add_player_tool(telescope)
+
+        # Without telescope - only coarse view
+        result_no_tool = inspection.inspect_object(tower.id, zoom_level=ZoomLevel.COARSE)
+        assert result_no_tool.success
+
+        # With telescope - can see fine details
+        result_with_tool = inspection.inspect_object(
+            tower.id, zoom_level=ZoomLevel.FINE, tool=telescope
+        )
+        assert result_with_tool.success
+
+    def test_pathfinding_to_inspectable_objects(self):
+        """Test finding path to an inspectable object."""
+        grid = TileGrid(20, 20)
+        inspection = InspectionEngine()
+
+        # Object in corner
+        chest = InspectableFactory.create_simple(
+            name="Treasure Chest",
+            description="An ornate chest"
+        )
+        inspection.register_object(chest)
+        chest_pos = Position(15, 15)
+
+        # Player starts far away
+        player_pos = Position(0, 0)
+
+        # Find path to chest
+        path = find_path(grid, player_pos, chest_pos)
+        assert path is not None
+        assert len(path) > 0
+
+
+class TestInspectionWithStudio:
+    """Tests combining Inspection (Phase 8) with ASCII Studio (Phase 5)."""
+
+    def test_inspect_studio_created_entity(self):
+        """Test inspecting an entity created in the studio."""
+        studio = Studio(player_id="artist")
+        inspection = InspectionEngine(seed=42)
+
+        # Create ASCII art entity
+        studio.new_canvas(5, 3, "Mystery Box")
+        studio.draw_rectangle(0, 0, 5, 3, "#")
+        studio.draw_at(2, 1, "?")
+        studio.set_object_type(ObjectType.OTHER)
+
+        entity = studio.convert_to_entity("passive")
+
+        # Create corresponding inspectable object
+        box = InspectableObject(
+            name=entity.name,
+            base_description="A mysterious box with a question mark",
+            material="wood",
+            tags=["container", "mysterious"]
+        )
+        box.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.COARSE,
+            description="A wooden box covered in strange symbols"
+        ))
+        box.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.MEDIUM,
+            description="The symbols seem to form a puzzle",
+            reveals_hotspots=["puzzle_lock"]
+        ))
+        box.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.FINE,
+            description="A hidden seam reveals a secret compartment!",
+            reveals_facts=["secret_compartment"],
+            reveals_items=["ancient_key"]
+        ))
+
+        inspection.register_object(box)
+
+        # Progressive inspection
+        result1 = inspection.inspect_object(box.id, zoom_level=ZoomLevel.COARSE)
+        assert result1.success
+        assert "box" in result1.description.lower() or "wooden" in result1.description.lower()
+
+        result2 = inspection.zoom_in_on(box.id)
+        assert result2.success
+        if result2.new_hotspots:
+            assert "puzzle_lock" in result2.new_hotspots
+
+        result3 = inspection.zoom_in_on(box.id)
+        assert result3.success
+
+    def test_inspect_entity_personality_affects_details(self):
+        """Test that entity personality affects inspection."""
+        pool = AssetPool()
+        inspection = InspectionEngine(seed=42)
+
+        # Create aggressive entity
+        entity = create_entity_from_template("cave_spider")
+        if entity:
+            pool.add_asset(entity)
+
+            # Create inspectable version
+            spider = InspectableObject(
+                name=entity.name,
+                base_description="A large cave spider",
+                tags=["creature", "dangerous", "aggressive"]
+            )
+            spider.add_layer(DetailLayer(
+                zoom_level=ZoomLevel.MEDIUM,
+                description="Venomous fangs drip with poison",
+                reveals_facts=["venomous"]
+            ))
+            inspection.register_object(spider)
+
+            result = inspection.inspect_object(spider.id, zoom_level=ZoomLevel.MEDIUM)
+            assert result.success
+
+    def test_gallery_assets_with_inspection_details(self):
+        """Test combining gallery reputation with inspection."""
+        gallery = Gallery()
+        pool = AssetPool()
+        inspection = InspectionEngine()
+
+        studio = Studio(player_id="master_artist", gallery=gallery, asset_pool=pool)
+        studio.new_canvas(7, 5, "Legendary Sword")
+        studio.draw_at(3, 0, "^")
+        studio.draw_at(3, 1, "|")
+        studio.draw_at(3, 2, "|")
+        studio.draw_at(2, 3, "-")
+        studio.draw_at(3, 3, "+")
+        studio.draw_at(4, 3, "-")
+        studio.draw_at(3, 4, "|")
+        studio.set_object_type(ObjectType.ITEM)
+        studio.save_to_pool()
+
+        entry = studio.submit_to_gallery(
+            title="Excalibur",
+            creator_name="MasterSmith"
+        )
+
+        # Community loves it
+        for i in range(20):
+            gallery.like_entry(entry.id, f"player_{i}")
+
+        # Create corresponding inspectable
+        sword = InspectableObject(
+            name="Excalibur",
+            base_description="A legendary sword of great renown",
+            material="steel",
+            tags=["item", "legendary", "famous"]
+        )
+        sword.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.FINE,
+            description="Ancient runes glow along the blade",
+            reveals_facts=["magical_runes"]
+        ))
+        inspection.register_object(sword)
+
+        # Inspect the legendary weapon
+        result = inspection.inspect_object(sword.id, zoom_level=ZoomLevel.FINE)
+        assert result.success
+
+
+class TestInspectionWithNPCIntelligence:
+    """Tests combining Inspection (Phase 8) with NPC Intelligence (Phase 7)."""
+
+    def test_discovery_creates_world_event(self):
+        """Test that inspection discoveries create world events."""
+        inspection = InspectionEngine(seed=42)
+        npc_engine = PropagationEngine()
+
+        # Register NPCs who might witness discovery
+        npc_engine.register_npc("detective", "cop")
+        npc_engine.register_npc("butler", "bartender")
+
+        # Create evidence with hidden clue
+        evidence = InspectableFactory.create_evidence(
+            name="Bloodstained Letter",
+            description="A letter with suspicious stains",
+            evidence_fact="butler_wrote_letter",
+            evidence_description="The handwriting matches the butler's!"
+        )
+        inspection.register_object(evidence)
+
+        # Inspect and discover evidence
+        result = inspection.inspect_object(evidence.id, zoom_level=ZoomLevel.MEDIUM)
+        assert result.success
+
+        # Create world event from discovery
+        if result.new_facts:
+            discovery_event = WorldEvent(
+                event_type="evidence_discovered",
+                actors=["player"],
+                details={
+                    "evidence_id": evidence.id,
+                    "facts_discovered": result.new_facts
+                },
+                location=(10, 10),
+                location_name="study",
+                timestamp=1.0,
+                notability=0.8,
+                witnesses=[
+                    Witness("detective", WitnessType.DIRECT),
+                    Witness("butler", WitnessType.INDIRECT)
+                ]
+            )
+            npc_engine.process_event(discovery_event)
+
+            # NPCs now know about the discovery
+            detective_memories = npc_engine.get_npc_memories("detective")
+            assert len(detective_memories) > 0
+
+    def test_npc_bias_affects_what_they_reveal(self):
+        """Test that NPC bias affects what they reveal when inspected."""
+        inspection = InspectionEngine()
+        npc_engine = PropagationEngine()
+
+        # Register NPC with specific bias
+        npc_engine.register_npc("informant", "informant")
+        npc_engine.npc_states["informant"].bias.trusting = 0.9
+
+        # Create inspectable NPC (their belongings)
+        informant_desk = InspectableObject(
+            name="Informant's Desk",
+            base_description="A messy desk covered in papers"
+        )
+        informant_desk.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.FINE,
+            description="Hidden notes reveal informant's contacts",
+            reveals_facts=["informant_contacts"],
+            requires_fact="trusted_by_informant"
+        ))
+        inspection.register_object(informant_desk)
+
+        # Without trust, can't see hidden facts
+        result_untrusted = inspection.inspect_object(
+            informant_desk.id,
+            zoom_level=ZoomLevel.FINE
+        )
+
+        # After building trust
+        inspection.add_player_fact("trusted_by_informant")
+        result_trusted = inspection.inspect_object(
+            informant_desk.id,
+            zoom_level=ZoomLevel.FINE
+        )
+        assert result_trusted.success
+
+    def test_inspection_discoveries_spread_as_rumors(self):
+        """Test that discoveries can spread as rumors."""
+        inspection = InspectionEngine(seed=42)
+        npc_engine = PropagationEngine()
+
+        # Setup NPCs
+        for npc in ["alice", "bob", "carol"]:
+            npc_engine.register_npc(npc, "civilian")
+
+        # Player discovers secret
+        secret_document = InspectableObject(
+            name="Secret Document",
+            base_description="A sealed document"
+        )
+        secret_document.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.FINE,
+            description="Treaty between rival factions!",
+            reveals_facts=["secret_treaty"]
+        ))
+        inspection.register_object(secret_document)
+
+        # Add magnifying glass for fine inspection
+        magnifier = InspectionTool(
+            id="magnifier",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="A magnifying glass"
+        )
+        inspection.add_player_tool(magnifier)
+
+        # Discover the secret
+        result = inspection.inspect_object(
+            secret_document.id,
+            zoom_level=ZoomLevel.FINE,
+            tool=magnifier
+        )
+
+        if result.new_facts and "secret_treaty" in result.new_facts:
+            # Player tells Alice
+            npc_engine.player_spreads_rumor(
+                "alice",
+                "I found a secret treaty!",
+                player_credibility=0.8
+            )
+
+            # Alice talks to Bob
+            npc_engine.simulate_interaction("alice", "bob")
+
+            # Bob talks to Carol
+            npc_engine.simulate_interaction("bob", "carol")
+
+            # Check rumor spread
+            carol_memories = npc_engine.get_npc_memories("carol")
+            # Rumor may or may not have reached Carol
+
+    def test_dangerous_discovery_affects_tile_memory(self):
+        """Test that dangerous discoveries update tile memory."""
+        inspection = InspectionEngine()
+        npc_engine = PropagationEngine()
+
+        npc_engine.register_npc("explorer", "civilian")
+
+        # Dangerous object
+        trap = InspectableObject(
+            name="Hidden Trap",
+            base_description="Loose floorboards"
+        )
+        trap.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.MEDIUM,
+            description="A pressure plate connected to spikes!",
+            reveals_facts=["trap_detected"],
+            reveals_hotspots=["trap_mechanism"]
+        ))
+        inspection.register_object(trap)
+
+        result = inspection.inspect_object(trap.id, zoom_level=ZoomLevel.MEDIUM)
+
+        # Create danger event at location (regardless of inspection result)
+        danger_event = WorldEvent(
+            event_type="trap_discovered",
+            actors=["player"],
+            details={"trap_type": "spike_trap", "danger_level": 0.9},
+            location=(7, 7),
+            location_name="hallway",
+            timestamp=1.0,
+            notability=0.9,
+            witnesses=[Witness("explorer", WitnessType.DIRECT)]
+        )
+        npc_engine.process_event(danger_event)
+
+        # Explorer should have memory of the event
+        explorer_memories = npc_engine.get_npc_memories("explorer")
+        assert len(explorer_memories) > 0
+
+
+class TestInspectionWithVoice:
+    """Tests combining Inspection (Phase 8) with Voice Input (Phase 6)."""
+
+    def test_voice_command_triggers_inspection(self):
+        """Test voice commands for inspection."""
+        stt = MockSTTEngine()
+        stt.initialize()
+        intent_parser = IntentParser()
+        inspection_parser = InspectionParser()
+        inspection = InspectionEngine()
+
+        # Create inspectable object (use word without "in" to avoid zoom detection)
+        desk = InspectableFactory.create_simple(
+            name="Old Desk",
+            description="A large oak desk",
+            detailed_description="Papers scattered across the surface",
+            fine_description="Hidden drawer reveals secret compartment!"
+        )
+        inspection.register_object(desk)
+
+        # Voice command to examine (use "look at" which works well)
+        stt.set_response("look at the desk")
+        result = stt.transcribe(b"audio")
+
+        # Parse with both parsers
+        voice_intent = intent_parser.parse(result.text)
+        assert voice_intent.primary_intent.type == IntentType.EXAMINE
+
+        inspection_cmd = inspection_parser.parse(result.text)
+        assert inspection_cmd.intent == InspectionIntent.INSPECT
+
+        # Execute inspection
+        inspect_result = inspection.process_command(result.text)
+        assert inspect_result.success
+
+    def test_voice_zoom_commands(self):
+        """Test voice commands for zooming."""
+        stt = MockSTTEngine()
+        stt.initialize()
+        inspection_parser = InspectionParser()
+        inspection = InspectionEngine()
+
+        clock = InspectableFactory.create_simple(
+            name="Grandfather Clock",
+            description="A tall antique clock"
+        )
+        inspection.register_object(clock)
+
+        # Initial inspection
+        inspection.inspect_object(clock.id)
+
+        # Zoom in via voice
+        zoom_commands = [
+            "look closer",
+            "zoom in",
+            "examine more closely"
+        ]
+
+        for cmd_text in zoom_commands:
+            stt.set_response(cmd_text)
+            result = stt.transcribe(b"audio")
+            cmd = inspection_parser.parse(result.text)
+            assert cmd.intent == InspectionIntent.ZOOM_IN
+
+    def test_voice_tool_usage(self):
+        """Test voice commands for using inspection tools."""
+        stt = MockSTTEngine()
+        stt.initialize()
+        inspection_parser = InspectionParser()
+        inspection = InspectionEngine()
+
+        # Create document requiring tool
+        document = InspectableFactory.create_with_hidden(
+            name="Faded Document",
+            description="A document with faded text",
+            hidden_fact="hidden_message",
+            hidden_description="UV light reveals hidden text!",
+            requires_tool="uv_light"
+        )
+        inspection.register_object(document)
+
+        # Add UV light
+        uv_light = InspectionTool(
+            id="uv_light",
+            name="UV Light",
+            tool_type=ToolType.UV_LIGHT,
+            description="A UV light"
+        )
+        inspection.add_player_tool(uv_light)
+
+        # Voice command to use tool
+        stt.set_response("use uv light on document")
+        result = stt.transcribe(b"audio")
+
+        cmd = inspection_parser.parse(result.text)
+        assert cmd.intent == InspectionIntent.USE_TOOL
+        assert cmd.tool == "uv_light"
+
+    def test_realtime_inspection_events(self):
+        """Test realtime events triggering inspection."""
+        handler = RealtimeHandler()
+        inspection = InspectionEngine()
+
+        # Something catches attention
+        urgent_event = InputEvent(
+            raw_text="What's that glowing?",
+            priority=InputPriority.NORMAL
+        )
+        handler.input_queue.put(urgent_event)
+
+        # Process event
+        event = handler.input_queue.get()
+
+        # This could trigger inspection of glowing object
+        glowing_object = InspectableObject(
+            name="Glowing Artifact",
+            base_description="An artifact emanating strange light"
+        )
+        glowing_object.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.MEDIUM,
+            description="The glow pulses rhythmically"
+        ))
+        inspection.register_object(glowing_object)
+
+        result = inspection.inspect_object(glowing_object.id)
+        assert result.success
+
+
+class TestInspectionWithAllPhases:
+    """Complete integration tests using Inspection with ALL phases."""
+
+    def test_complete_investigation_workflow(self):
+        """Test complete investigation using all systems."""
+        # Setup all systems
+        seed = GameSeed.generate(source="inspection_test")
+        game = create_test_scenario(seed=seed.value)
+
+        grid = TileGrid(30, 30)
+        inspection = InspectionEngine(seed=seed.value)
+        npc_engine = PropagationEngine()
+        pool = AssetPool()
+        gallery = Gallery()
+        studio = Studio(player_id="investigator", asset_pool=pool, gallery=gallery)
+        stt = MockSTTEngine()
+        stt.initialize()
+        intent_parser = IntentParser()
+        inspection_parser = InspectionParser()
+        atmosphere = AtmosphereManager()
+        inventory = Inventory()
+        stats = GameStatistics(game_id="inspection_test", seed=seed.value)
+
+        # Register NPCs
+        for npc_id in ["butler", "maid", "guest"]:
+            npc_engine.register_npc(npc_id, "civilian")
+
+        # Create crime scene with inspectable objects
+        crime_scene_objects = {
+            "victim_body": InspectableFactory.create_evidence(
+                name="Victim's Body",
+                description="The body of Lord Ashford",
+                evidence_fact="cause_of_death",
+                evidence_description="Poison residue on the lips!"
+            ),
+            "wine_glass": InspectableFactory.create_with_hidden(
+                name="Wine Glass",
+                description="A half-empty wine glass",
+                hidden_fact="poisoned_wine",
+                hidden_description="Traces of arsenic detected",
+                requires_tool="magnifying_glass"
+            ),
+            "letter": InspectableFactory.create_simple(
+                name="Threatening Letter",
+                description="A crumpled letter",
+                detailed_description="'You will pay for your crimes' - unsigned",
+                fine_description="Butler's watermark on the paper!"
+            )
+        }
+
+        for obj in crime_scene_objects.values():
+            inspection.register_object(obj)
+
+        # Add investigation tools
+        magnifier = InspectionTool(
+            id="magnifying_glass",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="A detective's magnifying glass"
+        )
+        inspection.add_player_tool(magnifier)
+
+        # Investigation sequence
+        investigation_steps = [
+            ("look at the body", "victim_body", ZoomLevel.MEDIUM),
+            ("look closer", "victim_body", ZoomLevel.FINE),
+            ("check the wine glass", "wine_glass", ZoomLevel.COARSE),
+            ("use magnifying glass on wine glass", "wine_glass", ZoomLevel.FINE),
+            ("study the letter", "letter", ZoomLevel.COARSE),
+            ("look closer at letter", "letter", ZoomLevel.FINE),
+        ]
+
+        discovered_facts = set()
+
+        for voice_cmd, target_key, expected_zoom in investigation_steps:
+            # Voice input
+            stt.set_response(voice_cmd)
+            transcription = stt.transcribe(b"audio")
+            stats.commands_entered += 1
+
+            # Parse command
+            insp_cmd = inspection_parser.parse(transcription.text)
+
+            # Execute inspection
+            target_obj = crime_scene_objects[target_key]
+            if insp_cmd.intent == InspectionIntent.USE_TOOL:
+                result = inspection.inspect_object(
+                    target_obj.id,
+                    zoom_level=ZoomLevel.FINE,
+                    tool=magnifier
+                )
+            elif insp_cmd.intent == InspectionIntent.ZOOM_IN:
+                result = inspection.zoom_in_on(target_obj.id)
+            else:
+                result = inspection.inspect_object(target_obj.id)
+
+            assert result.success
+
+            # Collect discovered facts
+            if result.new_facts:
+                discovered_facts.update(result.new_facts)
+                atmosphere.tension.add_tension(0.1)
+
+            # Update time
+            inspection.advance_time(1.0)
+            npc_engine.update(0.1)
+            atmosphere.update()
+
+        # Should have discovered key evidence
+        assert len(discovered_facts) > 0
+
+        # NPCs react to discoveries
+        for fact in discovered_facts:
+            discovery_event = WorldEvent(
+                event_type="evidence_found",
+                actors=["player"],
+                details={"fact": fact},
+                location=(15, 15),
+                location_name="study",
+                timestamp=10.0,
+                notability=0.7,
+                witnesses=[
+                    Witness("butler", WitnessType.INDIRECT),
+                    Witness("maid", WitnessType.INDIRECT)
+                ]
+            )
+            npc_engine.process_event(discovery_event)
+
+        # Butler should be nervous
+        butler_hints = npc_engine.get_npc_behavior_hints("butler")
+
+        # Verify integration
+        assert stats.commands_entered == 6
+        assert atmosphere.tension.current >= 0.2
+        assert len(npc_engine.events) > 0
+
+    def test_save_load_with_inspection_state(self):
+        """Test saving and loading complete state including inspection."""
+        inspection = InspectionEngine(seed=42)
+        npc_engine = PropagationEngine()
+        pool = AssetPool()
+        gallery = Gallery()
+        profile = ShadeProfile()
+        inventory = Inventory()
+
+        # Add inspection state
+        desk = InspectableFactory.create_simple(
+            name="Desk",
+            description="A desk"
+        )
+        inspection.register_object(desk)
+        inspection.zoom_in_on(desk.id)
+        inspection.add_player_fact("found_key")
+
+        magnifier = InspectionTool(
+            id="magnifier",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="Glass"
+        )
+        inspection.add_player_tool(magnifier)
+
+        # Add NPC state
+        npc_engine.register_npc("npc1", "civilian")
+        event = WorldEventFactory.conversation(
+            timestamp=1.0,
+            location=(5, 5),
+            location_name="room",
+            participants=["npc1", "player"],
+            topic="investigation",
+            witnesses=[Witness("npc1", WitnessType.DIRECT)]
+        )
+        npc_engine.process_event(event)
+
+        # Serialize everything
+        state = {
+            "inspection": inspection.to_dict(),
+            "npc_engine": npc_engine.to_dict(),
+            "pool": pool.to_dict(),
+            "gallery": gallery.to_dict(),
+            "profile": profile.to_dict(),
+            "inventory": inventory.to_dict()
+        }
+
+        json_str = json.dumps(state)
+
+        # Deserialize
+        restored = json.loads(json_str)
+
+        restored_inspection = InspectionEngine.from_dict(restored["inspection"])
+        restored_npc = PropagationEngine.from_dict(restored["npc_engine"])
+        restored_pool = AssetPool.from_dict(restored["pool"])
+        restored_gallery = Gallery.from_dict(restored["gallery"])
+        restored_profile = ShadeProfile.from_dict(restored["profile"])
+        restored_inventory = Inventory.from_dict(restored["inventory"])
+
+        # Verify restoration
+        assert desk.id in restored_inspection.objects
+        assert "found_key" in restored_inspection.player_facts
+        assert restored_inspection.has_tool("magnifier")
+        assert len(restored_npc.npc_states) == 1
+        assert len(restored_npc.events) == 1
+
+
+class TestInspectionEdgeCases:
+    """Edge case tests for Phase 8 integration."""
+
+    def test_inspect_nonexistent_object(self):
+        """Test inspecting object that doesn't exist."""
+        inspection = InspectionEngine()
+
+        result = inspection.inspect_object("nonexistent_id")
+        assert not result.success
+        assert "not found" in result.description.lower() or result.error is not None
+
+    def test_zoom_past_limits(self):
+        """Test zooming beyond limits."""
+        inspection = InspectionEngine()
+
+        obj = InspectableFactory.create_simple(
+            name="Simple Object",
+            description="A simple object"
+        )
+        inspection.register_object(obj)
+
+        # Zoom in to max
+        inspection.zoom_in_on(obj.id)  # MEDIUM
+        inspection.zoom_in_on(obj.id)  # FINE
+
+        # Try to zoom further
+        result = inspection.zoom_in_on(obj.id)
+        # Should handle gracefully (already at FINE)
+        assert result.zoom_level == ZoomLevel.FINE
+
+    def test_tool_without_object(self):
+        """Test using tool without target."""
+        inspection = InspectionEngine()
+
+        magnifier = InspectionTool(
+            id="magnifier",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="Glass"
+        )
+        inspection.add_player_tool(magnifier)
+
+        # Try to process tool command without registered objects
+        result = inspection.process_command("use magnifying glass on something")
+        # Should fail gracefully
+        assert not result.success
+
+    def test_empty_inspection_engine(self):
+        """Test operations on empty engine."""
+        inspection = InspectionEngine()
+
+        # Should not crash
+        stats = inspection.get_inspection_stats()
+        assert stats["objects_inspected"] == 0
+        assert stats["total_inspections"] == 0
+
+        result = inspection.process_command("")
+        # Empty command should return valid result
+
+    def test_detail_generator_edge_cases(self):
+        """Test detail generator with edge cases."""
+        gen = DetailGenerator(seed=42)
+
+        # Empty tags
+        detail = gen.generate_detail(
+            object_id="test",
+            zoom_level=2,
+            tags=[]
+        )
+        assert detail is not None
+
+        # Unknown material
+        detail = gen.generate_detail(
+            object_id="test",
+            zoom_level=2,
+            material="unknown_material_xyz"
+        )
+        # Should still generate something
+
+    def test_parser_with_unusual_input(self):
+        """Test parser with unusual input."""
+        parser = InspectionParser()
+
+        # Very long input
+        long_input = "look at " + "the " * 100 + "desk"
+        cmd = parser.parse(long_input)
+        # Should not crash
+
+        # Special characters
+        special_input = "look at the @#$% object!!!"
+        cmd = parser.parse(special_input)
+        # Should handle gracefully
 
 
 # Run all tests

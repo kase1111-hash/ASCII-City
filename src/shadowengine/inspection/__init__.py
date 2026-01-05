@@ -7,7 +7,7 @@ tool-based inspection, and procedural micro-detail generation.
 Core principle: "Look closer" always reveals something new.
 """
 
-from .zoom_level import ZoomLevel, ZoomDirection
+from .zoom_level import ZoomLevel, ZoomDirection, ZoomConstraints
 from .tool import (
     InspectionTool,
     ToolType,
@@ -46,6 +46,7 @@ __all__ = [
     # Zoom Levels
     "ZoomLevel",
     "ZoomDirection",
+    "ZoomConstraints",
     # Tools
     "InspectionTool",
     "ToolType",
