@@ -164,6 +164,9 @@ World built on tiles with rich properties:
 | Perception Systems | Sound, vision, threat proximity | [10-perception-systems.md](modules/10-perception-systems.md) |
 | ASCII Art Studio | Player creativity integration | [11-ascii-studio.md](modules/11-ascii-studio.md) |
 | Art Creation Framework | Static/dynamic art, LLM generation | [12-art-creation-framework.md](modules/12-art-creation-framework.md) |
+| Voice/STT | Speech-to-text, real-time input | `src/shadowengine/voice/` |
+| Audio Synthesis | TTS, voice profiles, effects, ambient | `src/shadowengine/audio/` |
+| Modding System | Theme packs, archetypes, scenarios | `src/shadowengine/modding/` |
 
 ---
 
@@ -191,6 +194,33 @@ Player creativity becomes world content:
 
 ---
 
+## Modding System
+
+The modding system enables community content creation:
+
+### Components
+
+| Component | Purpose |
+|-----------|---------|
+| **Mod Registry** | Central management for loading, conflict detection |
+| **Theme Packs** | Genre configuration (vocabulary, weather, atmosphere) |
+| **Archetypes** | Custom character definitions (motivations, behaviors) |
+| **Scenarios** | Scripted content (events, triggers, actions) |
+| **Validator** | Content validation and compatibility checking |
+
+### Built-in Themes
+- **Noir** - Classic detective drama
+- **Cyberpunk** - Neon-lit dystopia
+- **Gothic Horror** - Supernatural mystery
+
+### Built-in Archetypes
+- **Femme Fatale** - Manipulative, ambitious
+- **Corrupt Cop** - Aggressive, conflicted
+- **Street Informant** - Nervous, cracks easily
+- **Grieving Widow** - Emotional, protective
+
+---
+
 ## Genre Support
 
 The engine is genre-agnostic. Theme packs swap:
@@ -203,9 +233,9 @@ The engine is genre-agnostic. Theme packs swap:
 Core systems (behavioral circuits, memory, simulation, rendering) remain unchanged.
 
 ### Example Themes
-- **Noir Crime** (1940s detective drama)
-- **Cyberpunk** (dystopian investigations)
-- **Gothic Horror** (supernatural mysteries)
+- **Noir Crime** (1940s detective drama) - Built-in
+- **Cyberpunk** (dystopian investigations) - Built-in
+- **Gothic Horror** (supernatural mysteries) - Built-in
 - **Espionage** (cold war thrillers)
 - **Weird Western** (frontier supernatural)
 - **Hard Sci-Fi** (space station mysteries)
