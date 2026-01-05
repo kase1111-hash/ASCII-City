@@ -4,210 +4,206 @@
 
 Development is organized into phases. Each phase produces a playable milestone before proceeding to the next.
 
+> For the complete design vision, see [DESIGN.md](DESIGN.md)
+
 ---
 
-## Phase 1: Core Foundation
+## Completed Phases
+
+### Phase 1: Core Foundation ✓
 
 **Goal**: Minimal playable prototype with core memory and narrative systems.
 
-### Deliverables
+- [x] Project structure and configuration
+- [x] Memory Bank (world, character, player layers)
+- [x] Narrative Spine (conflict generator, revelations)
+- [x] Character System (archetypes, dialogue, trust)
+- [x] Interaction Engine (hotspots, parsing)
+- [x] ASCII Renderer (scene templates, basic UI)
+- [x] Test scenario (274 tests passing)
 
-- [ ] **Project Structure**
-  - Python package structure
-  - Configuration system
-  - Logging and debugging tools
-
-- [ ] **Memory Bank (Core)**
-  - World memory implementation
-  - Basic character memory
-  - Player memory / discoveries
-  - JSON save/load
-
-- [ ] **Narrative Spine (Basic)**
-  - Simple conflict generator
-  - Resolution structure
-  - Red herring placement
-  - Required revelations list
-
-- [ ] **Character System (Basic)**
-  - Character state model
-  - Basic dialogue (topic-based)
-  - Secret/lie mechanics
-  - Trust tracking
-
-- [ ] **Interaction Engine (Basic)**
-  - Hotspot number selection
-  - Simple verb-noun parsing
-  - Basic error handling
-
-- [ ] **ASCII Renderer (Basic)**
-  - Single-layer scene rendering
-  - Static scene templates
-  - Hotspot display
-  - Basic text UI
-
-- [ ] **Test Scenario**
-  - One location with 2-3 NPCs
-  - One simple mystery to solve
-  - Basic ending based on discoveries
-
-### Success Criteria
-- Player can navigate, talk, discover clues
-- Memory persists correctly
-- Save/load works
-- Story can be completed
-
----
-
-## Phase 2: Simulation Depth
+### Phase 2: Simulation Depth ✓
 
 **Goal**: Full NPC simulation and environmental systems.
 
-### Deliverables
+- [x] Character Simulation (motivation vectors, pressure/cracking)
+- [x] Environment System (weather, time of day)
+- [x] Moral System (five shade tracking)
+- [x] Inventory and evidence presentation
+- [x] Multi-layer ASCII rendering
+- [x] Expanded scenario (462 tests)
 
-- [ ] **Character Simulation (Full)**
-  - Archetype system
-  - Motivation vectors (fear/greed/loyalty)
-  - Pressure and cracking mechanics
-  - NPC-to-NPC interactions
-  - Memory-driven behavior changes
-
-- [ ] **Environment System**
-  - Weather simulation
-  - Time of day system
-  - Weather effects on gameplay
-  - Time-gated events
-  - Location state tracking
-
-- [ ] **Moral System**
-  - Five shade tracking
-  - Action classification
-  - NPC reactions to shade
-  - Basic ending variation
-
-- [ ] **Expanded Interaction**
-  - Full natural language-lite parsing
-  - Fuzzy matching / typo correction
-  - Inventory system
-  - Evidence presentation
-
-- [ ] **ASCII Renderer (Enhanced)**
-  - Multi-layer rendering
-  - Basic particle systems (rain, fog)
-  - Dynamic overlays
-
-- [ ] **Expanded Scenario**
-  - Multiple locations
-  - 5+ NPCs with full simulation
-  - Branching based on approach
-  - Multiple endings
-
-### Success Criteria
-- Weather affects gameplay
-- NPCs crack under pressure
-- Moral shade influences outcomes
-- Endings feel earned
-
----
-
-## Phase 3: Polish & Content
+### Phase 3: Polish & Content ✓
 
 **Goal**: Complete experience with full atmosphere and replayability.
 
-### Deliverables
-
-- [ ] **ASCII Renderer (Full)**
-  - Full particle systems
-  - Semantic creatures/symbols
-  - Tension-based atmosphere
-  - Optional ANSI colors
-
-- [ ] **Narrative Polish**
-  - Narration tone by shade
-  - Self-reflection moments
-  - Twist implementation
-  - Ending composition system
-
-- [ ] **Full Theme Pack (First)**
-  - Complete archetype set
-  - All dialogue tones
-  - Weather patterns
-  - Location templates
-  - Full scenario
-
-- [ ] **Replayability**
-  - Seed-based generation
-  - Multiple spine variations
-  - Seed sharing system
-  - Statistics tracking
-
-- [ ] **Quality of Life**
-  - Help system
-  - Tutorial/onboarding
-  - Command history
-  - Settings/preferences
-
-### Success Criteria
-- Multiple complete playthroughs feel different
-- Atmosphere is immersive
-- New players can learn easily
-- Seeds produce identical runs
+- [x] Full particle systems (rain, snow, fog)
+- [x] ANSI color support with tension-based atmosphere
+- [x] Narrative polish (shade narrator, twists, endings)
+- [x] Seed-based generation and sharing
+- [x] Statistics and achievements
+- [x] Help system, tutorial, command history
+- [x] Full test coverage (969 tests passing)
 
 ---
 
-## Phase 4: Extensibility
+## Current Phase
 
-**Goal**: Modding support and additional content.
+### Phase 4: Emergent World Systems
 
-### Deliverables
+**Goal**: Implement behavioral circuits and reactive world mechanics.
 
-- [ ] **Modding System**
-  - Theme pack specification
-  - Custom archetype definitions
-  - Location template format
-  - Scenario scripting
+See [DESIGN.md](DESIGN.md) for complete specifications.
 
-- [ ] **Additional Theme Packs**
-  - Second genre (cyberpunk or horror)
-  - Third genre (sci-fi or western)
+#### 4.1 Behavioral Circuit Foundation
+- [ ] Universal BehaviorCircuit model
+- [ ] Circuit types (mechanical, biological, environmental)
+- [ ] Input/output signal system
+- [ ] LLM integration for circuit evaluation
+- [ ] State persistence and serialization
 
-- [ ] **AI Integration (Optional)**
-  - Dialogue variation hooks
-  - Markov chain text generation
-  - Offline LLM integration points
+#### 4.2 Tile Grid System
+- [ ] Grid-based world structure with Z-levels
+- [ ] Terrain types with default affordances
+- [ ] Affordance inheritance and override
+- [ ] Environmental properties (temperature, moisture, light)
+- [ ] Entity placement and stacking
 
-- [ ] **Documentation**
-  - Modding guide
-  - API documentation
-  - Example theme packs
+#### 4.3 Perception Systems
+- [ ] Sound propagation (tile-to-tile, attenuation)
+- [ ] Line of sight (blocking, visibility modifiers)
+- [ ] Threat proximity (dynamic radius, reaction timing)
+- [ ] Multi-sense detection combining
+
+#### 4.4 Integration
+- [ ] Connect circuits to existing character system
+- [ ] Connect perception to NPC behavior
+- [ ] Update renderer for new grid system
+- [ ] Comprehensive integration tests
 
 ### Success Criteria
-- Community can create content
-- Multiple genres playable
-- AI enhances without breaking coherence
+- Entities respond dynamically through circuits
+- Sound and vision affect gameplay
+- NPCs react to sensory input
+- World feels alive and reactive
 
 ---
 
-## Phase 5: Voice & Audio (Future)
+## Upcoming Phases
 
-**Goal**: Full audio experience with voice control.
+### Phase 5: ASCII Art Studio
+
+**Goal**: Player creativity becomes world content.
+
+#### Deliverables
+- [ ] Studio interface within game world
+- [ ] Drawing tools and grid editor
+- [ ] Semantic tagging system
+- [ ] LLM interpretation of art meaning
+- [ ] Variant generation from player art
+- [ ] World asset pool integration
+- [ ] Usage tracking and feedback loop
+- [ ] Gallery mode for sharing
+
+### Success Criteria
+- Players can create and tag ASCII art
+- Art appears in procedurally generated worlds
+- Feedback improves art usage over time
+- Community can share creations
+
+---
+
+### Phase 6: STT & Real-Time Input
+
+**Goal**: Voice control for fast, immersive gameplay.
+
+#### Deliverables
+- [ ] STT integration (primary input method)
+- [ ] Keyboard fallback for accessibility
+- [ ] Natural language intent parsing
+- [ ] Real-time threat response system
+- [ ] Voice command vocabulary
+
+### Success Criteria
+- Game fully playable by voice
+- Fast reactions possible for threats
+- Fallback ensures accessibility
+
+---
+
+### Phase 7: NPC Intelligence
+
+**Goal**: Deep NPC memory and social dynamics.
+
+#### Deliverables
+- [ ] Persistent NPC memory system
+- [ ] Rumor propagation network
+- [ ] Trust/fear modeling per-entity
+- [ ] NPC-to-NPC relationships
+- [ ] Memory-driven behavior changes
+- [ ] Emergent social storylines
+
+### Success Criteria
+- NPCs remember all interactions
+- Information spreads between NPCs
+- Relationships evolve over time
+- Emergent stories form from NPC dynamics
+
+---
+
+### Phase 8: Inspection & Zoom
+
+**Goal**: Progressive detail revelation.
+
+#### Deliverables
+- [ ] Natural language inspection commands
+- [ ] Zoom level system (coarse → fine)
+- [ ] Tool-based inspection (magnifying glass, telescope)
+- [ ] LLM-generated micro-details
+- [ ] Persistent zoom state per object
+
+### Success Criteria
+- "Look closer" reveals new details
+- Tools enhance inspection capability
+- Details feel coherent and surprising
+
+---
+
+### Phase 9: Audio & TTS
+
+**Goal**: Full audio experience.
 
 See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 
-### High-Level Deliverables
-
-- [ ] Voice input system (primary control method)
-- [ ] Keyboard fallback for accessibility
+#### Deliverables
 - [ ] TTS character voice system
 - [ ] Voice personality customization
 - [ ] Post-TTS sound processing
 - [ ] Ambient sound generation
+- [ ] Sound effect library
 
 ### Success Criteria
-- Game fully playable by voice
 - Each character has distinct voice
 - Sound effects enhance atmosphere
-- Accessibility maintained
+- Audio maintains accessibility
+
+---
+
+### Phase 10: Extensibility & Modding
+
+**Goal**: Community content creation.
+
+#### Deliverables
+- [ ] Theme pack specification
+- [ ] Custom archetype definitions
+- [ ] Scenario scripting system
+- [ ] Modding documentation
+- [ ] Example theme packs
+
+### Success Criteria
+- Community can create content
+- Multiple genres playable
+- Clear documentation for modders
 
 ---
 
@@ -215,20 +211,37 @@ See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 
 1. **Playable at Each Phase** - No phase ends without working game
 2. **Memory First** - Core memory system is foundation of everything
-3. **Test Continuously** - Each system testable in isolation
-4. **Document As Built** - Keep docs current with implementation
-5. **Seed Reproducibility** - All randomness must be deterministic
+3. **Behavioral Circuits** - Unified model for all entity interactions
+4. **Test Continuously** - Each system testable in isolation (currently 969 tests)
+5. **Document As Built** - Keep docs current with implementation
+6. **Seed Reproducibility** - All randomness must be deterministic
+7. **LLM Fallback** - Systems work without LLM, enhanced with it
+
+---
+
+## Technical Milestones
+
+| Phase | Tests | Key Feature |
+|-------|-------|-------------|
+| 1 ✓ | 274 | Core narrative loop |
+| 2 ✓ | 462 | NPC simulation |
+| 3 ✓ | 969 | Polish & replayability |
+| 4 | TBD | Behavioral circuits |
+| 5 | TBD | ASCII Art Studio |
+| 6 | TBD | Voice control |
+| 7 | TBD | NPC intelligence |
+| 8 | TBD | Zoom inspection |
+| 9 | TBD | Audio system |
+| 10 | TBD | Modding support |
 
 ---
 
 ## Getting Started
 
-Phase 1 recommended starting order:
-1. Project structure and config
-2. Memory bank system
-3. Basic character model
-4. Simple interaction loop
-5. ASCII renderer
-6. Connect into playable loop
-7. Add narrative spine
-8. Test scenario
+For new contributors, recommended starting order:
+
+1. Read [DESIGN.md](DESIGN.md) for vision
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for structure
+3. Run test suite: `pytest`
+4. Explore src/shadowengine/ modules
+5. Check module docs in docs/modules/
