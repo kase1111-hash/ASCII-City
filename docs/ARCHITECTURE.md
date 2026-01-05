@@ -159,6 +159,11 @@ World built on tiles with rich properties:
 | ASCII Renderer | Procedural scene & zoom rendering | [05-ascii-renderer.md](modules/05-ascii-renderer.md) |
 | Interaction Engine | Input parsing & affordances | [06-interaction-engine.md](modules/06-interaction-engine.md) |
 | Moral & Consequence | Shade-based morality tracking | [07-moral-consequence.md](modules/07-moral-consequence.md) |
+| Behavioral Circuits | Universal entity interaction model | [08-behavioral-circuits.md](modules/08-behavioral-circuits.md) |
+| Tile Grid | World structure and affordances | [09-tile-grid.md](modules/09-tile-grid.md) |
+| Perception Systems | Sound, vision, threat proximity | [10-perception-systems.md](modules/10-perception-systems.md) |
+| ASCII Art Studio | Player creativity integration | [11-ascii-studio.md](modules/11-ascii-studio.md) |
+| Art Creation Framework | Static/dynamic art, LLM generation | [12-art-creation-framework.md](modules/12-art-creation-framework.md) |
 
 ---
 

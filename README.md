@@ -58,6 +58,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for development phases.
 | [Tile Grid](docs/modules/09-tile-grid.md) | World structure and affordances |
 | [Perception Systems](docs/modules/10-perception-systems.md) | Sound, vision, threat proximity |
 | [ASCII Art Studio](docs/modules/11-ascii-studio.md) | Player creativity integration |
+| [Art Creation Framework](docs/modules/12-art-creation-framework.md) | Static vs dynamic art, LLM-assisted scene generation |
 
 ### Module Specifications
 

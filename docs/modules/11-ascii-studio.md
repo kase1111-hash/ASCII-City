@@ -4,6 +4,8 @@
 
 The ASCII Art Studio is a revolutionary system where player creativity becomes world content. Players create ASCII art that gets semantically tagged, interpreted by the LLM, and injected into the procedural world with appropriate affordances.
 
+> **See Also**: [Module 12: Art Creation Framework](12-art-creation-framework.md) for the complete framework covering static vs dynamic art, personality templates, LLM-assisted rapid generation, and animation systems.
+
 ---
 
 ## Studio Concept
