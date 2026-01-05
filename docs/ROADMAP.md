@@ -207,6 +207,27 @@ See [FUTURE_TTS.md](FUTURE_TTS.md) for detailed planning.
 
 ---
 
+### Post-Completion: NFT Art Export
+
+> ⚠️ **DO NOT IMPLEMENT** without explicit instruction from project lead.
+> This feature is planned for after the game is fully complete.
+
+**Goal**: Allow players to mint their original ASCII art creations as NFTs.
+
+#### Deliverables (Future)
+- [ ] Blockchain integration for art minting
+- [ ] Authorship verification and timestamp proof
+- [ ] Export interface for original creations
+- [ ] Marketplace integration (optional)
+
+#### Why Wait
+- Core game must be complete first
+- Requires careful legal/regulatory consideration
+- Blockchain ecosystem may evolve significantly
+- Focus on gameplay, not monetization
+
+---
+
 ## Development Principles
 
 1. **Playable at Each Phase** - No phase ends without working game

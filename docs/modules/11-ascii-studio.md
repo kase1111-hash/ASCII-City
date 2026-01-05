@@ -422,6 +422,41 @@ def deserialize_art(data: dict) -> ASCIIArt:
 
 ---
 
+## NFT Export (Future - Post-Completion)
+
+> ⚠️ **DO NOT IMPLEMENT** without explicit instruction. This is a post-game-completion feature.
+
+Players will be able to export their original ASCII art creations as NFTs:
+
+```python
+class NFTExport:
+    """Future: Export player art as NFT."""
+
+    art_id: str                   # Original art identifier
+    creator_id: str               # Player who created it
+    creation_timestamp: datetime  # When it was created
+    blockchain: str               # Target chain
+    metadata: dict                # On-chain metadata
+
+    # Verification
+    original_hash: str            # Hash of original art
+    signature: str                # Creator signature
+```
+
+### Planned Features
+- Mint original creations to blockchain
+- Prove authorship with creation timestamp
+- Trade/sell unique art pieces
+- On-chain provenance for player creativity
+
+### Why This Waits
+- Core game must be complete first
+- Requires legal/regulatory review
+- Blockchain ecosystem evolving
+- Gameplay > monetization
+
+---
+
 ## Integration Points
 
 - **Behavioral Circuits** (Module 08): Art entities use circuits

@@ -268,6 +268,16 @@ Player draws → Game uses it → LLM observes interactions
 - Community feedback tags enhance procedural variety
 - Player creativity becomes actual world content, not just cosmetic
 
+### NFT Export (Future - Post-Completion)
+
+> ⚠️ **DO NOT IMPLEMENT** without explicit instruction. This is a post-game-completion feature.
+
+Players will be able to export their original ASCII art creations as NFTs:
+- Mint original creations to blockchain
+- Prove authorship and creation date
+- Trade/sell unique art pieces
+- On-chain provenance for player creativity
+
 ---
 
 ## NPC Systems
