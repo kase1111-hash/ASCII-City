@@ -1,1 +1,3 @@
-"""Tests for the tile grid module."""
+"""
+Grid system tests package.
+"""

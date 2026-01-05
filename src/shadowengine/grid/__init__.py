@@ -1,97 +1,42 @@
 """
-Tile Grid System for the Emergent ASCII World.
+Grid System Module - Tile-based spatial foundation for ASCII-City.
 
-This module provides the spatial foundation for the game world:
-- Tiles with terrain, environment, and affordances
-- Entities that exist on tiles
-- Grid for spatial queries and pathfinding
-- Event system for reactive behaviors
+This module provides the spatial grid system including:
+- Position: 3D coordinate system
+- Tile: Rich spatial data containers
+- TileGrid: Spatial queries and pathfinding
+- Entity placement and affordance management
 """
 
-from .terrain import (
-    TerrainType,
-    FluidType,
-    TerrainModifier,
-    TERRAIN_PROPERTIES,
-    TERRAIN_MODIFIERS,
-    get_terrain_properties,
-    get_predefined_modifier,
-    create_modifier,
-)
-
-from .tile import (
-    Position,
-    DIRECTIONS,
-    TileEnvironment,
-    Tile,
-)
-
-from .entity import (
-    Layer,
-    EntityType,
-    Size,
-    Entity,
-    MAX_LAYER_SIZE,
-    create_item,
-    create_furniture,
-    create_creature,
-    create_feature,
-)
-
-from .events import (
-    TileEventType,
-    TileEvent,
-    TileEventBus,
-    EventHandler,
-    create_movement_event,
-    create_damage_event,
-    create_environmental_event,
-)
-
-from .grid import (
-    GridDimensions,
-    TileGrid,
-)
-
+from .position import Position
+from .terrain import TerrainType, TerrainModifier, FluidType
+from .tile import Tile, TileEnvironment, Layer
+from .entity import Entity, EntityType
+from .grid import TileGrid
+from .events import TileEvent, TileEventType
+from .pathfinding import find_path, get_line_of_sight, calculate_movement_cost
 
 __all__ = [
-    # Terrain
-    "TerrainType",
-    "FluidType",
-    "TerrainModifier",
-    "TERRAIN_PROPERTIES",
-    "TERRAIN_MODIFIERS",
-    "get_terrain_properties",
-    "get_predefined_modifier",
-    "create_modifier",
-
-    # Tile
+    # Core classes
     "Position",
-    "DIRECTIONS",
-    "TileEnvironment",
     "Tile",
+    "TileGrid",
+    "TileEnvironment",
+    "Entity",
 
-    # Entity
+    # Enums
+    "TerrainType",
+    "TerrainModifier",
+    "FluidType",
     "Layer",
     "EntityType",
-    "Size",
-    "Entity",
-    "MAX_LAYER_SIZE",
-    "create_item",
-    "create_furniture",
-    "create_creature",
-    "create_feature",
+    "TileEventType",
 
     # Events
-    "TileEventType",
     "TileEvent",
-    "TileEventBus",
-    "EventHandler",
-    "create_movement_event",
-    "create_damage_event",
-    "create_environmental_event",
 
-    # Grid
-    "GridDimensions",
-    "TileGrid",
+    # Functions
+    "find_path",
+    "get_line_of_sight",
+    "calculate_movement_cost",
 ]

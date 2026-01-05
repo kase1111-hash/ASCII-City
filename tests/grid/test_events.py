@@ -1,308 +1,403 @@
-"""Tests for tile event system."""
+"""
+Comprehensive tests for tile event system.
+"""
 
 import pytest
-
-from src.shadowengine.grid.events import (
-    TileEventType,
-    TileEvent,
-    TileEventBus,
-    create_movement_event,
-    create_damage_event,
-    create_environmental_event,
+import time
+from shadowengine.grid import (
+    Position, Tile, TileGrid,
+    TerrainType, Entity, EntityType
+)
+from shadowengine.grid.events import (
+    TileEvent, TileEventType, TileEventManager,
+    on_tile_entered, on_tile_damaged, on_tile_flooded
 )
 
 
 class TestTileEventType:
-    """Test TileEventType enum."""
+    """Tests for TileEventType enum."""
 
-    def test_movement_events(self):
-        """Test movement event types."""
-        assert TileEventType.ENTITY_ENTERED.value == "entity_entered"
-        assert TileEventType.ENTITY_EXITED.value == "entity_exited"
-        assert TileEventType.ENTITY_MOVED.value == "entity_moved"
-
-    def test_state_events(self):
-        """Test state change event types."""
-        assert TileEventType.TILE_DAMAGED.value == "tile_damaged"
-        assert TileEventType.TERRAIN_CHANGED.value == "terrain_changed"
-
-    def test_environmental_events(self):
-        """Test environmental event types."""
-        assert TileEventType.FLOODED.value == "flooded"
-        assert TileEventType.FROZEN.value == "frozen"
+    @pytest.mark.unit
+    def test_all_event_types_exist(self):
+        """All expected event types exist."""
+        expected = {
+            "ENTERED", "EXITED", "DAMAGED", "FLOODED",
+            "FROZEN", "HEATED", "LIT", "MODIFIED",
+            "ENTITY_ADDED", "ENTITY_REMOVED", "COLLAPSED", "TRIGGERED"
+        }
+        actual = {t.name for t in TileEventType}
+        assert actual == expected
 
 
-class TestTileEvent:
-    """Test TileEvent class."""
+class TestTileEventCreation:
+    """Tests for TileEvent creation."""
 
-    def test_event_creation(self):
-        """Test creating an event."""
+    @pytest.mark.unit
+    def test_create_event(self, basic_tile, basic_entity):
+        """Can create a tile event."""
         event = TileEvent(
-            type=TileEventType.ENTITY_ENTERED,
-            tile_position=(5, 10, 0),
+            event_type=TileEventType.ENTERED,
+            tile=basic_tile,
+            cause=basic_entity
         )
-        assert event.type == TileEventType.ENTITY_ENTERED
-        assert event.tile_position == (5, 10, 0)
-        assert event.timestamp > 0
+        assert event.event_type == TileEventType.ENTERED
+        assert event.tile == basic_tile
+        assert event.cause == basic_entity
 
-    def test_event_with_cause(self):
-        """Test event with cause information."""
+    @pytest.mark.unit
+    def test_event_auto_timestamp(self, basic_tile):
+        """Event gets automatic timestamp."""
+        before = time.time()
         event = TileEvent(
-            type=TileEventType.TILE_DAMAGED,
-            tile_position=(0, 0, 0),
-            cause_id="player",
-            cause_type="entity",
-            damage_amount=10.0,
-            damage_type="physical",
+            event_type=TileEventType.ENTERED,
+            tile=basic_tile
         )
-        assert event.cause_id == "player"
-        assert event.damage_amount == 10.0
-        assert event.damage_type == "physical"
+        after = time.time()
 
-    def test_movement_event_positions(self):
-        """Test movement event positions."""
+        assert before <= event.timestamp <= after
+
+    @pytest.mark.unit
+    def test_event_with_data(self, basic_tile):
+        """Event can have additional data."""
         event = TileEvent(
-            type=TileEventType.ENTITY_MOVED,
-            tile_position=(5, 5, 0),
-            from_position=(4, 5, 0),
-            to_position=(5, 5, 0),
+            event_type=TileEventType.DAMAGED,
+            tile=basic_tile,
+            data={"damage": 50, "type": "fire"}
         )
-        assert event.from_position == (4, 5, 0)
-        assert event.to_position == (5, 5, 0)
+        assert event.data["damage"] == 50
+        assert event.data["type"] == "fire"
 
-    def test_event_serialization(self):
-        """Test event serialization."""
+    @pytest.mark.unit
+    def test_event_to_dict(self, basic_tile, basic_entity):
+        """Event can be serialized."""
         event = TileEvent(
-            type=TileEventType.TRIGGERED,
-            tile_position=(10, 10, 0),
-            cause_id="player",
-            data={"trigger_id": "trap_1"},
+            event_type=TileEventType.ENTERED,
+            tile=basic_tile,
+            cause=basic_entity,
+            data={"key": "value"}
         )
         data = event.to_dict()
-        restored = TileEvent.from_dict(data)
 
-        assert restored.type == event.type
-        assert restored.tile_position == event.tile_position
-        assert restored.cause_id == event.cause_id
-        assert restored.data["trigger_id"] == "trap_1"
+        assert data["event_type"] == "ENTERED"
+        assert data["tile_position"] == basic_tile.position.to_tuple()
+        assert data["cause_id"] == basic_entity.id
+        assert data["data"] == {"key": "value"}
+
+    @pytest.mark.unit
+    def test_event_without_cause(self, basic_tile):
+        """Event can have no cause."""
+        event = TileEvent(
+            event_type=TileEventType.FLOODED,
+            tile=basic_tile
+        )
+        assert event.cause is None
+        assert event.to_dict()["cause_id"] is None
 
 
-class TestTileEventBus:
-    """Test TileEventBus class."""
+class TestTileEventManager:
+    """Tests for TileEventManager."""
 
-    def test_event_bus_creation(self):
-        """Test creating event bus."""
-        bus = TileEventBus()
-        assert bus.stats["events_dispatched"] == 0
+    @pytest.mark.unit
+    def test_create_manager(self):
+        """Can create event manager."""
+        manager = TileEventManager()
+        assert manager is not None
 
-    def test_subscribe_and_dispatch(self):
-        """Test subscribing and dispatching events."""
-        bus = TileEventBus()
+    @pytest.mark.unit
+    def test_subscribe_handler(self):
+        """Can subscribe handler to event type."""
+        manager = TileEventManager()
         received = []
 
         def handler(event):
             received.append(event)
 
-        bus.subscribe(TileEventType.ENTITY_ENTERED, handler)
+        manager.subscribe(TileEventType.ENTERED, handler)
 
-        event = TileEvent(
-            type=TileEventType.ENTITY_ENTERED,
-            tile_position=(0, 0, 0),
-        )
-        handlers_called = bus.dispatch(event)
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event)
 
-        assert handlers_called == 1
         assert len(received) == 1
         assert received[0] == event
 
+    @pytest.mark.unit
     def test_subscribe_multiple_handlers(self):
-        """Test multiple handlers for same event."""
-        bus = TileEventBus()
-        count = [0]
+        """Multiple handlers can subscribe to same event."""
+        manager = TileEventManager()
+        received1 = []
+        received2 = []
 
-        def handler1(event):
-            count[0] += 1
+        manager.subscribe(TileEventType.ENTERED, lambda e: received1.append(e))
+        manager.subscribe(TileEventType.ENTERED, lambda e: received2.append(e))
 
-        def handler2(event):
-            count[0] += 10
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event)
 
-        bus.subscribe(TileEventType.TILE_DAMAGED, handler1)
-        bus.subscribe(TileEventType.TILE_DAMAGED, handler2)
+        assert len(received1) == 1
+        assert len(received2) == 1
 
-        bus.dispatch(TileEvent(
-            type=TileEventType.TILE_DAMAGED,
-            tile_position=(0, 0, 0),
-        ))
+    @pytest.mark.unit
+    def test_subscribe_different_events(self):
+        """Handlers only receive subscribed event types."""
+        manager = TileEventManager()
+        entered = []
+        exited = []
 
-        assert count[0] == 11
+        manager.subscribe(TileEventType.ENTERED, lambda e: entered.append(e))
+        manager.subscribe(TileEventType.EXITED, lambda e: exited.append(e))
 
-    def test_subscribe_all(self):
-        """Test subscribing to all events."""
-        bus = TileEventBus()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        enter_event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(enter_event)
+
+        assert len(entered) == 1
+        assert len(exited) == 0
+
+    @pytest.mark.unit
+    def test_unsubscribe_handler(self):
+        """Can unsubscribe handler."""
+        manager = TileEventManager()
         received = []
-
-        bus.subscribe_all(lambda e: received.append(e.type))
-
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        bus.dispatch(TileEvent(type=TileEventType.TILE_DAMAGED, tile_position=(0, 0, 0)))
-
-        assert TileEventType.ENTITY_ENTERED in received
-        assert TileEventType.TILE_DAMAGED in received
-
-    def test_unsubscribe(self):
-        """Test unsubscribing from events."""
-        bus = TileEventBus()
-        count = [0]
 
         def handler(event):
-            count[0] += 1
+            received.append(event)
 
-        bus.subscribe(TileEventType.ENTITY_ENTERED, handler)
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        assert count[0] == 1
+        manager.subscribe(TileEventType.ENTERED, handler)
+        assert manager.unsubscribe(TileEventType.ENTERED, handler) is True
 
-        bus.unsubscribe(TileEventType.ENTITY_ENTERED, handler)
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        assert count[0] == 1  # Not increased
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event)
 
-    def test_emit_entered(self):
-        """Test emit_entered helper."""
-        bus = TileEventBus()
+        assert len(received) == 0
+
+    @pytest.mark.unit
+    def test_unsubscribe_nonexistent(self):
+        """Unsubscribing nonexistent handler returns False."""
+        manager = TileEventManager()
+
+        def handler(event):
+            pass
+
+        assert manager.unsubscribe(TileEventType.ENTERED, handler) is False
+
+    @pytest.mark.unit
+    def test_prevent_duplicate_subscription(self):
+        """Same handler not subscribed twice."""
+        manager = TileEventManager()
         received = []
 
-        bus.subscribe(TileEventType.ENTITY_ENTERED, lambda e: received.append(e))
+        def handler(event):
+            received.append(event)
 
-        event = bus.emit_entered((5, 5, 0), "entity_1", from_position=(4, 5, 0))
+        manager.subscribe(TileEventType.ENTERED, handler)
+        manager.subscribe(TileEventType.ENTERED, handler)  # Duplicate
 
-        assert len(received) == 1
-        assert received[0].cause_id == "entity_1"
-        assert received[0].from_position == (4, 5, 0)
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event)
 
-    def test_emit_exited(self):
-        """Test emit_exited helper."""
-        bus = TileEventBus()
-        received = []
+        assert len(received) == 1  # Only called once
 
-        bus.subscribe(TileEventType.ENTITY_EXITED, lambda e: received.append(e))
 
-        bus.emit_exited((5, 5, 0), "entity_1", to_position=(6, 5, 0))
+class TestEventHistory:
+    """Tests for event history tracking."""
 
-        assert len(received) == 1
-        assert received[0].to_position == (6, 5, 0)
-
-    def test_emit_damaged(self):
-        """Test emit_damaged helper."""
-        bus = TileEventBus()
-        received = []
-
-        bus.subscribe(TileEventType.TILE_DAMAGED, lambda e: received.append(e))
-
-        bus.emit_damaged((0, 0, 0), 25.0, "fire", cause_id="torch")
-
-        assert len(received) == 1
-        assert received[0].damage_amount == 25.0
-        assert received[0].damage_type == "fire"
-
-    def test_emit_triggered(self):
-        """Test emit_triggered helper."""
-        bus = TileEventBus()
-        received = []
-
-        bus.subscribe(TileEventType.TRIGGERED, lambda e: received.append(e))
-
-        bus.emit_triggered((5, 5, 0), "pressure_plate", cause_id="player")
-
-        assert len(received) == 1
-        assert received[0].data["trigger_id"] == "pressure_plate"
-
-    def test_emit_custom(self):
-        """Test emit_custom helper."""
-        bus = TileEventBus()
-        received = []
-
-        bus.subscribe(TileEventType.CUSTOM, lambda e: received.append(e))
-
-        bus.emit_custom((0, 0, 0), "special_event", data={"value": 42})
-
-        assert len(received) == 1
-        assert received[0].data["event_name"] == "special_event"
-        assert received[0].data["value"] == 42
-
-    def test_event_history(self):
-        """Test event history recording."""
-        bus = TileEventBus()
+    @pytest.mark.unit
+    def test_events_stored_in_history(self):
+        """Events are stored in history."""
+        manager = TileEventManager()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
 
         for i in range(5):
-            bus.dispatch(TileEvent(
-                type=TileEventType.ENTITY_ENTERED,
-                tile_position=(i, 0, 0),
-            ))
+            event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+            manager.emit(event)
 
-        history = bus.get_history()
+        history = manager.get_history()
         assert len(history) == 5
 
-    def test_history_filtering(self):
-        """Test history filtering."""
-        bus = TileEventBus()
+    @pytest.mark.unit
+    def test_history_limit(self):
+        """History respects limit parameter."""
+        manager = TileEventManager()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
 
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        bus.dispatch(TileEvent(type=TileEventType.TILE_DAMAGED, tile_position=(0, 0, 0)))
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(1, 1, 0)))
+        for i in range(10):
+            event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+            manager.emit(event)
 
-        entered_events = bus.get_history(event_type=TileEventType.ENTITY_ENTERED)
-        assert len(entered_events) == 2
+        history = manager.get_history(limit=5)
+        assert len(history) == 5
 
-        pos_events = bus.get_history(tile_position=(0, 0, 0))
-        assert len(pos_events) == 2
+    @pytest.mark.unit
+    def test_history_filter_by_type(self):
+        """Can filter history by event type."""
+        manager = TileEventManager()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
 
+        manager.emit(TileEvent(event_type=TileEventType.ENTERED, tile=tile))
+        manager.emit(TileEvent(event_type=TileEventType.EXITED, tile=tile))
+        manager.emit(TileEvent(event_type=TileEventType.ENTERED, tile=tile))
+
+        history = manager.get_history(event_type=TileEventType.ENTERED)
+        assert len(history) == 2
+
+    @pytest.mark.unit
+    def test_history_most_recent_first(self):
+        """History returns most recent first."""
+        manager = TileEventManager()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+
+        event1 = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event1)
+
+        event2 = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event2)
+
+        history = manager.get_history()
+        assert history[0].timestamp >= history[-1].timestamp
+
+    @pytest.mark.unit
     def test_clear_history(self):
-        """Test clearing history."""
-        bus = TileEventBus()
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        bus.clear_history()
-        assert len(bus.get_history()) == 0
+        """Can clear event history."""
+        manager = TileEventManager()
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
 
-    def test_stats(self):
-        """Test event bus statistics."""
-        bus = TileEventBus()
-        bus.subscribe(TileEventType.ENTITY_ENTERED, lambda e: None)
+        for i in range(5):
+            manager.emit(TileEvent(event_type=TileEventType.ENTERED, tile=tile))
 
-        for _ in range(10):
-            bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-
-        stats = bus.get_stats()
-        assert stats["events_dispatched"] == 10
-        assert stats["handlers_called"] == 10
-
-    def test_reset_stats(self):
-        """Test resetting statistics."""
-        bus = TileEventBus()
-        bus.dispatch(TileEvent(type=TileEventType.ENTITY_ENTERED, tile_position=(0, 0, 0)))
-        bus.reset_stats()
-        assert bus.stats["events_dispatched"] == 0
+        manager.clear_history()
+        history = manager.get_history()
+        assert len(history) == 0
 
 
-class TestEventFactories:
-    """Test event factory functions."""
+class TestEventHandlerErrors:
+    """Tests for event handler error handling."""
 
-    def test_create_movement_event(self):
-        """Test creating movement event."""
-        event = create_movement_event("player", (0, 0, 0), (1, 0, 0))
-        assert event.type == TileEventType.ENTITY_MOVED
-        assert event.cause_id == "player"
-        assert event.from_position == (0, 0, 0)
-        assert event.to_position == (1, 0, 0)
+    @pytest.mark.unit
+    def test_handler_error_doesnt_stop_others(self):
+        """Error in one handler doesn't stop others."""
+        manager = TileEventManager()
+        received = []
 
-    def test_create_damage_event(self):
-        """Test creating damage event."""
-        event = create_damage_event((5, 5, 0), 50.0, "explosion", "bomb")
-        assert event.type == TileEventType.TILE_DAMAGED
-        assert event.damage_amount == 50.0
-        assert event.damage_type == "explosion"
-        assert event.cause_id == "bomb"
+        def bad_handler(event):
+            raise ValueError("Test error")
 
-    def test_create_environmental_event(self):
-        """Test creating environmental event."""
-        event = create_environmental_event((0, 0, 0), TileEventType.FLOODED, 0.8)
-        assert event.type == TileEventType.FLOODED
-        assert event.data["intensity"] == 0.8
+        def good_handler(event):
+            received.append(event)
+
+        manager.subscribe(TileEventType.ENTERED, bad_handler)
+        manager.subscribe(TileEventType.ENTERED, good_handler)
+
+        tile = Tile(position=Position(0, 0, 0), terrain_type=TerrainType.SOIL)
+        event = TileEvent(event_type=TileEventType.ENTERED, tile=tile)
+        manager.emit(event)
+
+        # Good handler should still receive event
+        assert len(received) == 1
+
+
+class TestGridEventIntegration:
+    """Tests for event integration with TileGrid."""
+
+    @pytest.mark.unit
+    def test_place_entity_emits_entered(self, small_grid):
+        """Placing entity emits ENTERED event."""
+        received = []
+        small_grid.subscribe_to_event(TileEventType.ENTERED, lambda e: received.append(e))
+
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
+
+        assert len(received) == 1
+        assert received[0].event_type == TileEventType.ENTERED
+        assert received[0].cause == entity
+
+    @pytest.mark.unit
+    def test_remove_entity_emits_removed(self, small_grid):
+        """Removing entity emits ENTITY_REMOVED event."""
+        received = []
+        small_grid.subscribe_to_event(TileEventType.ENTITY_REMOVED, lambda e: received.append(e))
+
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
+        small_grid.remove_entity(entity)
+
+        assert len(received) == 1
+        assert received[0].cause == entity
+
+    @pytest.mark.unit
+    def test_move_entity_emits_exit_and_enter(self, small_grid):
+        """Moving entity emits EXITED and ENTERED events."""
+        exited = []
+        entered = []
+        small_grid.subscribe_to_event(TileEventType.EXITED, lambda e: exited.append(e))
+        small_grid.subscribe_to_event(TileEventType.ENTERED, lambda e: entered.append(e))
+
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
+        small_grid.move_entity(entity, Position(6, 6, 0))
+
+        assert len(entered) == 2  # Initial placement + move
+        assert len(exited) == 1   # Just the move
+
+    @pytest.mark.unit
+    def test_event_contains_correct_tile(self, small_grid):
+        """Event contains the correct tile."""
+        received = []
+        small_grid.subscribe_to_event(TileEventType.ENTERED, lambda e: received.append(e))
+
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
+
+        assert received[0].tile.position == Position(5, 5, 0)
+
+
+class TestDefaultEventHandlers:
+    """Tests for default event handler functions."""
+
+    @pytest.mark.unit
+    def test_on_tile_entered_with_trigger(self, basic_tile, trigger_entity):
+        """Entering tile with trigger doesn't raise error."""
+        basic_tile.add_entity(trigger_entity)
+        event = TileEvent(
+            event_type=TileEventType.ENTERED,
+            tile=basic_tile,
+            cause=trigger_entity
+        )
+        # Should not raise
+        on_tile_entered(event)
+
+    @pytest.mark.unit
+    def test_on_tile_entered_without_cause(self, basic_tile):
+        """Entering tile without cause handles gracefully."""
+        event = TileEvent(
+            event_type=TileEventType.ENTERED,
+            tile=basic_tile,
+            cause=None
+        )
+        # Should not raise
+        on_tile_entered(event)
+
+    @pytest.mark.unit
+    def test_on_tile_damaged_glass(self, glass_tile):
+        """Damaging glass tile with high damage."""
+        event = TileEvent(
+            event_type=TileEventType.DAMAGED,
+            tile=glass_tile,
+            data={"damage": 50}
+        )
+        # Should not raise
+        on_tile_damaged(event)
+
+    @pytest.mark.unit
+    def test_on_tile_flooded(self, basic_tile):
+        """Flooding tile updates moisture."""
+        event = TileEvent(
+            event_type=TileEventType.FLOODED,
+            tile=basic_tile
+        )
+        on_tile_flooded(event)
+        assert basic_tile.environment.moisture == 1.0

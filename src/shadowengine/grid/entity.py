@@ -1,272 +1,156 @@
 """
-Entity class for tile contents.
-
-Entities are objects, creatures, or items that exist on tiles
-and can be interacted with via behavioral circuits.
+Entity classes for objects that can be placed on tiles.
 """
 
+from __future__ import annotations
+from enum import Enum, auto
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional, Any, TYPE_CHECKING
-import time
-import uuid
+from typing import Optional, Set, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..circuits.circuit import BehaviorCircuit
-    from .tile import Position
-
-
-class Layer(Enum):
-    """Vertical layer within a tile."""
-    GROUND = 0    # Floor items, rugs, markings
-    OBJECT = 1    # Furniture, creatures, characters
-    CEILING = 2   # Hanging items, lights, signs
+    from .position import Position
 
 
 class EntityType(Enum):
-    """Categories of entities."""
-    ITEM = "item"           # Collectible objects
-    FURNITURE = "furniture" # Fixed objects (tables, chairs)
-    CREATURE = "creature"   # Living beings
-    CHARACTER = "character" # NPCs and player
-    FEATURE = "feature"     # Permanent terrain features (doors, switches)
-    EFFECT = "effect"       # Temporary visual effects
+    """Types of entities that can exist on tiles."""
+    CHARACTER = auto()      # NPCs and player
+    CREATURE = auto()       # Animals, monsters
+    ITEM = auto()           # Collectible objects
+    FURNITURE = auto()      # Tables, chairs, etc.
+    DECORATION = auto()     # Visual elements
+    TRIGGER = auto()        # Buttons, plates, etc.
+    LIGHT_SOURCE = auto()   # Lamps, torches, etc.
+    CONTAINER = auto()      # Chests, boxes, etc.
 
 
-@dataclass
-class Size:
-    """Size of an entity in tile units."""
-    width: float = 1.0   # X dimension
-    height: float = 1.0  # Y dimension (vertical)
-    depth: float = 1.0   # Z dimension (depth into tile)
-
-    def volume(self) -> float:
-        """Calculate volume."""
-        return self.width * self.height * self.depth
-
-    def to_tuple(self) -> tuple[float, float, float]:
-        return (self.width, self.height, self.depth)
-
-    @classmethod
-    def from_tuple(cls, t: tuple) -> 'Size':
-        return cls(t[0], t[1], t[2] if len(t) > 2 else 1.0)
+class Layer(Enum):
+    """Layer for entity placement on tiles."""
+    GROUND = 0      # Floor items, rugs, markings
+    OBJECT = 1      # Furniture, creatures, characters
+    CEILING = 2     # Hanging items, lights, signs
 
 
-# Maximum size allowed per layer on a tile
-MAX_LAYER_SIZE = 4.0
+# Maximum size units per layer on a single tile
+MAX_LAYER_SIZE = 4
 
 
 @dataclass
 class Entity:
     """
-    Base class for all entities that can exist on tiles.
+    Base class for tile contents.
 
-    Entities have a behavioral circuit for interaction,
-    a position, size, and layer placement.
+    Attributes:
+        id: Unique identifier
+        name: Display name
+        entity_type: Type of entity
+        position: Current position in the grid
+        size: How much space it occupies (1-4)
+        layer: Which layer it occupies
+        passable: Whether entities can move through it
+        opaque: Whether it blocks line of sight
+        own_affordances: Affordances this entity provides
+        blocked_affordances: Affordances this entity blocks
+        movement_modifiers: Cost modifiers for different terrain types
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    name: str = ""
-    description: str = ""
-
-    # Type and classification
-    entity_type: EntityType = EntityType.ITEM
+    id: str
+    name: str
+    entity_type: EntityType
+    position: Optional["Position"] = None
+    size: int = 1
     layer: Layer = Layer.OBJECT
+    passable: bool = True
+    opaque: bool = False
+    own_affordances: Set[str] = field(default_factory=set)
+    blocked_affordances: Set[str] = field(default_factory=set)
+    movement_modifiers: dict = field(default_factory=dict)
+    requires_passable: bool = True
 
-    # Spatial properties
-    size: Size = field(default_factory=Size)
+    def __post_init__(self):
+        """Validate entity values."""
+        if not 1 <= self.size <= MAX_LAYER_SIZE:
+            raise ValueError(f"Entity size must be between 1 and {MAX_LAYER_SIZE}, got {self.size}")
 
-    # Movement requirements
-    requires_passable: bool = True  # Needs passable tile to exist
-    blocks_movement: bool = False   # Blocks other entities from entering
+    def can_be_placed_on(self, terrain_passable: bool) -> bool:
+        """Check if entity can be placed based on terrain passability."""
+        if self.requires_passable and not terrain_passable:
+            return False
+        return True
 
-    # Affordances
-    own_affordances: list[str] = field(default_factory=list)
-    blocked_affordances: list[str] = field(default_factory=list)
-
-    # Circuit reference (ID, not the circuit itself)
-    circuit_id: Optional[str] = None
-
-    # Movement modifiers by terrain type
-    movement_modifiers: dict[str, float] = field(default_factory=dict)
-
-    # Custom entity data
-    custom: dict = field(default_factory=dict)
-
-    # Timestamps
-    created_at: float = field(default_factory=time.time)
-    last_updated: float = field(default_factory=time.time)
-
-    def get_effective_affordances(self, tile_affordances: list[str]) -> list[str]:
-        """
-        Calculate effective affordances combining tile and entity.
-
-        Entity can add to or block tile affordances.
-        """
-        result = set(tile_affordances)
-        result.update(self.own_affordances)
-        result -= set(self.blocked_affordances)
-        return list(result)
-
-    def has_affordance(self, affordance: str) -> bool:
-        """Check if entity has a specific affordance."""
-        return affordance in self.own_affordances
+    def get_affordances(self) -> Set[str]:
+        """Get affordances this entity provides."""
+        return self.own_affordances.copy()
 
     def blocks_affordance(self, affordance: str) -> bool:
-        """Check if entity blocks an affordance."""
+        """Check if entity blocks a specific affordance."""
         return affordance in self.blocked_affordances
 
-    def add_affordance(self, affordance: str) -> None:
-        """Add an affordance."""
-        if affordance not in self.own_affordances:
-            self.own_affordances.append(affordance)
-            self.last_updated = time.time()
-
-    def remove_affordance(self, affordance: str) -> None:
-        """Remove an affordance."""
-        if affordance in self.own_affordances:
-            self.own_affordances.remove(affordance)
-            self.last_updated = time.time()
-
-    def block_affordance(self, affordance: str) -> None:
-        """Block an affordance from being inherited."""
-        if affordance not in self.blocked_affordances:
-            self.blocked_affordances.append(affordance)
-            self.last_updated = time.time()
-
-    def unblock_affordance(self, affordance: str) -> None:
-        """Unblock an affordance."""
-        if affordance in self.blocked_affordances:
-            self.blocked_affordances.remove(affordance)
-            self.last_updated = time.time()
-
-    def get_movement_modifier(self, terrain_type: str) -> float:
-        """Get movement modifier for a terrain type."""
-        return self.movement_modifiers.get(terrain_type, 1.0)
-
-    def conflicts_with(self, other: 'Entity') -> bool:
-        """Check if this entity conflicts with another on the same tile."""
-        # Same layer, check size
-        if self.layer == other.layer:
-            # Both block movement = conflict
-            if self.blocks_movement and other.blocks_movement:
-                return True
-        return False
-
-    def to_dict(self) -> dict:
+    def serialize(self) -> dict:
         """Serialize entity to dictionary."""
         return {
             "id": self.id,
             "name": self.name,
-            "description": self.description,
-            "entity_type": self.entity_type.value,
-            "layer": self.layer.value,
-            "size": self.size.to_tuple(),
-            "requires_passable": self.requires_passable,
-            "blocks_movement": self.blocks_movement,
-            "own_affordances": self.own_affordances.copy(),
-            "blocked_affordances": self.blocked_affordances.copy(),
-            "circuit_id": self.circuit_id,
-            "movement_modifiers": self.movement_modifiers.copy(),
-            "custom": self.custom.copy(),
-            "created_at": self.created_at,
+            "entity_type": self.entity_type.name,
+            "position": self.position.to_tuple() if self.position else None,
+            "size": self.size,
+            "layer": self.layer.name,
+            "passable": self.passable,
+            "opaque": self.opaque,
+            "own_affordances": list(self.own_affordances),
+            "blocked_affordances": list(self.blocked_affordances),
+            "movement_modifiers": self.movement_modifiers,
+            "requires_passable": self.requires_passable
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Entity':
-        """Deserialize entity from dictionary."""
+    def from_dict(cls, data: dict) -> "Entity":
+        """Create entity from dictionary."""
+        from .position import Position
+
+        position = None
+        if data.get("position"):
+            position = Position.from_tuple(tuple(data["position"]))
+
         return cls(
-            id=data.get("id", str(uuid.uuid4())[:8]),
-            name=data.get("name", ""),
-            description=data.get("description", ""),
-            entity_type=EntityType(data.get("entity_type", "item")),
-            layer=Layer(data.get("layer", 1)),
-            size=Size.from_tuple(data.get("size", (1.0, 1.0, 1.0))),
-            requires_passable=data.get("requires_passable", True),
-            blocks_movement=data.get("blocks_movement", False),
-            own_affordances=data.get("own_affordances", []),
-            blocked_affordances=data.get("blocked_affordances", []),
-            circuit_id=data.get("circuit_id"),
+            id=data["id"],
+            name=data["name"],
+            entity_type=EntityType[data["entity_type"]],
+            position=position,
+            size=data.get("size", 1),
+            layer=Layer[data.get("layer", "OBJECT")],
+            passable=data.get("passable", True),
+            opaque=data.get("opaque", False),
+            own_affordances=set(data.get("own_affordances", [])),
+            blocked_affordances=set(data.get("blocked_affordances", [])),
             movement_modifiers=data.get("movement_modifiers", {}),
-            custom=data.get("custom", {}),
-            created_at=data.get("created_at", time.time()),
+            requires_passable=data.get("requires_passable", True)
         )
 
+    def __eq__(self, other):
+        if not isinstance(other, Entity):
+            return False
+        return self.id == other.id
 
-# Factory functions for common entity types
-
-def create_item(
-    name: str,
-    description: str = "",
-    affordances: Optional[list[str]] = None,
-    **kwargs
-) -> Entity:
-    """Create a collectible item entity."""
-    return Entity(
-        name=name,
-        description=description,
-        entity_type=EntityType.ITEM,
-        layer=Layer.GROUND,
-        size=Size(0.5, 0.5, 0.5),
-        blocks_movement=False,
-        own_affordances=affordances or ["collectible", "usable", "droppable"],
-        **kwargs
-    )
+    def __hash__(self):
+        return hash(self.id)
 
 
-def create_furniture(
-    name: str,
-    description: str = "",
-    blocks: bool = True,
-    affordances: Optional[list[str]] = None,
-    **kwargs
-) -> Entity:
-    """Create a furniture entity."""
-    return Entity(
-        name=name,
-        description=description,
-        entity_type=EntityType.FURNITURE,
-        layer=Layer.OBJECT,
-        size=Size(1.0, 1.0, 1.0),
-        blocks_movement=blocks,
-        own_affordances=affordances or ["usable"],
-        **kwargs
-    )
+def conflicts(entity1: Entity, entity2: Entity) -> bool:
+    """
+    Check if two entities conflict when placed on the same tile.
 
+    Returns:
+        True if entities conflict
+    """
+    # Entities on different layers don't conflict
+    if entity1.layer != entity2.layer:
+        return False
 
-def create_creature(
-    name: str,
-    description: str = "",
-    affordances: Optional[list[str]] = None,
-    **kwargs
-) -> Entity:
-    """Create a creature entity."""
-    return Entity(
-        name=name,
-        description=description,
-        entity_type=EntityType.CREATURE,
-        layer=Layer.OBJECT,
-        size=Size(1.0, 1.0, 1.0),
-        blocks_movement=True,
-        own_affordances=affordances or ["talkable", "fightable", "observable"],
-        **kwargs
-    )
+    # Characters always conflict with other characters
+    if entity1.entity_type == EntityType.CHARACTER and entity2.entity_type == EntityType.CHARACTER:
+        return True
 
+    # Check if either entity is impassable
+    if not entity1.passable or not entity2.passable:
+        return True
 
-def create_feature(
-    name: str,
-    description: str = "",
-    blocks: bool = False,
-    affordances: Optional[list[str]] = None,
-    **kwargs
-) -> Entity:
-    """Create a permanent terrain feature entity."""
-    return Entity(
-        name=name,
-        description=description,
-        entity_type=EntityType.FEATURE,
-        layer=Layer.OBJECT,
-        requires_passable=False,
-        blocks_movement=blocks,
-        own_affordances=affordances or [],
-        **kwargs
-    )
+    return False

@@ -1,605 +1,530 @@
 """
-TileGrid class for managing the game world.
-
-Provides spatial queries, pathfinding, and entity management.
+TileGrid class - the main grid container and spatial query system.
 """
 
+from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, Iterator, Callable
-import heapq
+from typing import Optional, List, Iterator, Callable, Set, Dict
 import math
 
-from .tile import Tile, Position, TileEnvironment, DIRECTIONS
-from .terrain import TerrainType, TerrainModifier
-from .entity import Entity, Layer, MAX_LAYER_SIZE
-from .events import TileEventBus, TileEvent, TileEventType
+from .position import Position
+from .tile import Tile, TileEnvironment
+from .terrain import TerrainType
+from .entity import Entity
+from .events import TileEventManager, TileEvent, TileEventType
 
 
 @dataclass
-class GridDimensions:
-    """Dimensions of the grid."""
-    width: int
-    height: int
-    depth: int = 1  # Number of Z levels (1 = single level)
-
-    def contains(self, pos: Position) -> bool:
-        """Check if position is within bounds."""
-        return (
-            0 <= pos.x < self.width and
-            0 <= pos.y < self.height and
-            0 <= pos.z < self.depth
-        )
-
-    def to_dict(self) -> dict:
-        return {"width": self.width, "height": self.height, "depth": self.depth}
-
-
 class TileGrid:
     """
-    The game world grid.
+    The main tile grid container.
 
-    Manages tiles, entities, and provides spatial queries.
+    Provides spatial queries, entity management, and pathfinding.
+
+    Attributes:
+        width: Grid width (x-axis)
+        height: Grid height (y-axis)
+        depth: Grid depth (z-axis, number of levels)
+        default_terrain: Default terrain for new tiles
     """
+    width: int
+    height: int
+    depth: int = 1
+    default_terrain: TerrainType = TerrainType.SOIL
 
-    def __init__(
-        self,
-        width: int,
-        height: int,
-        depth: int = 1,
-        default_terrain: TerrainType = TerrainType.FLOOR
-    ):
-        self.dimensions = GridDimensions(width, height, depth)
-        self.default_terrain = default_terrain
+    _tiles: Dict[tuple, Tile] = field(default_factory=dict, repr=False)
+    _entities: Dict[str, Entity] = field(default_factory=dict, repr=False)
+    _event_manager: TileEventManager = field(default_factory=TileEventManager, repr=False)
 
-        # Tile storage - sparse dict for memory efficiency
-        self._tiles: dict[str, Tile] = {}
+    def __post_init__(self):
+        """Validate grid dimensions."""
+        if self.width <= 0 or self.height <= 0 or self.depth <= 0:
+            raise ValueError("Grid dimensions must be positive")
 
-        # Entity storage
-        self._entities: dict[str, Entity] = {}
-        self._entity_positions: dict[str, Position] = {}
+    def _pos_key(self, x: int, y: int, z: int = 0) -> tuple:
+        """Create position key for internal storage."""
+        return (x, y, z)
 
-        # Event system
-        self.events = TileEventBus()
-
-        # Statistics
-        self.stats = {
-            "tiles_created": 0,
-            "entities_placed": 0,
-            "pathfinding_calls": 0,
-        }
-
-    @property
-    def width(self) -> int:
-        return self.dimensions.width
-
-    @property
-    def height(self) -> int:
-        return self.dimensions.height
-
-    @property
-    def depth(self) -> int:
-        return self.dimensions.depth
-
-    def _pos_key(self, pos: Position) -> str:
-        """Get storage key for a position."""
-        return pos.to_key()
+    def is_valid_position(self, x: int, y: int, z: int = 0) -> bool:
+        """Check if position is within grid bounds."""
+        return (0 <= x < self.width and
+                0 <= y < self.height and
+                0 <= z < self.depth)
 
     def get_tile(self, x: int, y: int, z: int = 0) -> Optional[Tile]:
-        """Get tile at position, creating if needed within bounds."""
-        pos = Position(x, y, z)
-        if not self.dimensions.contains(pos):
+        """
+        Get tile at position.
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            z: Z coordinate (default 0)
+
+        Returns:
+            Tile at position, or None if out of bounds
+        """
+        if not self.is_valid_position(x, y, z):
             return None
 
-        key = self._pos_key(pos)
+        key = self._pos_key(x, y, z)
         if key not in self._tiles:
-            # Create new tile with default terrain
-            tile = Tile(position=pos, terrain_type=self.default_terrain)
-            self._tiles[key] = tile
-            self.stats["tiles_created"] += 1
-
+            # Create tile on demand with default terrain
+            position = Position(x, y, z)
+            self._tiles[key] = Tile(
+                position=position,
+                terrain_type=self.default_terrain
+            )
         return self._tiles[key]
 
-    def get_tile_at(self, pos: Position) -> Optional[Tile]:
+    def get_tile_at_position(self, position: Position) -> Optional[Tile]:
         """Get tile at a Position object."""
-        return self.get_tile(pos.x, pos.y, pos.z)
+        return self.get_tile(position.x, position.y, position.z)
 
     def set_tile(self, tile: Tile) -> bool:
-        """Set a tile at its position. Returns False if out of bounds."""
-        if not self.dimensions.contains(tile.position):
+        """
+        Set a tile in the grid.
+
+        Args:
+            tile: Tile to set
+
+        Returns:
+            True if tile was set successfully
+        """
+        pos = tile.position
+        if not self.is_valid_position(pos.x, pos.y, pos.z):
             return False
-        self._tiles[self._pos_key(tile.position)] = tile
+
+        key = self._pos_key(pos.x, pos.y, pos.z)
+        self._tiles[key] = tile
         return True
 
-    def has_tile(self, x: int, y: int, z: int = 0) -> bool:
-        """Check if a tile exists (has been created) at position."""
-        return self._pos_key(Position(x, y, z)) in self._tiles
+    def get_adjacent(self, tile: Tile, include_diagonals: bool = True) -> List[Tile]:
+        """
+        Get tiles adjacent to the given tile.
 
-    def remove_tile(self, x: int, y: int, z: int = 0) -> Optional[Tile]:
-        """Remove and return tile at position."""
-        key = self._pos_key(Position(x, y, z))
-        return self._tiles.pop(key, None)
+        Args:
+            tile: Center tile
+            include_diagonals: Include diagonal neighbors
 
-    def get_adjacent(self, tile: Tile, include_diagonals: bool = True) -> list[Tile]:
-        """Get adjacent tiles."""
+        Returns:
+            List of adjacent tiles
+        """
         adjacent = []
-        directions = ["north", "south", "east", "west"]
-        if include_diagonals:
-            directions.extend(["northeast", "northwest", "southeast", "southwest"])
+        pos = tile.position
 
-        for direction in directions:
-            offset = DIRECTIONS[direction]
-            new_pos = tile.position + offset
-            adj_tile = self.get_tile_at(new_pos)
+        for adj_pos in pos.get_adjacent_positions(include_diagonals=include_diagonals):
+            adj_tile = self.get_tile(adj_pos.x, adj_pos.y, adj_pos.z)
             if adj_tile:
                 adjacent.append(adj_tile)
 
         return adjacent
 
-    def get_neighbors(
-        self,
-        x: int,
-        y: int,
-        z: int = 0,
-        include_diagonals: bool = True
-    ) -> list[Tile]:
-        """Get neighboring tiles at position."""
-        tile = self.get_tile(x, y, z)
-        if not tile:
-            return []
-        return self.get_adjacent(tile, include_diagonals)
-
     def get_in_radius(
         self,
-        center: Position,
+        center: Tile | Position,
         radius: float,
-        include_center: bool = True
-    ) -> list[Tile]:
-        """Get all tiles within a radius of center."""
-        tiles = []
-        r_int = int(math.ceil(radius))
+        include_center: bool = False
+    ) -> List[Tile]:
+        """
+        Get all tiles within radius of center.
 
-        for dx in range(-r_int, r_int + 1):
-            for dy in range(-r_int, r_int + 1):
-                for dz in range(-r_int, r_int + 1):
-                    pos = Position(center.x + dx, center.y + dy, center.z + dz)
-                    if not include_center and pos == center:
+        Args:
+            center: Center tile or position
+            radius: Radius to search
+            include_center: Whether to include center tile
+
+        Returns:
+            List of tiles within radius
+        """
+        if isinstance(center, Tile):
+            center_pos = center.position
+        else:
+            center_pos = center
+
+        tiles = []
+        int_radius = int(math.ceil(radius))
+
+        for dx in range(-int_radius, int_radius + 1):
+            for dy in range(-int_radius, int_radius + 1):
+                x = center_pos.x + dx
+                y = center_pos.y + dy
+                z = center_pos.z
+
+                if not self.is_valid_position(x, y, z):
+                    continue
+
+                pos = Position(x, y, z)
+                distance = center_pos.distance_to(pos, include_z=False)
+
+                if distance <= radius:
+                    if not include_center and pos == center_pos:
                         continue
-                    if center.distance_to(pos) <= radius:
-                        tile = self.get_tile_at(pos)
-                        if tile:
-                            tiles.append(tile)
+                    tile = self.get_tile(x, y, z)
+                    if tile:
+                        tiles.append(tile)
 
-        return tiles
-
-    def get_in_rect(
-        self,
-        min_x: int,
-        min_y: int,
-        max_x: int,
-        max_y: int,
-        z: int = 0
-    ) -> list[Tile]:
-        """Get all tiles in a rectangular area."""
-        tiles = []
-        for x in range(min_x, max_x + 1):
-            for y in range(min_y, max_y + 1):
-                tile = self.get_tile(x, y, z)
-                if tile:
-                    tiles.append(tile)
         return tiles
 
     def get_line_of_sight(
         self,
-        from_pos: Position,
-        to_pos: Position
-    ) -> list[Tile]:
+        from_tile: Tile,
+        to_tile: Tile,
+        check_opacity: bool = True
+    ) -> List[Tile]:
         """
-        Get tiles along a line between two positions.
+        Get tiles along line of sight between two tiles.
 
         Uses Bresenham's line algorithm.
+
+        Args:
+            from_tile: Starting tile
+            to_tile: Ending tile
+            check_opacity: Whether to stop at opaque tiles
+
+        Returns:
+            List of tiles along the line (may be truncated if blocked)
         """
         tiles = []
 
-        dx = abs(to_pos.x - from_pos.x)
-        dy = abs(to_pos.y - from_pos.y)
-        x, y = from_pos.x, from_pos.y
-        sx = 1 if from_pos.x < to_pos.x else -1
-        sy = 1 if from_pos.y < to_pos.y else -1
+        x0, y0 = from_tile.position.x, from_tile.position.y
+        x1, y1 = to_tile.position.x, to_tile.position.y
+        z = from_tile.position.z
 
-        if dx > dy:
-            err = dx / 2
-            while x != to_pos.x:
-                tile = self.get_tile(x, y, from_pos.z)
-                if tile:
-                    tiles.append(tile)
+        dx = abs(x1 - x0)
+        dy = abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        err = dx - dy
+
+        while True:
+            tile = self.get_tile(x0, y0, z)
+            if tile:
+                tiles.append(tile)
+
+                # Check if blocked by opacity (but not first tile)
+                if check_opacity and len(tiles) > 1 and tile.is_opaque():
+                    break
+
+            if x0 == x1 and y0 == y1:
+                break
+
+            e2 = 2 * err
+            if e2 > -dy:
                 err -= dy
-                if err < 0:
-                    y += sy
-                    err += dx
-                x += sx
-        else:
-            err = dy / 2
-            while y != to_pos.y:
-                tile = self.get_tile(x, y, from_pos.z)
-                if tile:
-                    tiles.append(tile)
-                err -= dx
-                if err < 0:
-                    x += sx
-                    err += dy
-                y += sy
-
-        # Add final tile
-        tile = self.get_tile(to_pos.x, to_pos.y, to_pos.z)
-        if tile:
-            tiles.append(tile)
+                x0 += sx
+            if e2 < dx:
+                err += dx
+                y0 += sy
 
         return tiles
 
-    def has_line_of_sight(
-        self,
-        from_pos: Position,
-        to_pos: Position
-    ) -> bool:
-        """Check if there's an unobstructed line of sight between positions."""
-        tiles = self.get_line_of_sight(from_pos, to_pos)
-        # Check all tiles except start and end
-        for tile in tiles[1:-1]:
-            if tile.opaque:
-                return False
-        return True
+    def has_line_of_sight(self, from_tile: Tile, to_tile: Tile) -> bool:
+        """
+        Check if there is unobstructed line of sight between tiles.
+
+        Args:
+            from_tile: Starting tile
+            to_tile: Ending tile
+
+        Returns:
+            True if line of sight exists
+        """
+        tiles = self.get_line_of_sight(from_tile, to_tile, check_opacity=True)
+        if not tiles:
+            return False
+
+        # Check if we reached the destination
+        return tiles[-1].position == to_tile.position
 
     def find_path(
         self,
-        start: Position,
-        end: Position,
+        start: Tile | Position,
+        end: Tile | Position,
         entity: Optional[Entity] = None,
         max_cost: float = float('inf')
-    ) -> list[Tile]:
+    ) -> Optional[List[Tile]]:
         """
-        Find path between two positions using A*.
+        Find path between two tiles using A* algorithm.
 
-        Returns list of tiles from start to end, or empty list if no path.
+        Args:
+            start: Starting tile or position
+            end: Ending tile or position
+            entity: Entity that will traverse (affects movement costs)
+            max_cost: Maximum path cost allowed
+
+        Returns:
+            List of tiles forming path, or None if no path exists
         """
-        self.stats["pathfinding_calls"] += 1
+        from .pathfinding import find_path as pathfind
+        return pathfind(self, start, end, entity, max_cost)
 
-        start_tile = self.get_tile_at(start)
-        end_tile = self.get_tile_at(end)
-
-        if not start_tile or not end_tile:
-            return []
-
-        # A* implementation
-        open_set: list[tuple[float, int, Position]] = []
-        counter = 0  # Tiebreaker for equal priorities
-        heapq.heappush(open_set, (0, counter, start))
-
-        came_from: dict[str, Position] = {}
-        g_score: dict[str, float] = {start.to_key(): 0}
-        f_score: dict[str, float] = {start.to_key(): start.distance_to(end)}
-
-        while open_set:
-            _, _, current = heapq.heappop(open_set)
-
-            if current == end:
-                # Reconstruct path
-                path = []
-                while current.to_key() in came_from:
-                    tile = self.get_tile_at(current)
-                    if tile:
-                        path.append(tile)
-                    current = came_from[current.to_key()]
-                path.append(self.get_tile_at(start))
-                path.reverse()
-                return path
-
-            current_tile = self.get_tile_at(current)
-            if not current_tile:
-                continue
-
-            for neighbor_tile in self.get_adjacent(current_tile, include_diagonals=True):
-                neighbor = neighbor_tile.position
-
-                # Check passability
-                if not neighbor_tile.passable:
-                    continue
-
-                # Check entity requirements
-                if entity and entity.requires_passable and not neighbor_tile.passable:
-                    continue
-
-                # Calculate movement cost
-                base_cost = neighbor_tile.movement_cost
-                if entity:
-                    base_cost *= entity.get_movement_modifier(
-                        neighbor_tile.terrain_type.value
-                    )
-
-                # Diagonal movement costs more
-                if neighbor.x != current.x and neighbor.y != current.y:
-                    base_cost *= 1.414
-
-                tentative_g = g_score[current.to_key()] + base_cost
-
-                if tentative_g > max_cost:
-                    continue
-
-                neighbor_key = neighbor.to_key()
-                if neighbor_key not in g_score or tentative_g < g_score[neighbor_key]:
-                    came_from[neighbor_key] = current
-                    g_score[neighbor_key] = tentative_g
-                    f_score[neighbor_key] = tentative_g + neighbor.distance_to(end)
-                    counter += 1
-                    heapq.heappush(open_set, (f_score[neighbor_key], counter, neighbor))
-
-        return []  # No path found
-
-    # Entity management
-
-    def add_entity(self, entity: Entity, position: Position) -> bool:
+    def place_entity(self, entity: Entity, position: Position) -> bool:
         """
-        Add an entity to the grid at a position.
+        Place an entity on the grid.
 
-        Returns False if placement fails.
+        Args:
+            entity: Entity to place
+            position: Position to place at
+
+        Returns:
+            True if entity was placed successfully
         """
-        tile = self.get_tile_at(position)
+        tile = self.get_tile_at_position(position)
         if not tile:
             return False
 
-        # Check if placement is valid
-        if not self.can_place_entity(tile, entity):
+        if not tile.can_place_entity(entity):
             return False
 
-        # Store entity
-        self._entities[entity.id] = entity
-        self._entity_positions[entity.id] = position
+        # Remove from old position if exists
+        if entity.id in self._entities:
+            old_entity = self._entities[entity.id]
+            if old_entity.position:
+                old_tile = self.get_tile_at_position(old_entity.position)
+                if old_tile:
+                    old_tile.remove_entity(old_entity)
+                    self._emit_event(TileEventType.EXITED, old_tile, entity)
 
-        # Add to tile
-        tile.add_entity(entity.id)
+        # Place on new tile
+        if tile.add_entity(entity):
+            self._entities[entity.id] = entity
+            self._emit_event(TileEventType.ENTERED, tile, entity)
+            return True
 
-        # Emit event
-        self.events.emit_entered(position.to_tuple(), entity.id)
+        return False
 
-        self.stats["entities_placed"] += 1
+    def remove_entity(self, entity: Entity) -> bool:
+        """
+        Remove an entity from the grid.
+
+        Args:
+            entity: Entity to remove
+
+        Returns:
+            True if entity was removed
+        """
+        if entity.id not in self._entities:
+            return False
+
+        if entity.position:
+            tile = self.get_tile_at_position(entity.position)
+            if tile:
+                tile.remove_entity(entity)
+                self._emit_event(TileEventType.ENTITY_REMOVED, tile, entity)
+
+        del self._entities[entity.id]
         return True
-
-    def remove_entity(self, entity_id: str) -> Optional[Entity]:
-        """Remove an entity from the grid."""
-        if entity_id not in self._entities:
-            return None
-
-        entity = self._entities.pop(entity_id)
-        position = self._entity_positions.pop(entity_id)
-
-        # Remove from tile
-        tile = self.get_tile_at(position)
-        if tile:
-            tile.remove_entity(entity_id)
-            self.events.emit_exited(position.to_tuple(), entity_id)
-
-        return entity
-
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
-        """Get entity by ID."""
-        return self._entities.get(entity_id)
-
-    def get_entity_position(self, entity_id: str) -> Optional[Position]:
-        """Get entity's current position."""
-        return self._entity_positions.get(entity_id)
-
-    def get_entities_at(self, position: Position) -> list[Entity]:
-        """Get all entities at a position."""
-        tile = self.get_tile_at(position)
-        if not tile:
-            return []
-        return [self._entities[eid] for eid in tile.entity_ids if eid in self._entities]
-
-    def get_entities_in_radius(
-        self,
-        center: Position,
-        radius: float
-    ) -> list[tuple[Entity, Position]]:
-        """Get all entities within radius with their positions."""
-        result = []
-        tiles = self.get_in_radius(center, radius)
-        for tile in tiles:
-            for entity_id in tile.entity_ids:
-                if entity_id in self._entities:
-                    result.append((self._entities[entity_id], tile.position))
-        return result
 
     def move_entity(
         self,
-        entity_id: str,
-        new_position: Position
+        entity: Entity,
+        to_position: Position,
+        validate_path: bool = False
     ) -> bool:
-        """Move an entity to a new position."""
-        if entity_id not in self._entities:
+        """
+        Move an entity to a new position.
+
+        Args:
+            entity: Entity to move
+            to_position: Destination position
+            validate_path: Whether to check for valid path
+
+        Returns:
+            True if entity was moved successfully
+        """
+        if entity.id not in self._entities:
             return False
 
-        entity = self._entities[entity_id]
-        old_position = self._entity_positions[entity_id]
-        new_tile = self.get_tile_at(new_position)
+        from_tile = None
+        if entity.position:
+            from_tile = self.get_tile_at_position(entity.position)
 
-        if not new_tile:
+        to_tile = self.get_tile_at_position(to_position)
+        if not to_tile:
             return False
 
-        if not self.can_place_entity(new_tile, entity):
+        # Check valid path if requested
+        if validate_path and from_tile:
+            path = self.find_path(from_tile, to_tile, entity)
+            if not path:
+                return False
+
+        # Check if can place on destination
+        if not to_tile.can_place_entity(entity):
             return False
 
         # Remove from old tile
-        old_tile = self.get_tile_at(old_position)
-        if old_tile:
-            old_tile.remove_entity(entity_id)
-            self.events.emit_exited(old_position.to_tuple(), entity_id, new_position.to_tuple())
+        if from_tile:
+            from_tile.remove_entity(entity)
+            self._emit_event(TileEventType.EXITED, from_tile, entity)
 
         # Add to new tile
-        new_tile.add_entity(entity_id)
-        self._entity_positions[entity_id] = new_position
-        self.events.emit_entered(new_position.to_tuple(), entity_id, old_position.to_tuple())
+        to_tile.add_entity(entity)
+        self._emit_event(TileEventType.ENTERED, to_tile, entity)
 
         return True
 
-    def can_place_entity(self, tile: Tile, entity: Entity) -> bool:
-        """Check if an entity can be placed on a tile."""
-        # Check passability requirement
-        if entity.requires_passable and not tile.passable:
-            return False
+    def get_entity(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by ID."""
+        return self._entities.get(entity_id)
 
-        # Check layer conflicts
-        same_layer_entities = [
-            self._entities[eid] for eid in tile.entity_ids
-            if eid in self._entities and self._entities[eid].layer == entity.layer
-        ]
+    def get_entities_at(self, position: Position) -> List[Entity]:
+        """Get all entities at a position."""
+        tile = self.get_tile_at_position(position)
+        if tile:
+            return tile.entities.copy()
+        return []
 
-        # Check total size on layer
-        total_size = sum(e.size.volume() for e in same_layer_entities)
-        if total_size + entity.size.volume() > MAX_LAYER_SIZE:
-            return False
+    def get_all_entities(self) -> List[Entity]:
+        """Get all entities in the grid."""
+        return list(self._entities.values())
 
-        # Check specific conflicts
-        for existing in same_layer_entities:
-            if entity.conflicts_with(existing):
-                return False
+    def _emit_event(
+        self,
+        event_type: TileEventType,
+        tile: Tile,
+        cause: Optional[Entity] = None,
+        data: Optional[dict] = None
+    ) -> None:
+        """Emit a tile event."""
+        event = TileEvent(
+            event_type=event_type,
+            tile=tile,
+            cause=cause,
+            data=data or {}
+        )
+        self._event_manager.emit(event)
 
-        return True
+    def subscribe_to_event(
+        self,
+        event_type: TileEventType,
+        handler: Callable[[TileEvent], None]
+    ) -> None:
+        """Subscribe to tile events."""
+        self._event_manager.subscribe(event_type, handler)
 
-    # Iteration
+    def unsubscribe_from_event(
+        self,
+        event_type: TileEventType,
+        handler: Callable[[TileEvent], None]
+    ) -> bool:
+        """Unsubscribe from tile events."""
+        return self._event_manager.unsubscribe(event_type, handler)
 
     def all_tiles(self) -> Iterator[Tile]:
-        """Iterate over all existing tiles."""
-        return iter(self._tiles.values())
+        """Iterate over all tiles in the grid."""
+        for z in range(self.depth):
+            for y in range(self.height):
+                for x in range(self.width):
+                    tile = self.get_tile(x, y, z)
+                    if tile:
+                        yield tile
 
-    def all_entities(self) -> Iterator[Entity]:
-        """Iterate over all entities."""
-        return iter(self._entities.values())
-
-    def tiles_matching(
+    def find_tiles(
         self,
-        predicate: Callable[[Tile], bool]
-    ) -> list[Tile]:
-        """Get all tiles matching a predicate."""
-        return [t for t in self._tiles.values() if predicate(t)]
+        predicate: Callable[[Tile], bool],
+        limit: Optional[int] = None
+    ) -> List[Tile]:
+        """
+        Find tiles matching a predicate.
 
-    def entities_matching(
+        Args:
+            predicate: Function that returns True for matching tiles
+            limit: Maximum tiles to return
+
+        Returns:
+            List of matching tiles
+        """
+        results = []
+        for tile in self.all_tiles():
+            if predicate(tile):
+                results.append(tile)
+                if limit and len(results) >= limit:
+                    break
+        return results
+
+    def find_tiles_by_terrain(self, terrain_type: TerrainType) -> List[Tile]:
+        """Find all tiles of a specific terrain type."""
+        return self.find_tiles(lambda t: t.terrain_type == terrain_type)
+
+    def find_tiles_with_affordance(self, affordance: str) -> List[Tile]:
+        """Find all tiles with a specific affordance."""
+        return self.find_tiles(lambda t: affordance in t.get_affordances())
+
+    def get_passable_tiles(self) -> List[Tile]:
+        """Get all passable tiles."""
+        return self.find_tiles(lambda t: t.is_passable())
+
+    def fill_rect(
         self,
-        predicate: Callable[[Entity], bool]
-    ) -> list[Entity]:
-        """Get all entities matching a predicate."""
-        return [e for e in self._entities.values() if predicate(e)]
+        x1: int, y1: int,
+        x2: int, y2: int,
+        terrain_type: TerrainType,
+        z: int = 0
+    ) -> int:
+        """
+        Fill a rectangular region with a terrain type.
 
-    # Terrain modification
+        Args:
+            x1, y1: Top-left corner
+            x2, y2: Bottom-right corner
+            terrain_type: Terrain to fill with
+            z: Z level
 
-    def set_terrain(
-        self,
-        x: int,
-        y: int,
-        z: int,
-        terrain_type: TerrainType
-    ) -> bool:
-        """Set terrain type at position."""
-        tile = self.get_tile(x, y, z)
-        if not tile:
-            return False
-        tile.set_terrain(terrain_type)
-        self.events.dispatch(TileEvent(
-            type=TileEventType.TERRAIN_CHANGED,
-            tile_position=(x, y, z),
-            data={"terrain": terrain_type.value},
-        ))
-        return True
+        Returns:
+            Number of tiles filled
+        """
+        count = 0
+        for x in range(min(x1, x2), max(x1, x2) + 1):
+            for y in range(min(y1, y2), max(y1, y2) + 1):
+                if self.is_valid_position(x, y, z):
+                    tile = self.get_tile(x, y, z)
+                    if tile:
+                        tile.terrain_type = terrain_type
+                        # Reset to terrain defaults
+                        defaults = terrain_type.get_default_properties()
+                        tile.passable = defaults.get("passable", True)
+                        tile.opaque = defaults.get("opaque", False)
+                        count += 1
+        return count
 
-    def add_modifier(
-        self,
-        x: int,
-        y: int,
-        z: int,
-        modifier: TerrainModifier
-    ) -> bool:
-        """Add a terrain modifier at position."""
-        tile = self.get_tile(x, y, z)
-        if not tile:
-            return False
-        tile.add_modifier(modifier)
-        self.events.dispatch(TileEvent(
-            type=TileEventType.MODIFIER_ADDED,
-            tile_position=(x, y, z),
-            data={"modifier": modifier.type},
-        ))
-        return True
-
-    def remove_modifier(
-        self,
-        x: int,
-        y: int,
-        z: int,
-        modifier_type: str
-    ) -> bool:
-        """Remove a terrain modifier at position."""
-        tile = self.get_tile(x, y, z)
-        if not tile:
-            return False
-        if tile.remove_modifier(modifier_type):
-            self.events.dispatch(TileEvent(
-                type=TileEventType.MODIFIER_REMOVED,
-                tile_position=(x, y, z),
-                data={"modifier": modifier_type},
-            ))
-            return True
-        return False
-
-    # Serialization
-
-    def to_dict(self) -> dict:
+    def serialize(self) -> dict:
         """Serialize grid to dictionary."""
         return {
-            "dimensions": self.dimensions.to_dict(),
-            "default_terrain": self.default_terrain.value,
-            "tiles": {key: tile.to_dict() for key, tile in self._tiles.items()},
-            "entities": {eid: e.to_dict() for eid, e in self._entities.items()},
-            "entity_positions": {
-                eid: pos.to_tuple() for eid, pos in self._entity_positions.items()
+            "dimensions": [self.width, self.height, self.depth],
+            "default_terrain": self.default_terrain.name,
+            "tiles": {
+                f"{k[0]},{k[1]},{k[2]}": v.serialize()
+                for k, v in self._tiles.items()
             },
+            "entities": {
+                eid: e.serialize()
+                for eid, e in self._entities.items()
+            }
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'TileGrid':
-        """Deserialize grid from dictionary."""
+    def from_dict(cls, data: dict) -> "TileGrid":
+        """Create grid from dictionary."""
         dims = data["dimensions"]
         grid = cls(
-            width=dims["width"],
-            height=dims["height"],
-            depth=dims.get("depth", 1),
-            default_terrain=TerrainType(data.get("default_terrain", "floor")),
+            width=dims[0],
+            height=dims[1],
+            depth=dims[2] if len(dims) > 2 else 1,
+            default_terrain=TerrainType[data.get("default_terrain", "SOIL")]
         )
 
-        # Load tiles
-        for key, tile_data in data.get("tiles", {}).items():
-            tile = Tile.from_dict(tile_data)
-            grid._tiles[key] = tile
-
-        # Load entities
-        for entity_id, entity_data in data.get("entities", {}).items():
+        # Load entities first
+        for entity_data in data.get("entities", {}).values():
             entity = Entity.from_dict(entity_data)
-            grid._entities[entity_id] = entity
+            grid._entities[entity.id] = entity
 
-        # Load entity positions
-        for entity_id, pos_tuple in data.get("entity_positions", {}).items():
-            grid._entity_positions[entity_id] = Position.from_tuple(pos_tuple)
+        # Load tiles with entity references
+        for pos_key, tile_data in data.get("tiles", {}).items():
+            tile = Tile.from_dict(tile_data, grid._entities)
+            grid._tiles[tuple(map(int, pos_key.split(",")))] = tile
 
         return grid
 
-    def clear(self) -> None:
-        """Clear all tiles and entities."""
-        self._tiles.clear()
-        self._entities.clear()
-        self._entity_positions.clear()
-        self.events.clear_history()
-
-    def get_stats(self) -> dict:
-        """Get grid statistics."""
-        return {
-            **self.stats,
-            "tiles_count": len(self._tiles),
-            "entities_count": len(self._entities),
-        }
+    def __repr__(self):
+        return f"TileGrid({self.width}x{self.height}x{self.depth})"

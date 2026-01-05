@@ -1,545 +1,556 @@
-"""Tests for TileGrid class."""
+"""
+Comprehensive tests for TileGrid class.
+"""
 
 import pytest
-
-from src.shadowengine.grid.grid import TileGrid, GridDimensions
-from src.shadowengine.grid.tile import Position, Tile
-from src.shadowengine.grid.terrain import TerrainType, TerrainModifier
-from src.shadowengine.grid.entity import Entity, Layer, create_item, create_creature
-from src.shadowengine.grid.events import TileEventType
-
-
-class TestGridDimensions:
-    """Test GridDimensions class."""
-
-    def test_dimensions_creation(self):
-        """Test creating dimensions."""
-        dims = GridDimensions(100, 50, 3)
-        assert dims.width == 100
-        assert dims.height == 50
-        assert dims.depth == 3
-
-    def test_contains_valid(self):
-        """Test valid position is contained."""
-        dims = GridDimensions(10, 10, 1)
-        assert dims.contains(Position(0, 0, 0))
-        assert dims.contains(Position(9, 9, 0))
-        assert dims.contains(Position(5, 5, 0))
-
-    def test_contains_invalid(self):
-        """Test invalid position is not contained."""
-        dims = GridDimensions(10, 10, 1)
-        assert not dims.contains(Position(-1, 0, 0))
-        assert not dims.contains(Position(10, 0, 0))
-        assert not dims.contains(Position(0, 0, 1))
+from shadowengine.grid import (
+    Position, Tile, TileGrid, TileEnvironment,
+    TerrainType, TerrainModifier,
+    Entity, EntityType, Layer,
+    TileEventType
+)
 
 
-class TestTileGrid:
-    """Test TileGrid class."""
+class TestTileGridCreation:
+    """Tests for TileGrid creation."""
 
-    def test_grid_creation(self):
-        """Test creating a grid."""
-        grid = TileGrid(20, 15, 3)
-        assert grid.width == 20
-        assert grid.height == 15
-        assert grid.depth == 3
+    @pytest.mark.unit
+    def test_create_small_grid(self, small_grid):
+        """Can create a small grid."""
+        assert small_grid.width == 10
+        assert small_grid.height == 10
+        assert small_grid.depth == 1
 
-    def test_get_tile_creates(self):
-        """Test get_tile creates tile if needed."""
-        grid = TileGrid(10, 10)
-        tile = grid.get_tile(5, 5, 0)
+    @pytest.mark.unit
+    def test_create_medium_grid(self, medium_grid):
+        """Can create a medium grid."""
+        assert medium_grid.width == 50
+        assert medium_grid.height == 50
+
+    @pytest.mark.unit
+    def test_create_multi_level_grid(self, multi_level_grid):
+        """Can create a multi-level grid."""
+        assert multi_level_grid.depth == 3
+
+    @pytest.mark.unit
+    def test_create_grid_with_default_terrain(self):
+        """Grid can have custom default terrain."""
+        grid = TileGrid(width=10, height=10, default_terrain=TerrainType.ROCK)
+        assert grid.default_terrain == TerrainType.ROCK
+
+    @pytest.mark.unit
+    def test_invalid_dimensions(self):
+        """Invalid dimensions raise error."""
+        with pytest.raises(ValueError):
+            TileGrid(width=0, height=10)
+
+        with pytest.raises(ValueError):
+            TileGrid(width=10, height=0)
+
+        with pytest.raises(ValueError):
+            TileGrid(width=10, height=10, depth=0)
+
+        with pytest.raises(ValueError):
+            TileGrid(width=-1, height=10)
+
+
+class TestTileGridPositionValidation:
+    """Tests for position validation."""
+
+    @pytest.mark.unit
+    def test_valid_position(self, small_grid):
+        """Valid positions are recognized."""
+        assert small_grid.is_valid_position(0, 0, 0) is True
+        assert small_grid.is_valid_position(5, 5, 0) is True
+        assert small_grid.is_valid_position(9, 9, 0) is True
+
+    @pytest.mark.unit
+    def test_invalid_position_negative(self, small_grid):
+        """Negative positions are invalid."""
+        assert small_grid.is_valid_position(-1, 0, 0) is False
+        assert small_grid.is_valid_position(0, -1, 0) is False
+        assert small_grid.is_valid_position(0, 0, -1) is False
+
+    @pytest.mark.unit
+    def test_invalid_position_out_of_bounds(self, small_grid):
+        """Out of bounds positions are invalid."""
+        assert small_grid.is_valid_position(10, 0, 0) is False
+        assert small_grid.is_valid_position(0, 10, 0) is False
+        assert small_grid.is_valid_position(0, 0, 1) is False
+
+    @pytest.mark.unit
+    def test_multi_level_valid_z(self, multi_level_grid):
+        """Multi-level grid accepts valid z values."""
+        assert multi_level_grid.is_valid_position(5, 5, 0) is True
+        assert multi_level_grid.is_valid_position(5, 5, 1) is True
+        assert multi_level_grid.is_valid_position(5, 5, 2) is True
+        assert multi_level_grid.is_valid_position(5, 5, 3) is False
+
+
+class TestTileGridTileAccess:
+    """Tests for tile access."""
+
+    @pytest.mark.unit
+    def test_get_tile(self, small_grid):
+        """Can get tile at position."""
+        tile = small_grid.get_tile(5, 5, 0)
         assert tile is not None
         assert tile.position == Position(5, 5, 0)
-        assert grid.stats["tiles_created"] == 1
 
-    def test_get_tile_returns_same(self):
-        """Test get_tile returns same tile object."""
-        grid = TileGrid(10, 10)
-        tile1 = grid.get_tile(5, 5, 0)
-        tile2 = grid.get_tile(5, 5, 0)
-        assert tile1 is tile2
-        assert grid.stats["tiles_created"] == 1
+    @pytest.mark.unit
+    def test_get_tile_default_terrain(self, small_grid):
+        """New tiles have default terrain."""
+        tile = small_grid.get_tile(5, 5, 0)
+        assert tile.terrain_type == TerrainType.SOIL
 
-    def test_get_tile_out_of_bounds(self):
-        """Test get_tile returns None for out of bounds."""
-        grid = TileGrid(10, 10)
-        assert grid.get_tile(-1, 0, 0) is None
-        assert grid.get_tile(10, 0, 0) is None
-        assert grid.get_tile(0, 10, 0) is None
+    @pytest.mark.unit
+    def test_get_tile_out_of_bounds(self, small_grid):
+        """Out of bounds returns None."""
+        assert small_grid.get_tile(100, 100, 0) is None
+        assert small_grid.get_tile(-1, 5, 0) is None
 
-    def test_get_tile_at(self):
-        """Test get_tile_at with Position."""
-        grid = TileGrid(10, 10)
-        tile = grid.get_tile_at(Position(3, 4, 0))
+    @pytest.mark.unit
+    def test_get_tile_at_position(self, small_grid, sample_position):
+        """Can get tile using Position object."""
+        tile = small_grid.get_tile_at_position(sample_position)
         assert tile is not None
-        assert tile.position == Position(3, 4, 0)
 
-    def test_set_tile(self):
-        """Test setting a tile."""
-        grid = TileGrid(10, 10)
-        tile = Tile(position=Position(5, 5, 0), terrain_type=TerrainType.WATER)
-        assert grid.set_tile(tile)
-        retrieved = grid.get_tile(5, 5, 0)
+    @pytest.mark.unit
+    def test_get_same_tile_twice(self, small_grid):
+        """Getting same position returns same tile."""
+        tile1 = small_grid.get_tile(5, 5, 0)
+        tile2 = small_grid.get_tile(5, 5, 0)
+        assert tile1 is tile2
+
+    @pytest.mark.unit
+    def test_set_tile(self, small_grid):
+        """Can set a tile in the grid."""
+        tile = Tile(
+            position=Position(5, 5, 0),
+            terrain_type=TerrainType.WATER
+        )
+        assert small_grid.set_tile(tile) is True
+
+        retrieved = small_grid.get_tile(5, 5, 0)
         assert retrieved.terrain_type == TerrainType.WATER
 
-    def test_set_tile_out_of_bounds(self):
-        """Test setting tile out of bounds fails."""
-        grid = TileGrid(10, 10)
-        tile = Tile(position=Position(15, 15, 0))
-        assert not grid.set_tile(tile)
-
-    def test_has_tile(self):
-        """Test checking if tile exists."""
-        grid = TileGrid(10, 10)
-        assert not grid.has_tile(5, 5, 0)
-        grid.get_tile(5, 5, 0)  # Creates tile
-        assert grid.has_tile(5, 5, 0)
-
-    def test_remove_tile(self):
-        """Test removing a tile."""
-        grid = TileGrid(10, 10)
-        grid.get_tile(5, 5, 0)
-        removed = grid.remove_tile(5, 5, 0)
-        assert removed is not None
-        assert not grid.has_tile(5, 5, 0)
-
-    def test_default_terrain(self):
-        """Test default terrain type."""
-        grid = TileGrid(10, 10, default_terrain=TerrainType.GRASS)
-        tile = grid.get_tile(5, 5, 0)
-        assert tile.terrain_type == TerrainType.GRASS
+    @pytest.mark.unit
+    def test_set_tile_out_of_bounds(self, small_grid):
+        """Setting tile out of bounds fails."""
+        tile = Tile(
+            position=Position(100, 100, 0),
+            terrain_type=TerrainType.WATER
+        )
+        assert small_grid.set_tile(tile) is False
 
 
-class TestGridSpatialQueries:
-    """Test grid spatial query methods."""
+class TestTileGridAdjacency:
+    """Tests for tile adjacency queries."""
 
-    def test_get_adjacent(self):
-        """Test getting adjacent tiles."""
-        grid = TileGrid(10, 10)
-        center = grid.get_tile(5, 5, 0)
-        adjacent = grid.get_adjacent(center)
-        # 8 adjacent tiles with diagonals
+    @pytest.mark.unit
+    def test_get_adjacent_tiles(self, small_grid):
+        """Can get adjacent tiles."""
+        center = small_grid.get_tile(5, 5, 0)
+        adjacent = small_grid.get_adjacent(center)
+
+        # Should have 8 adjacent tiles (with diagonals)
         assert len(adjacent) == 8
 
-    def test_get_adjacent_no_diagonals(self):
-        """Test getting adjacent without diagonals."""
-        grid = TileGrid(10, 10)
-        center = grid.get_tile(5, 5, 0)
-        adjacent = grid.get_adjacent(center, include_diagonals=False)
+    @pytest.mark.unit
+    def test_get_adjacent_cardinal_only(self, small_grid):
+        """Can get cardinal adjacent tiles only."""
+        center = small_grid.get_tile(5, 5, 0)
+        adjacent = small_grid.get_adjacent(center, include_diagonals=False)
+
         assert len(adjacent) == 4
 
-    def test_get_adjacent_at_edge(self):
-        """Test getting adjacent at grid edge."""
-        grid = TileGrid(10, 10)
-        corner = grid.get_tile(0, 0, 0)
-        adjacent = grid.get_adjacent(corner)
-        assert len(adjacent) == 3  # Only NE, E, SE exist
+    @pytest.mark.unit
+    def test_get_adjacent_at_corner(self, small_grid):
+        """Corner tiles have fewer neighbors."""
+        corner = small_grid.get_tile(0, 0, 0)
+        adjacent = small_grid.get_adjacent(corner)
 
-    def test_get_neighbors(self):
-        """Test get_neighbors by coordinates."""
-        grid = TileGrid(10, 10)
-        neighbors = grid.get_neighbors(5, 5, 0)
-        assert len(neighbors) == 8
+        # Corner has only 3 neighbors (with diagonals)
+        assert len(adjacent) == 3
 
-    def test_get_in_radius(self):
-        """Test getting tiles in radius."""
-        grid = TileGrid(20, 20)
-        center = Position(10, 10, 0)
-        tiles = grid.get_in_radius(center, 2.5)
-        # Should include center and tiles within 2.5 units
+    @pytest.mark.unit
+    def test_get_adjacent_at_edge(self, small_grid):
+        """Edge tiles have fewer neighbors."""
+        edge = small_grid.get_tile(5, 0, 0)
+        adjacent = small_grid.get_adjacent(edge)
+
+        # Edge has 5 neighbors (with diagonals)
+        assert len(adjacent) == 5
+
+
+class TestTileGridRadiusQuery:
+    """Tests for radius-based queries."""
+
+    @pytest.mark.unit
+    def test_get_in_radius(self, medium_grid):
+        """Can get tiles within radius."""
+        center = medium_grid.get_tile(25, 25, 0)
+        tiles = medium_grid.get_in_radius(center, radius=2)
+
+        # Radius 2 circle, excluding center
         assert len(tiles) > 0
         for tile in tiles:
-            assert center.distance_to(tile.position) <= 2.5
+            dist = center.position.distance_to(tile.position, include_z=False)
+            assert dist <= 2.0
 
-    def test_get_in_radius_excludes_center(self):
-        """Test excluding center from radius."""
-        grid = TileGrid(20, 20)
-        center = Position(10, 10, 0)
-        tiles = grid.get_in_radius(center, 1.5, include_center=False)
-        center_positions = [t.position for t in tiles]
-        assert center not in center_positions
+    @pytest.mark.unit
+    def test_get_in_radius_include_center(self, medium_grid):
+        """Can include center tile in radius query."""
+        center = medium_grid.get_tile(25, 25, 0)
+        tiles_without = medium_grid.get_in_radius(center, radius=1, include_center=False)
+        tiles_with = medium_grid.get_in_radius(center, radius=1, include_center=True)
 
-    def test_get_in_rect(self):
-        """Test getting tiles in rectangle."""
-        grid = TileGrid(20, 20)
-        tiles = grid.get_in_rect(5, 5, 7, 7, 0)
-        assert len(tiles) == 9  # 3x3 rectangle
+        assert len(tiles_with) == len(tiles_without) + 1
+        assert center in tiles_with
+        assert center not in tiles_without
 
-    def test_get_line_of_sight(self):
-        """Test getting tiles in line."""
-        grid = TileGrid(20, 20)
-        tiles = grid.get_line_of_sight(Position(0, 0, 0), Position(5, 0, 0))
-        assert len(tiles) == 6  # 0-5 inclusive
-        for i, tile in enumerate(tiles):
-            assert tile.position.x == i
+    @pytest.mark.unit
+    def test_get_in_radius_zero(self, medium_grid):
+        """Radius 0 returns empty or center only."""
+        center = medium_grid.get_tile(25, 25, 0)
+        tiles = medium_grid.get_in_radius(center, radius=0, include_center=True)
+        assert len(tiles) == 1
+        assert tiles[0] == center
 
-    def test_has_line_of_sight_clear(self):
-        """Test clear line of sight."""
-        grid = TileGrid(20, 20)
-        assert grid.has_line_of_sight(Position(0, 0, 0), Position(5, 5, 0))
-
-    def test_has_line_of_sight_blocked(self):
-        """Test blocked line of sight."""
-        grid = TileGrid(20, 20)
-        # Place rock in the middle
-        wall = grid.get_tile(2, 2, 0)
-        wall.set_terrain(TerrainType.ROCK)
-        assert not grid.has_line_of_sight(Position(0, 0, 0), Position(4, 4, 0))
+    @pytest.mark.unit
+    def test_get_in_radius_position(self, medium_grid):
+        """Can use Position object for center."""
+        pos = Position(25, 25, 0)
+        tiles = medium_grid.get_in_radius(pos, radius=1)
+        assert len(tiles) > 0
 
 
-class TestGridPathfinding:
-    """Test grid pathfinding."""
+class TestTileGridLineOfSight:
+    """Tests for line of sight queries."""
 
-    def test_find_path_simple(self):
-        """Test simple pathfinding."""
-        grid = TileGrid(10, 10)
-        path = grid.find_path(Position(0, 0, 0), Position(5, 0, 0))
-        assert len(path) > 0
-        assert path[0].position == Position(0, 0, 0)
-        assert path[-1].position == Position(5, 0, 0)
+    @pytest.mark.unit
+    def test_get_line_of_sight_straight(self, medium_grid):
+        """Can get tiles along straight line."""
+        from_tile = medium_grid.get_tile(5, 5, 0)
+        to_tile = medium_grid.get_tile(10, 5, 0)
+        los = medium_grid.get_line_of_sight(from_tile, to_tile)
 
-    def test_find_path_around_obstacle(self):
-        """Test pathfinding around obstacle."""
-        grid = TileGrid(10, 10)
-        # Create wall
-        for y in range(3, 7):
-            wall = grid.get_tile(5, y, 0)
-            wall.set_terrain(TerrainType.ROCK)
+        assert len(los) == 6  # 5 to 10 inclusive
+        assert los[0] == from_tile
+        assert los[-1] == to_tile
 
-        path = grid.find_path(Position(3, 5, 0), Position(7, 5, 0))
-        assert len(path) > 0
-        # Path should go around
-        for tile in path:
-            assert tile.passable
+    @pytest.mark.unit
+    def test_get_line_of_sight_diagonal(self, medium_grid):
+        """Can get tiles along diagonal line."""
+        from_tile = medium_grid.get_tile(5, 5, 0)
+        to_tile = medium_grid.get_tile(10, 10, 0)
+        los = medium_grid.get_line_of_sight(from_tile, to_tile)
 
-    def test_find_path_no_path(self):
-        """Test pathfinding with no path."""
-        grid = TileGrid(10, 10)
-        # Create wall around destination
-        for x in range(7, 10):
-            for y in range(7, 10):
-                if (x, y) != (8, 8):
-                    wall = grid.get_tile(x, y, 0)
-                    wall.set_terrain(TerrainType.ROCK)
+        assert len(los) > 0
+        assert los[0] == from_tile
+        assert los[-1] == to_tile
 
-        path = grid.find_path(Position(0, 0, 0), Position(8, 8, 0))
-        assert len(path) == 0
+    @pytest.mark.unit
+    def test_line_of_sight_blocked(self, grid_with_obstacles):
+        """Line of sight is blocked by opaque tiles."""
+        from_tile = grid_with_obstacles.get_tile(5, 10, 0)
+        to_tile = grid_with_obstacles.get_tile(20, 10, 0)
+        los = grid_with_obstacles.get_line_of_sight(from_tile, to_tile)
 
-    def test_find_path_with_entity(self):
-        """Test pathfinding considering entity modifiers."""
-        grid = TileGrid(10, 10)
-        entity = Entity(
-            name="Test",
-            movement_modifiers={"water": 2.0},
-        )
-        # Place water
-        water = grid.get_tile(2, 0, 0)
-        water.set_terrain(TerrainType.WATER)
+        # Should stop at the rock wall
+        assert los[-1].position.x < 15
 
-        path = grid.find_path(Position(0, 0, 0), Position(5, 0, 0), entity)
-        assert len(path) > 0
+    @pytest.mark.unit
+    def test_has_line_of_sight_clear(self, medium_grid):
+        """Check clear line of sight."""
+        from_tile = medium_grid.get_tile(5, 5, 0)
+        to_tile = medium_grid.get_tile(10, 5, 0)
+        assert medium_grid.has_line_of_sight(from_tile, to_tile) is True
+
+    @pytest.mark.unit
+    def test_has_line_of_sight_blocked(self, grid_with_obstacles):
+        """Check blocked line of sight."""
+        from_tile = grid_with_obstacles.get_tile(5, 10, 0)
+        to_tile = grid_with_obstacles.get_tile(20, 10, 0)
+        assert grid_with_obstacles.has_line_of_sight(from_tile, to_tile) is False
 
 
-class TestGridEntityManagement:
-    """Test grid entity management."""
+class TestTileGridEntityManagement:
+    """Tests for entity management in grid."""
 
-    def test_add_entity(self):
-        """Test adding entity to grid."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        assert grid.add_entity(entity, Position(5, 5, 0))
-        assert grid.stats["entities_placed"] == 1
+    @pytest.mark.unit
+    def test_place_entity(self, small_grid, basic_entity):
+        """Can place entity on grid."""
+        pos = Position(5, 5, 0)
+        assert small_grid.place_entity(basic_entity, pos) is True
+        assert basic_entity.position == pos
 
-    def test_add_entity_at_position(self):
-        """Test entity is at correct position."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        pos = grid.get_entity_position(entity.id)
-        assert pos == Position(5, 5, 0)
+    @pytest.mark.unit
+    def test_place_entity_out_of_bounds(self, small_grid, basic_entity):
+        """Cannot place entity out of bounds."""
+        pos = Position(100, 100, 0)
+        assert small_grid.place_entity(basic_entity, pos) is False
 
-    def test_add_entity_on_tile(self):
-        """Test entity appears on tile."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        tile = grid.get_tile(5, 5, 0)
-        assert entity.id in tile.entity_ids
+    @pytest.mark.unit
+    def test_place_entity_on_impassable(self, grid_with_obstacles, basic_entity):
+        """Cannot place entity on impassable tile."""
+        pos = Position(12, 10, 0)  # On rock wall
+        assert grid_with_obstacles.place_entity(basic_entity, pos) is False
 
-    def test_get_entity(self):
-        """Test retrieving entity by ID."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        retrieved = grid.get_entity(entity.id)
-        assert retrieved is entity
+    @pytest.mark.unit
+    def test_get_entity(self, populated_grid, basic_entity):
+        """Can get entity by ID."""
+        found = populated_grid.get_entity("test_entity")
+        assert found == basic_entity
 
-    def test_get_entities_at(self):
-        """Test getting entities at position."""
-        grid = TileGrid(10, 10)
-        item1 = create_item("Key1")
-        item2 = create_item("Key2")
-        grid.add_entity(item1, Position(5, 5, 0))
-        grid.add_entity(item2, Position(5, 5, 0))
+    @pytest.mark.unit
+    def test_get_nonexistent_entity(self, small_grid):
+        """Getting nonexistent entity returns None."""
+        assert small_grid.get_entity("nonexistent") is None
 
-        entities = grid.get_entities_at(Position(5, 5, 0))
+    @pytest.mark.unit
+    def test_get_entities_at(self, populated_grid):
+        """Can get entities at position."""
+        entities = populated_grid.get_entities_at(Position(2, 2, 0))
+        assert len(entities) == 1
+        assert entities[0].id == "test_entity"
+
+    @pytest.mark.unit
+    def test_get_all_entities(self, populated_grid):
+        """Can get all entities in grid."""
+        entities = populated_grid.get_all_entities()
         assert len(entities) == 2
 
-    def test_remove_entity(self):
-        """Test removing entity from grid."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        removed = grid.remove_entity(entity.id)
-        assert removed is entity
-        assert grid.get_entity(entity.id) is None
+    @pytest.mark.unit
+    def test_remove_entity(self, populated_grid, basic_entity):
+        """Can remove entity from grid."""
+        assert populated_grid.remove_entity(basic_entity) is True
+        assert populated_grid.get_entity("test_entity") is None
 
-    def test_move_entity(self):
-        """Test moving entity to new position."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
+    @pytest.mark.unit
+    def test_remove_nonexistent_entity(self, small_grid, basic_entity):
+        """Removing nonexistent entity returns False."""
+        assert small_grid.remove_entity(basic_entity) is False
 
-        assert grid.move_entity(entity.id, Position(7, 7, 0))
+    @pytest.mark.unit
+    def test_move_entity(self, populated_grid, basic_entity):
+        """Can move entity to new position."""
+        new_pos = Position(7, 7, 0)
+        assert populated_grid.move_entity(basic_entity, new_pos) is True
+        assert basic_entity.position == new_pos
 
-        pos = grid.get_entity_position(entity.id)
-        assert pos == Position(7, 7, 0)
-        assert not grid.get_tile(5, 5, 0).has_entity(entity.id)
-        assert grid.get_tile(7, 7, 0).has_entity(entity.id)
-
-    def test_move_entity_blocked(self):
-        """Test moving entity to impassable tile fails."""
-        grid = TileGrid(10, 10)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-
-        wall = grid.get_tile(7, 7, 0)
-        wall.set_terrain(TerrainType.ROCK)
-
-        assert not grid.move_entity(entity.id, Position(7, 7, 0))
-        assert grid.get_entity_position(entity.id) == Position(5, 5, 0)
-
-    def test_can_place_entity(self):
-        """Test placement validation."""
-        grid = TileGrid(10, 10)
-        tile = grid.get_tile(5, 5, 0)
-
-        item = create_item("Key")
-        assert grid.can_place_entity(tile, item)
-
-        # On rock (not passable)
-        rock = grid.get_tile(3, 3, 0)
-        rock.set_terrain(TerrainType.ROCK)
-        assert not grid.can_place_entity(rock, item)
-
-    def test_get_entities_in_radius(self):
-        """Test getting entities within radius."""
-        grid = TileGrid(20, 20)
-        entity1 = create_item("Near")
-        entity2 = create_item("Far")
-        grid.add_entity(entity1, Position(10, 10, 0))
-        grid.add_entity(entity2, Position(18, 18, 0))
-
-        nearby = grid.get_entities_in_radius(Position(10, 10, 0), 3.0)
-        entity_ids = [e.id for e, _ in nearby]
-        assert entity1.id in entity_ids
-        assert entity2.id not in entity_ids
+    @pytest.mark.unit
+    def test_move_entity_to_impassable(self, grid_with_obstacles, basic_entity):
+        """Cannot move entity to impassable tile."""
+        grid_with_obstacles.place_entity(basic_entity, Position(5, 5, 0))
+        result = grid_with_obstacles.move_entity(basic_entity, Position(12, 10, 0))
+        assert result is False
 
 
-class TestGridEvents:
-    """Test grid event integration."""
+class TestTileGridEvents:
+    """Tests for tile grid event system."""
 
-    def test_entity_entered_event(self):
-        """Test entity entered event is emitted."""
-        grid = TileGrid(10, 10)
-        received = []
+    @pytest.mark.unit
+    def test_subscribe_to_event(self, small_grid):
+        """Can subscribe to tile events."""
+        events_received = []
 
-        grid.events.subscribe(TileEventType.ENTITY_ENTERED, lambda e: received.append(e))
+        def handler(event):
+            events_received.append(event)
 
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
+        small_grid.subscribe_to_event(TileEventType.ENTERED, handler)
 
-        assert len(received) == 1
-        assert received[0].cause_id == entity.id
-        assert received[0].tile_position == (5, 5, 0)
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
 
-    def test_entity_exited_event(self):
-        """Test entity exited event is emitted."""
-        grid = TileGrid(10, 10)
-        received = []
+        assert len(events_received) == 1
+        assert events_received[0].event_type == TileEventType.ENTERED
 
-        grid.events.subscribe(TileEventType.ENTITY_EXITED, lambda e: received.append(e))
+    @pytest.mark.unit
+    def test_unsubscribe_from_event(self, small_grid):
+        """Can unsubscribe from tile events."""
+        events_received = []
 
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        grid.remove_entity(entity.id)
+        def handler(event):
+            events_received.append(event)
 
-        assert len(received) == 1
-        assert received[0].cause_id == entity.id
+        small_grid.subscribe_to_event(TileEventType.ENTERED, handler)
+        small_grid.unsubscribe_from_event(TileEventType.ENTERED, handler)
 
-    def test_move_emits_both_events(self):
-        """Test move emits exit and enter events."""
-        grid = TileGrid(10, 10)
-        exits = []
-        enters = []
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
 
-        grid.events.subscribe(TileEventType.ENTITY_EXITED, lambda e: exits.append(e))
-        grid.events.subscribe(TileEventType.ENTITY_ENTERED, lambda e: enters.append(e))
+        assert len(events_received) == 0
 
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(5, 5, 0))
-        enters.clear()  # Clear initial enter
+    @pytest.mark.unit
+    def test_move_entity_emits_events(self, small_grid):
+        """Moving entity emits exit and enter events."""
+        entered_events = []
+        exited_events = []
 
-        grid.move_entity(entity.id, Position(7, 7, 0))
+        small_grid.subscribe_to_event(TileEventType.ENTERED, lambda e: entered_events.append(e))
+        small_grid.subscribe_to_event(TileEventType.EXITED, lambda e: exited_events.append(e))
 
-        assert len(exits) == 1
-        assert exits[0].tile_position == (5, 5, 0)
-        assert len(enters) == 1
-        assert enters[0].tile_position == (7, 7, 0)
+        entity = Entity(id="test", name="Test", entity_type=EntityType.ITEM)
+        small_grid.place_entity(entity, Position(5, 5, 0))
+        small_grid.move_entity(entity, Position(6, 6, 0))
 
-
-class TestGridTerrainModification:
-    """Test grid terrain modification."""
-
-    def test_set_terrain(self):
-        """Test setting terrain type."""
-        grid = TileGrid(10, 10)
-        assert grid.set_terrain(5, 5, 0, TerrainType.WATER)
-        tile = grid.get_tile(5, 5, 0)
-        assert tile.terrain_type == TerrainType.WATER
-
-    def test_set_terrain_emits_event(self):
-        """Test terrain change emits event."""
-        grid = TileGrid(10, 10)
-        received = []
-
-        grid.events.subscribe(TileEventType.TERRAIN_CHANGED, lambda e: received.append(e))
-
-        grid.set_terrain(5, 5, 0, TerrainType.ROCK)
-
-        assert len(received) == 1
-        assert received[0].data["terrain"] == "rock"
-
-    def test_add_modifier(self):
-        """Test adding terrain modifier."""
-        grid = TileGrid(10, 10)
-        mod = TerrainModifier(type="wet")
-        assert grid.add_modifier(5, 5, 0, mod)
-        tile = grid.get_tile(5, 5, 0)
-        assert tile.has_modifier("wet")
-
-    def test_remove_modifier(self):
-        """Test removing terrain modifier."""
-        grid = TileGrid(10, 10)
-        mod = TerrainModifier(type="wet")
-        grid.add_modifier(5, 5, 0, mod)
-        assert grid.remove_modifier(5, 5, 0, "wet")
-        tile = grid.get_tile(5, 5, 0)
-        assert not tile.has_modifier("wet")
+        assert len(entered_events) == 2  # Initial placement + move
+        assert len(exited_events) == 1   # Move
 
 
-class TestGridIteration:
-    """Test grid iteration methods."""
+class TestTileGridIteration:
+    """Tests for grid iteration and queries."""
 
-    def test_all_tiles(self):
-        """Test iterating all tiles."""
-        grid = TileGrid(10, 10)
-        grid.get_tile(0, 0, 0)
-        grid.get_tile(5, 5, 0)
-        grid.get_tile(9, 9, 0)
+    @pytest.mark.unit
+    def test_all_tiles_iteration(self, small_grid):
+        """Can iterate over all tiles."""
+        count = 0
+        for tile in small_grid.all_tiles():
+            count += 1
 
-        tiles = list(grid.all_tiles())
-        assert len(tiles) == 3
+        assert count == 10 * 10 * 1
 
-    def test_all_entities(self):
-        """Test iterating all entities."""
-        grid = TileGrid(10, 10)
-        for i in range(5):
-            entity = create_item(f"Item_{i}")
-            grid.add_entity(entity, Position(i, 0, 0))
+    @pytest.mark.unit
+    def test_find_tiles_by_predicate(self, grid_with_water):
+        """Can find tiles matching predicate."""
+        water_tiles = grid_with_water.find_tiles(
+            lambda t: t.terrain_type == TerrainType.WATER
+        )
+        assert len(water_tiles) == 5 * 5  # 5x5 water region
 
-        entities = list(grid.all_entities())
-        assert len(entities) == 5
+    @pytest.mark.unit
+    def test_find_tiles_with_limit(self, grid_with_water):
+        """Can limit find results."""
+        water_tiles = grid_with_water.find_tiles(
+            lambda t: t.terrain_type == TerrainType.WATER,
+            limit=5
+        )
+        assert len(water_tiles) == 5
 
-    def test_tiles_matching(self):
-        """Test finding tiles matching predicate."""
-        grid = TileGrid(10, 10)
-        grid.set_terrain(0, 0, 0, TerrainType.WATER)
-        grid.set_terrain(1, 0, 0, TerrainType.WATER)
-        grid.set_terrain(2, 0, 0, TerrainType.ROCK)
+    @pytest.mark.unit
+    def test_find_tiles_by_terrain(self, grid_with_obstacles):
+        """Can find tiles by terrain type."""
+        rock_tiles = grid_with_obstacles.find_tiles_by_terrain(TerrainType.ROCK)
+        assert len(rock_tiles) == 5  # 5 tiles in wall
 
-        water_tiles = grid.tiles_matching(lambda t: t.terrain_type == TerrainType.WATER)
-        assert len(water_tiles) == 2
+    @pytest.mark.unit
+    def test_find_tiles_with_affordance(self, medium_grid):
+        """Can find tiles with specific affordance."""
+        # Soil tiles have "diggable"
+        diggable = medium_grid.find_tiles_with_affordance("diggable")
+        assert len(diggable) > 0
 
-    def test_entities_matching(self):
-        """Test finding entities matching predicate."""
-        grid = TileGrid(10, 10)
-        item = create_item("Key")
-        creature = create_creature("Wolf")
-        grid.add_entity(item, Position(0, 0, 0))
-        grid.add_entity(creature, Position(1, 0, 0))
-
-        creatures = grid.entities_matching(lambda e: "fightable" in e.own_affordances)
-        assert len(creatures) == 1
-        assert creatures[0].name == "Wolf"
+    @pytest.mark.unit
+    def test_get_passable_tiles(self, grid_with_obstacles):
+        """Can get all passable tiles."""
+        passable = grid_with_obstacles.get_passable_tiles()
+        # Total tiles minus rock wall
+        expected = 50 * 50 - 5
+        assert len(passable) == expected
 
 
-class TestGridSerialization:
-    """Test grid serialization."""
+class TestTileGridFillRect:
+    """Tests for fill_rect operation."""
 
-    def test_grid_to_dict(self):
-        """Test serializing grid."""
-        grid = TileGrid(10, 10, 2)
-        grid.set_terrain(5, 5, 0, TerrainType.WATER)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(3, 3, 0))
+    @pytest.mark.unit
+    def test_fill_rect(self, medium_grid):
+        """Can fill rectangular region."""
+        count = medium_grid.fill_rect(5, 5, 10, 10, TerrainType.WATER)
+        assert count == 6 * 6  # 6x6 area
 
-        data = grid.to_dict()
+        for x in range(5, 11):
+            for y in range(5, 11):
+                tile = medium_grid.get_tile(x, y, 0)
+                assert tile.terrain_type == TerrainType.WATER
 
-        assert data["dimensions"]["width"] == 10
-        assert data["dimensions"]["height"] == 10
-        assert data["dimensions"]["depth"] == 2
-        assert len(data["tiles"]) == 2  # Two tiles created
-        assert len(data["entities"]) == 1
+    @pytest.mark.unit
+    def test_fill_rect_reversed_coords(self, medium_grid):
+        """Fill rect works with reversed coordinates."""
+        count = medium_grid.fill_rect(10, 10, 5, 5, TerrainType.ROCK)
+        assert count == 6 * 6
 
-    def test_grid_from_dict(self):
-        """Test deserializing grid."""
-        original = TileGrid(20, 15, 3)
-        original.set_terrain(5, 5, 0, TerrainType.ROCK)
-        entity = create_item("Key")
-        original.add_entity(entity, Position(3, 3, 0))
 
-        data = original.to_dict()
+class TestTileGridSerialization:
+    """Tests for grid serialization."""
+
+    @pytest.mark.unit
+    def test_serialize_grid(self, populated_grid):
+        """Can serialize grid to dict."""
+        data = populated_grid.serialize()
+        assert "dimensions" in data
+        assert "default_terrain" in data
+        assert "tiles" in data
+        assert "entities" in data
+
+    @pytest.mark.unit
+    def test_serialize_dimensions(self, multi_level_grid):
+        """Dimensions are correctly serialized."""
+        data = multi_level_grid.serialize()
+        assert data["dimensions"] == [20, 20, 3]
+
+    @pytest.mark.unit
+    def test_from_dict(self, populated_grid):
+        """Can deserialize grid from dict."""
+        data = populated_grid.serialize()
         restored = TileGrid.from_dict(data)
 
-        assert restored.width == 20
-        assert restored.height == 15
-        assert restored.depth == 3
-        assert restored.get_tile(5, 5, 0).terrain_type == TerrainType.ROCK
-        assert len(list(restored.all_entities())) == 1
+        assert restored.width == populated_grid.width
+        assert restored.height == populated_grid.height
+        assert restored.depth == populated_grid.depth
 
-    def test_clear(self):
-        """Test clearing the grid."""
-        grid = TileGrid(10, 10)
-        grid.get_tile(5, 5, 0)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(3, 3, 0))
+    @pytest.mark.unit
+    def test_grid_roundtrip(self, grid_with_water):
+        """Grid survives serialization roundtrip."""
+        data = grid_with_water.serialize()
+        restored = TileGrid.from_dict(data)
 
-        grid.clear()
+        # Check water tiles are preserved
+        water_tiles = restored.find_tiles_by_terrain(TerrainType.WATER)
+        assert len(water_tiles) == 5 * 5
 
-        assert len(list(grid.all_tiles())) == 0
-        assert len(list(grid.all_entities())) == 0
 
-    def test_get_stats(self):
-        """Test getting grid statistics."""
-        grid = TileGrid(10, 10)
-        grid.get_tile(0, 0, 0)
-        grid.get_tile(1, 1, 0)
-        entity = create_item("Key")
-        grid.add_entity(entity, Position(0, 0, 0))
+class TestTileGridPathfinding:
+    """Tests for pathfinding integration."""
 
-        stats = grid.get_stats()
-        assert stats["tiles_count"] == 2
-        assert stats["entities_count"] == 1
-        assert stats["tiles_created"] == 2
-        assert stats["entities_placed"] == 1
+    @pytest.mark.unit
+    def test_find_path_straight(self, medium_grid):
+        """Can find straight path."""
+        start = medium_grid.get_tile(5, 5, 0)
+        end = medium_grid.get_tile(10, 5, 0)
+        path = medium_grid.find_path(start, end)
+
+        assert path is not None
+        assert path[0] == start
+        assert path[-1] == end
+
+    @pytest.mark.unit
+    def test_find_path_around_obstacle(self, grid_with_obstacles):
+        """Can find path around obstacles."""
+        start = grid_with_obstacles.get_tile(5, 10, 0)
+        end = grid_with_obstacles.get_tile(20, 10, 0)
+        path = grid_with_obstacles.find_path(start, end)
+
+        assert path is not None
+        assert path[0] == start
+        assert path[-1] == end
+        # Path should avoid rock tiles
+        for tile in path:
+            assert tile.terrain_type != TerrainType.ROCK
+
+    @pytest.mark.unit
+    def test_find_path_no_path(self, small_grid, grid_helpers):
+        """Returns None when no path exists."""
+        # Block off the destination completely
+        blocked = grid_helpers.create_path_grid(10, 10, [
+            (4, 4), (5, 4), (6, 4),
+            (4, 5),        (6, 5),
+            (4, 6), (5, 6), (6, 6),
+        ])
+        blocked.get_tile(5, 5, 0)  # Ensure center exists but is surrounded
+
+        start = blocked.get_tile(0, 0, 0)
+        end = blocked.get_tile(5, 5, 0)
+        path = blocked.find_path(start, end)
+
+        assert path is None

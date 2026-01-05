@@ -1,108 +1,64 @@
 """
-Tile class for the grid system.
-
-Each tile represents a single cell in the game world with terrain,
-environmental properties, and contents.
+Tile class representing a single cell in the grid.
 """
 
+from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, Any, TYPE_CHECKING
-import time
+from typing import Optional, Set, List, TYPE_CHECKING
 
-from .terrain import (
-    TerrainType,
-    FluidType,
-    TerrainModifier,
-    get_terrain_properties,
-    TERRAIN_PROPERTIES,
-)
+from .position import Position
+from .terrain import TerrainType, TerrainModifier, FluidType, MODIFIER_DEFAULTS
+from .entity import Entity, Layer, MAX_LAYER_SIZE, conflicts
 
 if TYPE_CHECKING:
-    from .entity import Entity
-
-
-@dataclass(frozen=True)
-class Position:
-    """3D position in the game world."""
-    x: int
-    y: int
-    z: int = 0  # Ground level = 0, up = positive, down = negative
-
-    def __add__(self, other: 'Position') -> 'Position':
-        return Position(self.x + other.x, self.y + other.y, self.z + other.z)
-
-    def __sub__(self, other: 'Position') -> 'Position':
-        return Position(self.x - other.x, self.y - other.y, self.z - other.z)
-
-    def distance_to(self, other: 'Position') -> float:
-        """Calculate Euclidean distance to another position."""
-        dx = self.x - other.x
-        dy = self.y - other.y
-        dz = self.z - other.z
-        return (dx * dx + dy * dy + dz * dz) ** 0.5
-
-    def manhattan_distance(self, other: 'Position') -> int:
-        """Calculate Manhattan distance to another position."""
-        return abs(self.x - other.x) + abs(self.y - other.y) + abs(self.z - other.z)
-
-    def to_tuple(self) -> tuple[int, int, int]:
-        return (self.x, self.y, self.z)
-
-    def to_key(self) -> str:
-        """Get string key for dictionary storage."""
-        return f"{self.x},{self.y},{self.z}"
-
-    @classmethod
-    def from_tuple(cls, t: tuple) -> 'Position':
-        if len(t) == 2:
-            return cls(t[0], t[1], 0)
-        return cls(t[0], t[1], t[2])
-
-    @classmethod
-    def from_key(cls, key: str) -> 'Position':
-        parts = key.split(',')
-        return cls(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
-
-
-# Direction constants
-DIRECTIONS = {
-    "north": Position(0, -1, 0),
-    "south": Position(0, 1, 0),
-    "east": Position(1, 0, 0),
-    "west": Position(-1, 0, 0),
-    "up": Position(0, 0, 1),
-    "down": Position(0, 0, -1),
-    "northeast": Position(1, -1, 0),
-    "northwest": Position(-1, -1, 0),
-    "southeast": Position(1, 1, 0),
-    "southwest": Position(-1, 1, 0),
-}
+    pass
 
 
 @dataclass
 class TileEnvironment:
-    """Environmental state of a tile."""
-    fluid: Optional[FluidType] = None
-    temperature: float = 20.0      # Celsius, -100 to 100
-    sound_level: float = 0.0       # 0.0 (silent) to 1.0 (loud)
-    light_level: float = 0.5       # 0.0 (dark) to 1.0 (bright)
-    moisture: float = 0.0          # 0.0 (dry) to 1.0 (flooded)
+    """
+    Environmental properties of a tile.
+
+    Attributes:
+        fluid: Type of fluid present (None if no fluid)
+        temperature: Temperature scale (-100 to 100)
+        sound_level: Ambient noise level (0.0 to 1.0)
+        light_level: Light level (0.0 to 1.0, 0=dark, 1=bright)
+        moisture: Moisture level (0.0 to 1.0, 0=dry, 1=flooded)
+    """
+    fluid: FluidType = FluidType.NONE
+    temperature: float = 20.0  # Room temperature
+    sound_level: float = 0.0
+    light_level: float = 0.5
+    moisture: float = 0.3
+
+    def __post_init__(self):
+        """Validate environment values."""
+        if not -100.0 <= self.temperature <= 100.0:
+            raise ValueError(f"Temperature must be between -100 and 100, got {self.temperature}")
+        if not 0.0 <= self.sound_level <= 1.0:
+            raise ValueError(f"Sound level must be between 0.0 and 1.0, got {self.sound_level}")
+        if not 0.0 <= self.light_level <= 1.0:
+            raise ValueError(f"Light level must be between 0.0 and 1.0, got {self.light_level}")
+        if not 0.0 <= self.moisture <= 1.0:
+            raise ValueError(f"Moisture must be between 0.0 and 1.0, got {self.moisture}")
 
     def get_temperature_effect(self) -> str:
-        """Get temperature effect category."""
-        if self.temperature < -20:
+        """Get the temperature effect category."""
+        temp = self.temperature
+        if temp < -20:
             return "freezing"
-        elif self.temperature < 0:
+        elif temp < 0:
             return "cold"
-        elif self.temperature < 30:
+        elif temp < 30:
             return "comfortable"
-        elif self.temperature < 50:
+        elif temp < 50:
             return "hot"
         else:
             return "extreme"
 
     def get_moisture_effect(self) -> str:
-        """Get moisture effect category."""
+        """Get the moisture effect category."""
         if self.moisture < 0.2:
             return "dry"
         elif self.moisture < 0.5:
@@ -113,7 +69,7 @@ class TileEnvironment:
             return "flooded"
 
     def get_light_effect(self) -> str:
-        """Get light effect category."""
+        """Get the light effect category."""
         if self.light_level < 0.1:
             return "pitch_black"
         elif self.light_level < 0.3:
@@ -124,264 +80,356 @@ class TileEnvironment:
             return "bright"
 
     def to_dict(self) -> dict:
+        """Serialize to dictionary."""
         return {
-            "fluid": self.fluid.value if self.fluid else None,
+            "fluid": self.fluid.name,
             "temperature": self.temperature,
             "sound_level": self.sound_level,
             "light_level": self.light_level,
-            "moisture": self.moisture,
+            "moisture": self.moisture
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'TileEnvironment':
+    def from_dict(cls, data: dict) -> "TileEnvironment":
+        """Create from dictionary."""
         return cls(
-            fluid=FluidType(data["fluid"]) if data.get("fluid") else None,
+            fluid=FluidType[data.get("fluid", "NONE")],
             temperature=data.get("temperature", 20.0),
             sound_level=data.get("sound_level", 0.0),
             light_level=data.get("light_level", 0.5),
-            moisture=data.get("moisture", 0.0),
+            moisture=data.get("moisture", 0.3)
         )
 
 
 @dataclass
 class Tile:
     """
-    A single tile in the game world.
+    Represents a single tile in the grid.
 
-    Contains terrain info, environmental state, and references to entities.
+    A tile contains terrain information, environmental data,
+    entities, and affordances.
+
+    Attributes:
+        position: (x, y, z) coordinates
+        terrain_type: Type of terrain
+        passable: Whether entities can traverse
+        opaque: Whether it blocks line of sight
+        height: Z-level elevation within tile
+        entities: Objects, creatures, items on the tile
+        features: Permanent terrain features
+        environment: Environmental properties
+        modifiers: Terrain modifiers applied
     """
     position: Position
-
-    # Core properties
-    terrain_type: TerrainType = TerrainType.FLOOR
-    height: float = 0.0  # Elevation within the tile
-
-    # Modifiers that affect terrain properties
-    modifiers: list[TerrainModifier] = field(default_factory=list)
-
-    # Environmental state
+    terrain_type: TerrainType = TerrainType.SOIL
+    passable: Optional[bool] = None  # None means use terrain default
+    opaque: Optional[bool] = None    # None means use terrain default
+    height: float = 0.0
+    entities: List[Entity] = field(default_factory=list)
+    features: List[str] = field(default_factory=list)
     environment: TileEnvironment = field(default_factory=TileEnvironment)
-
-    # Contents
-    entity_ids: list[str] = field(default_factory=list)  # IDs of entities on this tile
-
-    # Feature references (permanent terrain features like walls, doors)
-    feature_ids: list[str] = field(default_factory=list)
-
-    # Custom tile data
-    custom: dict = field(default_factory=dict)
-
-    # Timestamp for last modification
-    last_modified: float = field(default_factory=time.time)
+    modifiers: List[TerrainModifier] = field(default_factory=list)
+    stability: float = 1.0  # 0.0 to 1.0, structural integrity
 
     def __post_init__(self):
-        """Initialize computed properties."""
-        self._cached_affordances: Optional[set[str]] = None
-        self._cached_passable: Optional[bool] = None
-        self._cached_opaque: Optional[bool] = None
-        self._cached_movement_cost: Optional[float] = None
+        """Initialize tile with terrain defaults if not specified."""
+        defaults = self.terrain_type.get_default_properties()
 
-    def _invalidate_cache(self):
-        """Invalidate computed property cache."""
-        self._cached_affordances = None
-        self._cached_passable = None
-        self._cached_opaque = None
-        self._cached_movement_cost = None
-        self.last_modified = time.time()
+        if self.passable is None:
+            self.passable = defaults.get("passable", True)
+        if self.opaque is None:
+            self.opaque = defaults.get("opaque", False)
 
-    @property
-    def passable(self) -> bool:
-        """Check if tile is passable (considering modifiers)."""
-        if self._cached_passable is not None:
-            return self._cached_passable
+    def is_passable(self) -> bool:
+        """Check if tile is currently passable, considering modifiers."""
+        base_passable = self.passable
 
-        # Start with terrain base
-        props = get_terrain_properties(self.terrain_type)
-        result = props.get("passable", True)
-
-        # Apply modifier overrides
+        # Check modifiers
         for modifier in self.modifiers:
-            if modifier.passable_override is not None:
-                result = modifier.passable_override
+            effects = modifier.get_effects()
+            if effects.get("makes_passable"):
+                base_passable = True
 
-        self._cached_passable = result
-        return result
+        # Check environmental effects
+        if self.environment.moisture >= 0.8:  # Flooded
+            # Water tiles when flooded require swimming
+            if self.terrain_type == TerrainType.WATER:
+                return True  # Still passable with swimming
 
-    @property
-    def opaque(self) -> bool:
-        """Check if tile blocks line of sight (considering modifiers)."""
-        if self._cached_opaque is not None:
-            return self._cached_opaque
+        return base_passable
 
-        # Start with terrain base
-        props = get_terrain_properties(self.terrain_type)
-        result = props.get("opaque", False)
+    def is_opaque(self) -> bool:
+        """Check if tile blocks line of sight."""
+        # Glass is transparent even though impassable
+        if self.terrain_type == TerrainType.GLASS:
+            return False
 
-        # Apply modifier overrides
-        for modifier in self.modifiers:
-            if modifier.opaque_override is not None:
-                result = modifier.opaque_override
+        # Check if any opaque entities
+        for entity in self.entities:
+            if entity.opaque:
+                return True
 
-        self._cached_opaque = result
-        return result
+        return self.opaque
 
-    @property
-    def movement_cost(self) -> float:
-        """Get movement cost (considering modifiers)."""
-        if self._cached_movement_cost is not None:
-            return self._cached_movement_cost
+    def get_affordances(self) -> Set[str]:
+        """
+        Get all affordances available on this tile.
 
-        # Start with terrain base
-        props = get_terrain_properties(self.terrain_type)
-        cost = props.get("movement_cost", 1.0)
-
-        # Apply modifier multipliers
-        for modifier in self.modifiers:
-            cost *= modifier.movement_cost_modifier
-
-        # Environmental effects
-        if self.environment.moisture > 0.7:
-            cost *= 1.5  # Harder to move in water
-        if self.environment.light_level < 0.2:
-            cost *= 1.2  # Slower in darkness
-
-        self._cached_movement_cost = cost
-        return cost
-
-    @property
-    def affordances(self) -> list[str]:
-        """Get all affordances (terrain + modifiers + environment)."""
-        if self._cached_affordances is not None:
-            return list(self._cached_affordances)
-
+        Combines terrain affordances with entity affordances
+        and applies environmental modifiers.
+        """
         # Start with terrain affordances
-        props = get_terrain_properties(self.terrain_type)
-        result = set(props.get("affordances", []))
+        affordances = self.terrain_type.get_default_affordances()
 
-        # Apply modifiers
+        # Apply modifier affordances
         for modifier in self.modifiers:
-            result = modifier.apply_to_affordances(result)
+            effects = MODIFIER_DEFAULTS.get(modifier.type, {})
+            affordances.update(effects.get("adds_affordances", set()))
+            affordances -= effects.get("removes_affordances", set())
 
-        # Environmental effects on affordances
+        # Apply environmental modifications
         if self.environment.moisture > 0.7:
-            result.add("slippery")
-            result.discard("flammable")
-        if self.environment.temperature > 50:
-            result.add("dangerous")
-        if self.environment.temperature < -10:
-            result.add("cold")
-            result.add("slippery")
+            affordances.add("slippery")
+            affordances.discard("flammable")
+
+        if self.environment.temperature < -20:
+            affordances.add("freezing")
+            if self.terrain_type == TerrainType.WATER:
+                affordances.add("walkable")
+                affordances.discard("drownable")
+
         if self.environment.light_level < 0.1:
-            result.add("dark")
+            affordances.add("dark")
+            affordances.add("hideable")
 
-        self._cached_affordances = result
-        return list(result)
+        # Add entity affordances
+        for entity in self.entities:
+            affordances.update(entity.get_affordances())
+            # Remove blocked affordances
+            for blocked in entity.blocked_affordances:
+                affordances.discard(blocked)
 
-    def has_affordance(self, affordance: str) -> bool:
-        """Check if tile has a specific affordance."""
-        return affordance in self.affordances
+        return affordances
+
+    def get_entity_affordances(self, entity: Entity) -> Set[str]:
+        """
+        Calculate effective affordances for a specific entity on this tile.
+
+        Args:
+            entity: The entity to calculate affordances for
+
+        Returns:
+            Set of effective affordances
+        """
+        # Start with tile affordances
+        affordances = self.get_affordances()
+
+        # Add entity's own affordances
+        affordances.update(entity.own_affordances)
+
+        # Remove blocked affordances
+        affordances -= entity.blocked_affordances
+
+        return affordances
+
+    def can_place_entity(self, entity: Entity) -> bool:
+        """
+        Check if an entity can be placed on this tile.
+
+        Args:
+            entity: Entity to place
+
+        Returns:
+            True if entity can be placed
+        """
+        # Check tile passability requirement
+        if entity.requires_passable and not self.is_passable():
+            return False
+
+        # Check layer capacity
+        same_layer_entities = [e for e in self.entities if e.layer == entity.layer]
+        current_size = sum(e.size for e in same_layer_entities)
+
+        if current_size + entity.size > MAX_LAYER_SIZE:
+            return False
+
+        # Check for conflicts with existing entities
+        for existing in self.entities:
+            if conflicts(existing, entity):
+                return False
+
+        return True
+
+    def add_entity(self, entity: Entity) -> bool:
+        """
+        Add an entity to this tile.
+
+        Args:
+            entity: Entity to add
+
+        Returns:
+            True if entity was added successfully
+        """
+        if not self.can_place_entity(entity):
+            return False
+
+        entity.position = self.position
+        self.entities.append(entity)
+        return True
+
+    def remove_entity(self, entity: Entity) -> bool:
+        """
+        Remove an entity from this tile.
+
+        Args:
+            entity: Entity to remove
+
+        Returns:
+            True if entity was removed
+        """
+        if entity in self.entities:
+            self.entities.remove(entity)
+            entity.position = None
+            return True
+        return False
+
+    def get_entity_by_id(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by its ID."""
+        for entity in self.entities:
+            if entity.id == entity_id:
+                return entity
+        return None
+
+    def get_entities_by_layer(self, layer: Layer) -> List[Entity]:
+        """Get all entities on a specific layer."""
+        return [e for e in self.entities if e.layer == layer]
+
+    def get_entities_by_type(self, entity_type) -> List[Entity]:
+        """Get all entities of a specific type."""
+        return [e for e in self.entities if e.entity_type == entity_type]
 
     def add_modifier(self, modifier: TerrainModifier) -> None:
         """Add a terrain modifier."""
+        # Remove existing modifier of same type
+        self.modifiers = [m for m in self.modifiers if m.type != modifier.type]
         self.modifiers.append(modifier)
-        self._invalidate_cache()
+
+        # Apply stability effects
+        effects = modifier.get_effects()
+        if "stability_reduction" in effects:
+            self.stability = max(0.0, self.stability - effects["stability_reduction"])
 
     def remove_modifier(self, modifier_type: str) -> bool:
-        """Remove a modifier by type. Returns True if removed."""
-        for i, mod in enumerate(self.modifiers):
-            if mod.type == modifier_type:
-                self.modifiers.pop(i)
-                self._invalidate_cache()
-                return True
-        return False
+        """Remove a modifier by type."""
+        original_len = len(self.modifiers)
+        self.modifiers = [m for m in self.modifiers if m.type != modifier_type]
+        return len(self.modifiers) < original_len
 
     def has_modifier(self, modifier_type: str) -> bool:
         """Check if tile has a specific modifier."""
-        return any(m.type == modifier_type for m in self.modifiers)
+        return any(m.type for m in self.modifiers if m.type == modifier_type)
 
-    def add_entity(self, entity_id: str) -> None:
-        """Add an entity to this tile."""
-        if entity_id not in self.entity_ids:
-            self.entity_ids.append(entity_id)
-            self._invalidate_cache()
+    def get_movement_cost(self, from_tile: Optional["Tile"] = None, entity: Optional[Entity] = None) -> float:
+        """
+        Calculate movement cost to enter this tile.
 
-    def remove_entity(self, entity_id: str) -> bool:
-        """Remove an entity from this tile. Returns True if removed."""
-        if entity_id in self.entity_ids:
-            self.entity_ids.remove(entity_id)
-            self._invalidate_cache()
-            return True
-        return False
+        Args:
+            from_tile: The tile being moved from (for height difference)
+            entity: The entity moving (for entity-specific modifiers)
 
-    def has_entity(self, entity_id: str) -> bool:
-        """Check if entity is on this tile."""
-        return entity_id in self.entity_ids
+        Returns:
+            Movement cost (1.0 is standard, higher is slower, 999+ is impassable)
+        """
+        from .terrain import TERRAIN_COST
 
-    def add_feature(self, feature_id: str) -> None:
-        """Add a permanent feature to this tile."""
-        if feature_id not in self.feature_ids:
-            self.feature_ids.append(feature_id)
-            self._invalidate_cache()
+        # Base cost from terrain
+        base_cost = TERRAIN_COST.get(self.terrain_type, 1.0)
 
-    def remove_feature(self, feature_id: str) -> bool:
-        """Remove a feature from this tile."""
-        if feature_id in self.feature_ids:
-            self.feature_ids.remove(feature_id)
-            self._invalidate_cache()
-            return True
-        return False
+        if base_cost >= 999.0:
+            return base_cost  # Impassable
 
-    def is_empty(self) -> bool:
-        """Check if tile has no entities or features."""
-        return len(self.entity_ids) == 0 and len(self.feature_ids) == 0
+        # Height difference cost
+        if from_tile:
+            height_diff = abs(self.height - from_tile.height)
+            base_cost += height_diff * 0.5
 
-    def set_terrain(self, terrain_type: TerrainType) -> None:
-        """Change terrain type."""
-        self.terrain_type = terrain_type
-        self._invalidate_cache()
+        # Environmental modifiers
+        if self.environment.moisture > 0.7:
+            base_cost *= 1.5
 
-    def set_environment(self, **kwargs) -> None:
-        """Update environmental properties."""
-        for key, value in kwargs.items():
-            if hasattr(self.environment, key):
-                setattr(self.environment, key, value)
-        self._invalidate_cache()
+        if self.environment.light_level < 0.2:
+            base_cost *= 1.2
 
-    def to_dict(self) -> dict:
+        # Terrain modifier effects
+        for modifier in self.modifiers:
+            effects = modifier.get_effects()
+            if "movement_cost_modifier" in effects:
+                base_cost *= effects["movement_cost_modifier"]
+
+        # Entity-specific modifiers
+        if entity and entity.movement_modifiers:
+            terrain_mod = entity.movement_modifiers.get(self.terrain_type.name, 1.0)
+            base_cost *= terrain_mod
+
+        return base_cost
+
+    def serialize(self) -> dict:
         """Serialize tile to dictionary."""
         return {
             "position": self.position.to_tuple(),
-            "terrain_type": self.terrain_type.value,
+            "terrain": self.terrain_type.name,
+            "passable": self.passable,
+            "opaque": self.opaque,
             "height": self.height,
+            "stability": self.stability,
             "modifiers": [m.to_dict() for m in self.modifiers],
             "environment": self.environment.to_dict(),
-            "entity_ids": self.entity_ids.copy(),
-            "feature_ids": self.feature_ids.copy(),
-            "custom": self.custom.copy(),
+            "entities": [e.id for e in self.entities],
+            "features": self.features,
+            "affordances": list(self.get_affordances())
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'Tile':
-        """Deserialize tile from dictionary."""
+    def from_dict(cls, data: dict, entities_map: Optional[dict] = None) -> "Tile":
+        """
+        Create tile from dictionary.
+
+        Args:
+            data: Serialized tile data
+            entities_map: Optional mapping of entity IDs to Entity objects
+        """
+        position = Position.from_tuple(tuple(data["position"]))
+        terrain = TerrainType[data["terrain"]]
+        environment = TileEnvironment.from_dict(data.get("environment", {}))
+        modifiers = [TerrainModifier.from_dict(m) for m in data.get("modifiers", [])]
+
         tile = cls(
-            position=Position.from_tuple(data["position"]),
-            terrain_type=TerrainType(data["terrain_type"]),
+            position=position,
+            terrain_type=terrain,
+            passable=data.get("passable"),
+            opaque=data.get("opaque"),
             height=data.get("height", 0.0),
-            environment=TileEnvironment.from_dict(data.get("environment", {})),
-            entity_ids=data.get("entity_ids", []),
-            feature_ids=data.get("feature_ids", []),
-            custom=data.get("custom", {}),
+            environment=environment,
+            modifiers=modifiers,
+            features=data.get("features", []),
+            stability=data.get("stability", 1.0)
         )
-        tile.modifiers = [
-            TerrainModifier.from_dict(m) for m in data.get("modifiers", [])
-        ]
+
+        # Add entities if mapping provided
+        if entities_map:
+            for entity_id in data.get("entities", []):
+                if entity_id in entities_map:
+                    tile.entities.append(entities_map[entity_id])
+
         return tile
 
-    def clone(self, new_position: Optional[Position] = None) -> 'Tile':
-        """Create a copy of this tile."""
-        data = self.to_dict()
-        if new_position:
-            data["position"] = new_position.to_tuple()
-        data["entity_ids"] = []  # Don't copy entities
-        data["feature_ids"] = []  # Don't copy features
-        return Tile.from_dict(data)
+    def __eq__(self, other):
+        if not isinstance(other, Tile):
+            return False
+        return self.position == other.position
+
+    def __hash__(self):
+        return hash(self.position)
+
+    def __repr__(self):
+        return f"Tile({self.position}, {self.terrain_type.name})"
