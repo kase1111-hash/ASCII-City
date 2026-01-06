@@ -53,6 +53,7 @@ class EmotionalState(Enum):
     NERVOUS = "nervous"
     TIRED = "tired"
     EXCITED = "excited"
+    SURPRISED = "surprised"
 
 
 @dataclass
@@ -643,6 +644,31 @@ class VoiceModulator:
             emotion_strength=profile.emotion_strength,
         )
 
+    def apply_whisper(self, profile: VoiceProfile, intensity: float = 0.5) -> VoiceProfile:
+        """Apply whisper effect to a voice profile.
+
+        Args:
+            profile: Voice profile to modify
+            intensity: How strongly to apply the whisper effect (0.0 to 1.0)
+
+        Returns:
+            New VoiceProfile with whisper characteristics
+        """
+        intensity = max(0.0, min(1.0, intensity))
+
+        return VoiceProfile(
+            voice_id=profile.voice_id,
+            base_voice=profile.base_voice,
+            name=profile.name,
+            pitch=profile.pitch + (0.1 * intensity),  # Slightly higher pitch
+            speed=profile.speed - (0.2 * intensity),  # Slower
+            roughness=max(0.0, profile.roughness - (0.3 * intensity)),  # Less rough
+            breathiness=min(1.0, profile.breathiness + (0.6 * intensity)),  # Much more breathy
+            resonance=profile.resonance - (0.2 * intensity),  # Less resonant
+            age_modifier=profile.age_modifier,
+            emotion_strength=profile.emotion_strength * (1.0 - 0.3 * intensity),  # Reduced emotion
+        )
+
 
 class VoiceLibrary:
     """
@@ -735,8 +761,16 @@ class VoiceLibrary:
         """Get a voice profile by ID."""
         return self._profiles.get(voice_id) or self.get_preset(voice_id)
 
-    def generate_random_profile(self, voice_id: Optional[str] = None) -> VoiceProfile:
-        """Generate a random voice profile."""
+    def generate_random_profile(self, voice_id: Optional[str] = None, seed: Optional[int] = None) -> VoiceProfile:
+        """Generate a random voice profile.
+
+        Args:
+            voice_id: Optional ID for the voice profile
+            seed: Optional random seed for reproducibility
+        """
+        if seed is not None:
+            random.seed(seed)
+
         vid = voice_id or f"random_{random.randint(1000, 9999)}"
 
         base_voices = ['male_1', 'male_2', 'female_1', 'female_2', 'default']

@@ -266,7 +266,11 @@ class AudioEffect(ABC):
 class PitchShiftEffect(AudioEffect):
     """Pitch shifting effect."""
 
-    def __init__(self, params: Optional[PitchShiftParams] = None):
+    def __init__(self, params: Optional[PitchShiftParams] = None, **kwargs):
+        # Allow direct keyword arguments for convenience
+        if params is None and kwargs:
+            params = PitchShiftParams(**{k: v for k, v in kwargs.items()
+                                         if hasattr(PitchShiftParams, k) or k in ['enabled', 'mix', 'semitones', 'preserve_formants']})
         super().__init__(params or PitchShiftParams())
 
     @property
@@ -328,7 +332,11 @@ class PitchShiftEffect(AudioEffect):
 class DistortionEffect(AudioEffect):
     """Distortion/overdrive effect."""
 
-    def __init__(self, params: Optional[DistortionParams] = None):
+    def __init__(self, params: Optional[DistortionParams] = None, **kwargs):
+        # Allow direct keyword arguments for convenience
+        if params is None and kwargs:
+            params = DistortionParams(**{k: v for k, v in kwargs.items()
+                                          if hasattr(DistortionParams, k) or k in ['enabled', 'mix', 'drive', 'tone', 'type']})
         super().__init__(params or DistortionParams())
 
     @property
@@ -391,7 +399,11 @@ class DistortionEffect(AudioEffect):
 class ReverbEffect(AudioEffect):
     """Reverb effect using simple comb/allpass filters."""
 
-    def __init__(self, params: Optional[ReverbParams] = None):
+    def __init__(self, params: Optional[ReverbParams] = None, **kwargs):
+        # Allow direct keyword arguments for convenience
+        if params is None and kwargs:
+            params = ReverbParams(**{k: v for k, v in kwargs.items()
+                                      if hasattr(ReverbParams, k) or k in ['enabled', 'mix', 'room_size', 'damping', 'wet_level', 'dry_level', 'width', 'early_reflections']})
         super().__init__(params or ReverbParams())
 
     @property
@@ -721,6 +733,47 @@ class EffectsChain:
                 for e in self._effects
             ]
         }
+
+    def load_preset(self, preset_name: str) -> bool:
+        """Load a preset effect chain by name.
+
+        Args:
+            preset_name: Name of the preset to load
+
+        Returns:
+            True if preset was loaded successfully, False otherwise
+        """
+        preset = EFFECT_PRESETS.get(preset_name)
+        if not preset:
+            return False
+
+        self.clear()
+
+        for effect_config in preset:
+            effect_type = effect_config['type']
+            params = effect_config.get('params')
+
+            if effect_type == EffectType.PITCH_SHIFT:
+                self.add_effect(PitchShiftEffect(params))
+            elif effect_type == EffectType.DISTORTION:
+                self.add_effect(DistortionEffect(params))
+            elif effect_type == EffectType.REVERB:
+                self.add_effect(ReverbEffect(params))
+            elif effect_type == EffectType.DELAY:
+                self.add_effect(DelayEffect(params))
+            elif effect_type == EffectType.FILTER:
+                self.add_effect(FilterEffect(params))
+            elif effect_type == EffectType.TELEPHONE:
+                self.add_effect(TelephoneEffect(params))
+            elif effect_type == EffectType.RADIO:
+                self.add_effect(RadioEffect(params))
+
+        return True
+
+    @staticmethod
+    def get_preset_names() -> List[str]:
+        """Get list of available preset names."""
+        return list(EFFECT_PRESETS.keys())
 
 
 # Preset effect chains
