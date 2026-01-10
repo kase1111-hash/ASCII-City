@@ -1,33 +1,33 @@
 # ShadowEngine
 
-**An Emergent ASCII World Engine**
+**An Emergent ASCII World Engine — LLM-Powered Game Simulation for Natural Language Gaming**
 
 ---
 
 ## What Is This?
 
-ShadowEngine is a fully reactive, LLM-driven ASCII universe where every object, creature, and environmental element functions as an interactive **behavioral circuit** with emergent properties.
+ShadowEngine is an **AI-driven ASCII game engine** and fully reactive, **LLM-powered game** universe where every object, creature, and environmental element functions as an interactive **behavioral circuit** with emergent properties. Built as a **procedural ASCII world** generator, it enables **natural language game interaction** and **emergent storytelling** through AI simulation.
 
-Instead of scripted stories, it simulates **world state**, **character psychology**, **environmental physics**, and **player creativity**—allowing stories to emerge naturally. Every button, bug, or boulder becomes a potential story seed in a fully reactive sandbox where player creativity literally shapes the game world.
+Instead of scripted stories, this **text-based world simulation** engine simulates **world state**, **character psychology**, **environmental physics**, and **player creativity**—allowing **narrative emergence** and **player-driven storytelling** to unfold naturally. Every button, bug, or boulder becomes a potential story seed in a fully reactive sandbox where player creativity literally shapes the game world. Think of it as an **AI dungeon crawler** meets **prose-first game development**.
 
 ## Key Features
 
-- **Behavioral Circuits** - Universal interaction model for all entities
-- **LLM-Driven Simulation** - Dynamic responses, not pre-scripted outcomes
-- **Memory & Rumor Networks** - NPCs remember, share information, evolve
-- **ASCII Art Studio** - Player-created art becomes world content
-- **Sound & Vision Systems** - Realistic propagation for emergent gameplay
-- **Threat Proximity** - Real-time STT reactions enable urgent actions
+- **Behavioral Circuits** - Universal interaction model enabling **emergent AI gameplay**
+- **LLM-Driven Simulation** - **AI game simulation** with dynamic responses, not pre-scripted outcomes
+- **Memory & Rumor Networks** - **Psychological AI architecture** where NPCs remember, share information, evolve
+- **ASCII Art Studio** - Player-created art becomes world content through **human-AI collaboration**
+- **Sound & Vision Systems** - Realistic propagation for **procedural game** emergence
+- **Threat Proximity** - Real-time STT reactions enable urgent **natural language** actions
 - **Zoom Inspection** - Progressive detail reveal with tools
-- **Atmospheric Simulation** - Weather, time, and pressure affect everything
+- **Atmospheric Simulation** - Weather, time, and pressure affect everything in this **living world simulation**
 
 ## Core Philosophy
 
-**No Pre-Programming**: Player input never follows rigid scripts. Even trivial actions (poke rock, kick bug) have dynamic consequences driven by LLM interpretation.
+**No Pre-Programming**: Player input never follows rigid scripts. This **language-native game architecture** means even trivial actions (poke rock, kick bug) have dynamic consequences driven by **LLM-powered interpretation**.
 
-**Living World**: All entities exist as interactive circuits, not static ASCII. Every interaction ripples through the simulation.
+**Living World**: All entities exist as interactive circuits with **AI emotional continuity**, not static ASCII. Every interaction ripples through the simulation like a **semantic game engine**.
 
-**Player as Creator**: Player-made ASCII art literally shapes the game world through iterative feedback loops.
+**Player as Creator**: Player-made ASCII art literally shapes the game world through iterative feedback loops—true **cognitive work attribution** for creative contributions.
 
 ---
 
@@ -89,10 +89,11 @@ See [ROADMAP.md](docs/ROADMAP.md) for development phases.
 
 ## Technical
 
-- **Language**: Python (standard library for core, LLM API for brain)
-- **Interface**: Terminal / CMD / Shell (STT optional)
-- **Save System**: JSON memory snapshots
-- **Deterministic**: Seeded generation for replay
+- **Language**: Python (standard library for core, **LLM API** for brain)
+- **Interface**: Terminal / CMD / Shell (STT optional for **voice-controlled gaming**)
+- **Save System**: JSON memory snapshots with **cognitive artifact storage**
+- **Deterministic**: **Procedural generation** with seeded replay capability
+- **Architecture**: **Agent orchestration framework** for NPC coordination
 - **Tests**: 2631 tests passing
 
 ---
@@ -125,8 +126,39 @@ that wasn't part of the original installation...
 
 > *The world remembers. The world reacts. The world is yours to shape.*
 
-ShadowEngine is not about replacing writers. It's about building worlds that remember—where every lie persists, every storm matters, and every ending feels inevitable in hindsight. And now, where every piece of player creativity becomes part of the living world.
+ShadowEngine is not about replacing writers. It's about building **AI-powered interactive fiction** and worlds that remember—where every lie persists, every storm matters, and every ending feels inevitable in hindsight. This is **emergent narrative design** at its core: where every piece of player creativity becomes part of the living world through **intent preservation** and **process legibility**.
 
 ---
 
-*Built for terminals. Designed for emergence.*
+## Part of the Game Development Ecosystem
+
+ShadowEngine connects to a broader ecosystem of **AI-driven games** and **natural language programming** projects:
+
+### 🎮 Related Game Projects
+
+| Repository | Description |
+|------------|-------------|
+| [Shredsquatch](https://github.com/kase1111-hash/Shredsquatch) | 3D first-person snowboarding infinite runner — SkiFree spiritual successor |
+| [Midnight-pulse](https://github.com/kase1111-hash/Midnight-pulse) | Procedurally generated synthwave night driving experience |
+| [Long-Home](https://github.com/kase1111-hash/Long-Home) | Atmospheric narrative Godot game |
+
+### 🤖 Agent-OS Ecosystem
+
+| Repository | Description |
+|------------|-------------|
+| [Agent-OS](https://github.com/kase1111-hash/Agent-OS) | Natural language operating system for AI agents (NLOS) |
+| [synth-mind](https://github.com/kase1111-hash/synth-mind) | NLOS-based agent with psychological modules for emergent AI personality |
+| [memory-vault](https://github.com/kase1111-hash/memory-vault) | Sovereign, owner-controlled storage for cognitive artifacts |
+| [boundary-daemon](https://github.com/kase1111-hash/boundary-daemon-) | Trust enforcement layer defining AI cognition boundaries |
+
+### 🔗 NatLangChain Ecosystem
+
+| Repository | Description |
+|------------|-------------|
+| [NatLangChain](https://github.com/kase1111-hash/NatLangChain) | Prose-first, intent-native blockchain for human-readable smart contracts |
+| [IntentLog](https://github.com/kase1111-hash/IntentLog) | Git for human reasoning — tracks "why" changes happen via prose commits |
+| [mediator-node](https://github.com/kase1111-hash/mediator-node) | LLM mediation layer for semantic matching and negotiation |
+
+---
+
+*Built for terminals. Designed for emergence. Powered by natural language.*
