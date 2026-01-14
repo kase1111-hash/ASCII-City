@@ -3,7 +3,7 @@ Hotspot System - Interactive elements in scenes.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable
+from typing import Optional
 from enum import Enum
 
 

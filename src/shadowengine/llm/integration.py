@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .client import LLMClient, LLMResponse, LLMConfig, create_llm_client
+from .client import LLMClient, LLMConfig, create_llm_client
 from .prompts import CharacterPrompt, NarrativePrompt, BehaviorPrompt
 
 

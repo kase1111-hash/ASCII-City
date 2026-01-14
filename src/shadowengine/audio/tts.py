@@ -6,7 +6,7 @@ Coqui TTS, Piper, and mock engine for testing.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, List, Any, Callable
 import time
@@ -137,23 +137,19 @@ class TTSEngine(ABC):
     @abstractmethod
     def initialize(self) -> bool:
         """Initialize the TTS engine."""
-        pass
 
     @abstractmethod
     def synthesize(self, text: str, voice_id: Optional[str] = None,
                    speed: float = 1.0, pitch: float = 1.0) -> TTSResult:
         """Synthesize speech from text."""
-        pass
 
     @abstractmethod
     def get_available_voices(self) -> List[str]:
         """Get list of available voice IDs."""
-        pass
 
     @abstractmethod
     def shutdown(self) -> None:
         """Shutdown the TTS engine."""
-        pass
 
     def on_result(self, callback: Callable[[TTSResult], None]) -> None:
         """Register a callback for synthesis results."""

@@ -4,10 +4,8 @@ Specialized circuit types: Mechanical, Biological, Environmental.
 Each type has unique properties and default behaviors.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 import random
-import time
 
 from .circuit import BehaviorCircuit, CircuitType, CircuitState
 from .signals import SignalType, InputSignal, OutputSignal
@@ -340,7 +338,7 @@ class BiologicalCircuit(BehaviorCircuit):
         self.biological.update_from_signal(signal.type, signal.strength)
 
         # Get dominant drive
-        drive = self.biological.get_dominant_drive()
+        self.biological.get_dominant_drive()
 
         # React based on drive and signal
         if signal.type == SignalType.PROXIMITY:

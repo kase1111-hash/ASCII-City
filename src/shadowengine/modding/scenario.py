@@ -7,7 +7,7 @@ and actions that can be loaded from files or created programmatically.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Any, Set, Callable, Union
+from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 import json
 

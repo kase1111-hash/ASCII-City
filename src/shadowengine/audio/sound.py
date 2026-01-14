@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional, List, Tuple
 import random
 import math
 import struct
-import hashlib
 
 from .tts_engine import AudioData, AudioFormat
 
@@ -673,7 +672,7 @@ class SoundMixer:
 
             # Get instance audio (simplified - assumes pre-generated)
             if instance.sound._audio_data:
-                audio = instance.sound._audio_data
+                instance.sound._audio_data
                 # Mix in at current position...
                 # (Full implementation would be more complex)
 

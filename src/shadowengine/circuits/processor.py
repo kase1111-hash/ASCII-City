@@ -6,11 +6,11 @@ for emergent behavioral responses.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 from enum import Enum
 import time
 
-from .signals import Signal, SignalType, InputSignal, OutputSignal
+from .signals import SignalType, InputSignal, OutputSignal
 from .circuit import BehaviorCircuit, CircuitType
 
 
@@ -242,7 +242,7 @@ class CircuitProcessor:
             List of processing results from all affected circuits
         """
         results = []
-        broadcast_radius = radius or getattr(signal, 'radius', float('inf'))
+        radius or getattr(signal, 'radius', float('inf'))
 
         for circuit_id, circuit in self.circuits.items():
             # Skip circuits that don't respond to this signal type
@@ -345,7 +345,7 @@ class CircuitProcessor:
         parts = [f"The {circuit.name} {action}."]
 
         if outputs:
-            output_types = [o.type.value for o in outputs]
+            [o.type.value for o in outputs]
             if SignalType.SOUND in [o.type for o in outputs]:
                 parts.append("A sound echoes.")
             if SignalType.COLLAPSE in [o.type for o in outputs]:

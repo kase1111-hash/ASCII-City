@@ -5,12 +5,12 @@ Static art for non-interactive visual elements.
 from __future__ import annotations
 from enum import Enum, auto
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 import uuid
 
 from .art import ASCIIArt, ArtCategory
-from .tags import ArtTags, ObjectType, Size, Placement, InteractionType
+from .tags import ArtTags, ObjectType, Size, Placement
 
 
 class RenderLayer(Enum):

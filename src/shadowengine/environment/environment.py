@@ -10,7 +10,7 @@ Provides unified environmental state for the game:
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Any
 
-from .time import TimeSystem, TimePeriod, TimeEvent
+from .time import TimeSystem, TimeEvent
 from .weather import WeatherSystem, WeatherType, WeatherEffect
 
 

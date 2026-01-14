@@ -8,7 +8,7 @@ Manages how NPCs relate to and interact with each other:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+from typing import Optional
 from enum import Enum, auto
 import random
 

@@ -6,7 +6,7 @@ other NPCs. This is the bridge between what NPCs believe and how
 they act.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Any
 from enum import Enum
 

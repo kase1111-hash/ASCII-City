@@ -12,9 +12,8 @@ from datetime import datetime
 import uuid
 import time
 import threading
-import queue
 
-from .stt import STTEngine, STTResult, STTStatus
+from .stt import STTEngine, STTResult
 from .intent import IntentParser, Intent, IntentType, NLUResult
 from .commands import VoiceVocabulary, CommandMatcher
 

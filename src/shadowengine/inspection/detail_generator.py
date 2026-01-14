@@ -7,7 +7,7 @@ to create coherent, surprising discoveries.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from enum import Enum
 import random
 import hashlib
@@ -466,7 +466,7 @@ class DetailGenerator:
             "fabric": ['"', "'", ","],
         }
 
-        chars = detail_chars.get(material, [".", "'", "`"])
+        detail_chars.get(material, [".", "'", "`"])
 
         # Simple enhancement: add detail characters
         if zoom_level >= 2:

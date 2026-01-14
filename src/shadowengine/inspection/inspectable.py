@@ -6,7 +6,7 @@ revealed as the player zooms in closer.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 import uuid
 
 from .zoom_level import ZoomLevel, ZoomConstraints

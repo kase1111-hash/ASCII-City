@@ -9,8 +9,8 @@ Provides:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable
-from enum import Enum, auto
+from typing import Optional
+from enum import Enum
 
 
 class MoralShade(Enum):

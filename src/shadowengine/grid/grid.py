@@ -4,11 +4,11 @@ TileGrid class - the main grid container and spatial query system.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Iterator, Callable, Set, Dict
+from typing import Optional, List, Iterator, Callable, Dict
 import math
 
 from .position import Position
-from .tile import Tile, TileEnvironment
+from .tile import Tile
 from .terrain import TerrainType
 from .entity import Entity
 from .events import TileEventManager, TileEvent, TileEventType

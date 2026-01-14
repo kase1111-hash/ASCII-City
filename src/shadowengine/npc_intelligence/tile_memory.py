@@ -7,8 +7,7 @@ behavior and atmosphere when they visit.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
-import uuid
+from typing import Optional
 
 
 @dataclass

@@ -7,7 +7,7 @@ Input signals trigger circuit evaluation, output signals affect the world.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional
 import time
 
 

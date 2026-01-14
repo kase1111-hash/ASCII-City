@@ -161,13 +161,13 @@ def on_tile_entered(event: TileEvent) -> None:
     # Check for triggers
     if "triggerable" in tile.get_affordances():
         # Emit triggered event
-        trigger_event = TileEvent(
+        _trigger_event = TileEvent(
             event_type=TileEventType.TRIGGERED,
             tile=tile,
             cause=entity,
             data={"trigger_type": "pressure_plate"}
         )
-        # This would be emitted through the grid's event manager
+        # TODO: Emit through grid's event manager
 
     # Notify entities on tile about proximity
     for other_entity in tile.entities:
@@ -208,4 +208,3 @@ def on_tile_flooded(event: TileEvent) -> None:
 
     # Add slippery affordance (already handled in get_affordances)
     # Extinguish fires (remove flammable entities)
-    pass

@@ -4,22 +4,20 @@ Main Studio interface for ASCII art creation.
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 from enum import Enum, auto
-import uuid
 
-from .art import ASCIIArt, ArtCategory
-from .static_art import StaticArt, RenderLayer, TileCoverage, STATIC_ART_TEMPLATES
-from .entity import DynamicEntity, EntityState, ENTITY_TEMPLATES
+from .art import ASCIIArt
+from .static_art import StaticArt, STATIC_ART_TEMPLATES
+from .entity import DynamicEntity, ENTITY_TEMPLATES
 from .tags import (
     ArtTags, ObjectType, Size, Placement,
     InteractionType, EnvironmentType
 )
 from .personality import PersonalityTemplate, PERSONALITY_TEMPLATES
-from .animation import Animation, AnimationFrame, AnimationTrigger
 from .asset_pool import AssetPool
-from .gallery import Gallery, GalleryEntry, ContentRating
+from .gallery import Gallery, GalleryEntry
 from .usage_stats import UsageStats
 
 

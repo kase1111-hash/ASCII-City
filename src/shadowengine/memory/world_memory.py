@@ -6,9 +6,8 @@ of who witnessed it or what anyone believes.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from enum import Enum
-import json
 
 
 class EventType(Enum):

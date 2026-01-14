@@ -7,13 +7,10 @@ and rumors.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from enum import Enum
-import random
 import uuid
 
-from .npc_memory import NPCMemory
-from .rumor import Rumor
 
 
 class RelationType(Enum):

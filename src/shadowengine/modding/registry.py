@@ -8,10 +8,9 @@ scenarios, and custom content.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Any, Set, Callable
+from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 import json
-import os
 
 
 class ModType(Enum):
@@ -29,12 +28,10 @@ class ModType(Enum):
 
 class ModLoadError(Exception):
     """Error loading a mod."""
-    pass
 
 
 class ModValidationError(Exception):
     """Error validating mod content."""
-    pass
 
 
 @dataclass
@@ -241,7 +238,7 @@ class ModRegistry:
         if mod_id not in self._mods:
             return False
 
-        mod_info = self._mods[mod_id]
+        self._mods[mod_id]
 
         # Check if other mods depend on this
         for other_mod in self._mods.values():

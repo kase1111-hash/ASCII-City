@@ -7,9 +7,9 @@ Provides unified interface for language model backends.
 import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Callable
+from typing import Optional
 import urllib.request
 import urllib.error
 
@@ -76,12 +76,10 @@ class LLMClient(ABC):
     @abstractmethod
     def generate(self, prompt: str, system: Optional[str] = None) -> LLMResponse:
         """Generate a response from the LLM."""
-        pass
 
     @abstractmethod
     def check_availability(self) -> bool:
         """Check if the LLM backend is available."""
-        pass
 
     @property
     def is_available(self) -> bool:
@@ -212,7 +210,7 @@ class OllamaClient(LLMClient):
                     latency_ms=latency
                 )
 
-        except Exception as e:
+        except Exception:
             # Fall back to generate endpoint
             return super().chat(messages)
 

@@ -7,7 +7,7 @@ theme packs, archetypes, scenarios, and custom content.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Any, Set, Callable, Union
+from typing import Dict, List, Any, Set
 from pathlib import Path
 import json
 import re
@@ -451,7 +451,7 @@ class ModValidator:
         # Collect all IDs for cross-referencing
         char_ids = {c.id for c in scenario.characters}
         loc_ids = {l.id for l in scenario.locations}
-        event_ids = {e.id for e in scenario.events}
+        {e.id for e in scenario.events}
 
         # Validate conflict
         if scenario.conflict:

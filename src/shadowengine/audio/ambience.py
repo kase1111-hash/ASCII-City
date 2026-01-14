@@ -7,11 +7,11 @@ game state, weather, time, and tension.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 import random
 import math
 
-from .sound import SoundGenerator, SoundCategory, SoundProperties, SoundEffect, SoundTrigger
+from .sound import SoundGenerator
 from .tts_engine import AudioData, AudioFormat
 
 

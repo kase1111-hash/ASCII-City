@@ -7,8 +7,6 @@ what has been discovered, and inspection history.
 
 from dataclasses import dataclass, field
 from typing import Optional, Any
-from datetime import datetime
-import uuid
 
 from .zoom_level import ZoomLevel
 

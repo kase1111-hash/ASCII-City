@@ -9,7 +9,7 @@ The Butler did it, motivated by gambling debts.
 
 from ..game import Game
 from ..character import Character, Archetype
-from ..narrative import NarrativeSpine, SpineGenerator, ConflictType, TrueResolution, Revelation
+from ..narrative import NarrativeSpine, ConflictType, TrueResolution, Revelation
 from ..render import Location
 from ..interaction import Hotspot, HotspotType
 

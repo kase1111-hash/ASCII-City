@@ -5,17 +5,17 @@ Coordinates all NPC intelligence systems: memory formation, rumor
 propagation, behavior updates, and social network dynamics.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Any
 import random
 
-from .world_event import WorldEvent, WitnessType, Witness
+from .world_event import WorldEvent
 from .npc_memory import NPCMemory, NPCMemoryBank, MemorySource
 from .npc_bias import NPCBias, BiasProcessor
 from .rumor import Rumor, RumorPropagation, PropagationTrigger
 from .tile_memory import TileMemory, TileMemoryManager
 from .behavior_mapping import MemoryBehaviorSystem, BehaviorModifier
-from .social_network import SocialNetwork, SocialRelation
+from .social_network import SocialNetwork
 
 
 @dataclass
@@ -240,7 +240,7 @@ class PropagationEngine:
     ) -> NPCMemory:
         """Convert a received rumor into a memory."""
         target_state = self.npc_states.get(target_npc)
-        source_state = self.npc_states.get(source_npc)
+        self.npc_states.get(source_npc)
 
         # Determine source type based on relationship
         relation = self.social_network.get_relation(target_npc, source_npc)

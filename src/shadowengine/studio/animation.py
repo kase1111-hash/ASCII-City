@@ -4,7 +4,7 @@ Animation system for ASCII art.
 
 from __future__ import annotations
 from enum import Enum, auto
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List, Tuple
 import time
 

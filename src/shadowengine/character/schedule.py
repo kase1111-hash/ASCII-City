@@ -8,7 +8,6 @@ Manages where NPCs are at different times:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
 from enum import Enum, auto
 
 

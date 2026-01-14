@@ -4,17 +4,16 @@ Game - Main game engine and loop.
 Coordinates all systems and manages game state.
 """
 
-from typing import Optional, Callable
-import json
+from typing import Optional
 import os
 
 from .config import GameConfig, DEFAULT_CONFIG
 from .memory import MemoryBank, EventType
-from .character import Character, Archetype, DialogueManager, DialogueTopic
-from .narrative import NarrativeSpine, SpineGenerator, ConflictType
+from .character import Character, Archetype, DialogueManager
+from .narrative import NarrativeSpine
 from .interaction import CommandParser, Command, CommandType, Hotspot
 from .render import Scene, Location, Renderer
-from .environment import Environment, WeatherType, TimePeriod
+from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 
 
@@ -192,68 +191,81 @@ class Game:
 
     def _handle_command(self, command: Command, context: dict) -> None:
         """Handle a parsed command."""
-        location = self.current_location
+        # Commands that don't require a hotspot
+        simple_handlers = {
+            CommandType.QUIT: self._handle_quit,
+            CommandType.HELP: lambda: self._show_text(self.parser.get_help_text()),
+            CommandType.INVENTORY: lambda: self._show_inventory(),
+            CommandType.WAIT: self._handle_wait,
+            CommandType.SAVE: self._handle_save,
+            CommandType.LOAD: self._handle_load,
+        }
 
-        if command.command_type == CommandType.QUIT:
-            self.state.is_running = False
-            return
-
-        if command.command_type == CommandType.HELP:
-            self.renderer.render_text(self.parser.get_help_text())
-            self.renderer.wait_for_key()
-            return
-
-        if command.command_type == CommandType.INVENTORY:
-            self.renderer.render_inventory(self.state.inventory)
-            self.renderer.wait_for_key()
+        if command.command_type in simple_handlers:
+            simple_handlers[command.command_type]()
             return
 
         if command.command_type == CommandType.UNKNOWN:
-            self.renderer.render_error(
-                self.parser.get_error_suggestion(command, context)
-            )
-            self.renderer.wait_for_key()
+            self._show_error(self.parser.get_error_suggestion(command, context))
             return
 
-        # Find target hotspot
-        hotspot = None
+        # Find target hotspot for commands that need one
+        hotspot = self._resolve_hotspot(command)
+        if not hotspot:
+            self._show_error("I don't see that here.")
+            return
+
+        # Commands that require a hotspot
+        hotspot_handlers = {
+            CommandType.EXAMINE: self._handle_examine,
+            CommandType.TALK: self._handle_talk,
+            CommandType.TAKE: self._handle_take,
+            CommandType.GO: self._handle_go,
+            CommandType.HOTSPOT: self._handle_hotspot_default,
+        }
+
+        handler = hotspot_handlers.get(command.command_type)
+        if handler:
+            handler(hotspot)
+
+    def _handle_quit(self) -> None:
+        """Handle quit command."""
+        self.state.is_running = False
+
+    def _show_text(self, text: str) -> None:
+        """Show text and wait for key."""
+        self.renderer.render_text(text)
+        self.renderer.wait_for_key()
+
+    def _show_inventory(self) -> None:
+        """Show inventory and wait for key."""
+        self.renderer.render_inventory(self.state.inventory)
+        self.renderer.wait_for_key()
+
+    def _show_error(self, message: str) -> None:
+        """Show error and wait for key."""
+        self.renderer.render_error(message)
+        self.renderer.wait_for_key()
+
+    def _resolve_hotspot(self, command: Command) -> Optional[Hotspot]:
+        """Resolve command target to a hotspot."""
+        location = self.current_location
         if command.hotspot_number:
-            hotspot = location.get_hotspot_by_number(command.hotspot_number)
+            return location.get_hotspot_by_number(command.hotspot_number)
         elif command.target:
-            hotspot = location.get_hotspot_by_label(command.target)
+            return location.get_hotspot_by_label(command.target)
+        return None
 
-        if not hotspot and command.command_type not in [CommandType.WAIT, CommandType.SAVE, CommandType.LOAD]:
-            self.renderer.render_error(f"I don't see that here.")
-            self.renderer.wait_for_key()
-            return
-
-        # Handle specific command types
-        if command.command_type == CommandType.EXAMINE:
-            self._handle_examine(hotspot)
-        elif command.command_type == CommandType.TALK:
-            self._handle_talk(hotspot)
-        elif command.command_type == CommandType.TAKE:
-            self._handle_take(hotspot)
-        elif command.command_type == CommandType.GO:
-            self._handle_go(hotspot)
-        elif command.command_type == CommandType.HOTSPOT:
-            # Default action for hotspot
-            if hotspot:
-                default = hotspot.get_default_action()
-                if default == "talk":
-                    self._handle_talk(hotspot)
-                elif default == "take":
-                    self._handle_take(hotspot)
-                elif default == "go":
-                    self._handle_go(hotspot)
-                else:
-                    self._handle_examine(hotspot)
-        elif command.command_type == CommandType.WAIT:
-            self._handle_wait()
-        elif command.command_type == CommandType.SAVE:
-            self._handle_save()
-        elif command.command_type == CommandType.LOAD:
-            self._handle_load()
+    def _handle_hotspot_default(self, hotspot: Hotspot) -> None:
+        """Handle default action for a hotspot."""
+        default_action_handlers = {
+            "talk": self._handle_talk,
+            "take": self._handle_take,
+            "go": self._handle_go,
+        }
+        default = hotspot.get_default_action()
+        handler = default_action_handlers.get(default, self._handle_examine)
+        handler(hotspot)
 
     def _handle_examine(self, hotspot: Hotspot) -> None:
         """Handle examining something."""

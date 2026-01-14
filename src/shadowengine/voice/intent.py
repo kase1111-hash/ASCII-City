@@ -10,7 +10,7 @@ for voice input, including:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from enum import Enum
 import re
 import uuid

@@ -11,7 +11,6 @@ Provides:
 from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
-import json
 
 
 @dataclass
@@ -340,47 +339,22 @@ class AchievementManager:
 
         Returns list of newly unlocked achievements.
         """
+        # Define achievement conditions as (achievement_id, condition_checker)
+        achievement_checks = [
+            ("first_solve", lambda g, a: g.solved and a.games_solved == 1),
+            ("perfect_solve", lambda g, a: g.solved and g.wrong_accusations == 0),
+            ("speed_demon", lambda g, a: g.solved and g.time_played_seconds < 600),
+            ("thorough", lambda g, a: g.hotspots_total > 0 and g.hotspots_examined >= g.hotspots_total),
+            ("social_butterfly", lambda g, a: g.characters_total > 0 and g.characters_talked >= g.characters_total),
+            ("evidence_hoarder", lambda g, a: g.evidence_total > 0 and g.evidence_collected >= g.evidence_total),
+            ("ten_games", lambda g, a: a.games_played >= 10),
+            ("master_detective", lambda g, a: a.games_solved >= 5),
+        ]
+
         newly_unlocked = []
-
-        # First solve
-        if game_stats.solved and aggregate_stats.games_solved == 1:
-            if self.unlock("first_solve"):
-                newly_unlocked.append(self.get_achievement("first_solve"))
-
-        # Perfect solve
-        if game_stats.solved and game_stats.wrong_accusations == 0:
-            if self.unlock("perfect_solve"):
-                newly_unlocked.append(self.get_achievement("perfect_solve"))
-
-        # Speed demon
-        if game_stats.solved and game_stats.time_played_seconds < 600:
-            if self.unlock("speed_demon"):
-                newly_unlocked.append(self.get_achievement("speed_demon"))
-
-        # Thorough
-        if game_stats.hotspots_examined >= game_stats.hotspots_total and game_stats.hotspots_total > 0:
-            if self.unlock("thorough"):
-                newly_unlocked.append(self.get_achievement("thorough"))
-
-        # Social butterfly
-        if game_stats.characters_talked >= game_stats.characters_total and game_stats.characters_total > 0:
-            if self.unlock("social_butterfly"):
-                newly_unlocked.append(self.get_achievement("social_butterfly"))
-
-        # Evidence hoarder
-        if game_stats.evidence_collected >= game_stats.evidence_total and game_stats.evidence_total > 0:
-            if self.unlock("evidence_hoarder"):
-                newly_unlocked.append(self.get_achievement("evidence_hoarder"))
-
-        # Ten games
-        if aggregate_stats.games_played >= 10:
-            if self.unlock("ten_games"):
-                newly_unlocked.append(self.get_achievement("ten_games"))
-
-        # Master detective
-        if aggregate_stats.games_solved >= 5:
-            if self.unlock("master_detective"):
-                newly_unlocked.append(self.get_achievement("master_detective"))
+        for achievement_id, check_condition in achievement_checks:
+            if check_condition(game_stats, aggregate_stats) and self.unlock(achievement_id):
+                newly_unlocked.append(self.get_achievement(achievement_id))
 
         return newly_unlocked
 
