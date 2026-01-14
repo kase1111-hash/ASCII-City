@@ -9,13 +9,12 @@ None are lies. None are true. All are dangerous.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from enum import Enum
-from copy import deepcopy
 import random
 import uuid
 
-from .npc_memory import NPCMemory, MemorySource
+from .npc_memory import NPCMemory
 from .npc_bias import NPCBias
 
 

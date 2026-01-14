@@ -6,13 +6,13 @@ and other audio with various transformations.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 import struct
 import math
 
-from .tts_engine import AudioData, AudioFormat
+from .tts_engine import AudioData
 
 
 class EffectType(Enum):
@@ -201,13 +201,11 @@ class AudioEffect(ABC):
     @abstractmethod
     def effect_type(self) -> EffectType:
         """Return the effect type identifier."""
-        pass
 
     @property
     @abstractmethod
     def name(self) -> str:
         """Human-readable effect name."""
-        pass
 
     @abstractmethod
     def process(self, audio: AudioData) -> AudioData:
@@ -220,7 +218,6 @@ class AudioEffect(ABC):
         Returns:
             Processed audio data
         """
-        pass
 
     def _mix(self, dry: bytes, wet: bytes, mix: float) -> bytes:
         """Mix dry and wet signals."""

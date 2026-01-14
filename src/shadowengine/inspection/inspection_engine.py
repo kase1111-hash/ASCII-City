@@ -10,13 +10,12 @@ Coordinates all inspection systems:
 
 from dataclasses import dataclass, field
 from typing import Optional, Any
-import random
 
-from .zoom_level import ZoomLevel, ZoomDirection, ZoomConstraints
-from .tool import InspectionTool, ToolAffordance, get_tool, get_best_tool_for_inspection
-from .inspectable import InspectableObject, DetailLayer, InspectableFactory
-from .zoom_state import ZoomState, ZoomStateManager, ZoomHistory
-from .detail_generator import DetailGenerator, DetailType
+from .zoom_level import ZoomLevel
+from .tool import InspectionTool, get_best_tool_for_inspection
+from .inspectable import InspectableObject
+from .zoom_state import ZoomStateManager
+from .detail_generator import DetailGenerator
 from .inspection_parser import InspectionParser, InspectionCommand, InspectionIntent
 
 
@@ -274,7 +273,7 @@ class InspectionEngine:
 
         # Record inspection
         zoom_changed = zoom_level != state.current_level
-        new_discoveries = self.zoom_manager.record_zoom(
+        _new_discoveries = self.zoom_manager.record_zoom(
             object_id=object_id,
             new_level=zoom_level,
             tool_used=tool.id if tool else None,

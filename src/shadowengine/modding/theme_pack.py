@@ -8,7 +8,7 @@ other genre.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 import json
 

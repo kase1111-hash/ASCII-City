@@ -9,11 +9,10 @@ from datetime import datetime
 import random
 
 from .art import ASCIIArt, ArtCategory
-from .static_art import StaticArt, RenderLayer
+from .static_art import StaticArt
 from .entity import DynamicEntity
 from .tags import (
-    ArtTags, ObjectType, Size, Placement,
-    InteractionType, EnvironmentType, TagQuery
+    ObjectType, Size, Placement, EnvironmentType
 )
 
 

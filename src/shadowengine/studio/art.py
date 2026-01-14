@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
 
-from .tags import ArtTags, ObjectType
+from .tags import ArtTags
 
 
 class ArtCategory(Enum):

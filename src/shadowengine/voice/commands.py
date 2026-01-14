@@ -10,9 +10,8 @@ including:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+from typing import Optional
 from enum import Enum
-import re
 
 from .intent import IntentType
 

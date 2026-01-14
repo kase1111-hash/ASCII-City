@@ -5,11 +5,10 @@ Provides environmental and atmospheric audio generation including
 weather sounds, location ambience, and tension-based audio layers.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, List, Any, Callable
+from typing import Optional, Dict, List, Any
 import random
-import math
 
 
 class AmbientType(Enum):
@@ -310,7 +309,7 @@ class WeatherAudio:
         """Add a thunder sound effect."""
         # Closer thunder = louder, shorter delay
         volume = 0.8 - (distance * 0.4)
-        delay_ms = distance * 3000  # Sound delay based on distance
+        _delay_ms = distance * 3000  # Sound delay based on distance (for future use)
 
         thunder = AmbientLayer(
             id=f"thunder_{random.randint(0, 1000)}",
@@ -482,7 +481,7 @@ class TensionAudio:
 
     def set_tension(self, tension: float) -> List[AmbientLayer]:
         """Set tension level and return appropriate layers."""
-        old_tension = self._tension
+        self._tension
         self._tension = max(0.0, min(1.0, tension))
 
         self._layers = []

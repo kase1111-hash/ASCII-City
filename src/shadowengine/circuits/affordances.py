@@ -5,8 +5,7 @@ Affordances define what can be done to/with an entity.
 They are inherited from terrain and can be overridden by entities.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from typing import Optional
 
 

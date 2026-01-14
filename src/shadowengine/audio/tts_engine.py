@@ -8,7 +8,7 @@ fallback support and mock implementation for testing.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 import hashlib
 import time
 
@@ -128,13 +128,11 @@ class TTSEngine(ABC):
     @abstractmethod
     def engine_type(self) -> TTSEngineType:
         """Return the engine type identifier."""
-        pass
 
     @property
     @abstractmethod
     def name(self) -> str:
         """Human-readable engine name."""
-        pass
 
     @abstractmethod
     def initialize(self) -> bool:
@@ -143,12 +141,10 @@ class TTSEngine(ABC):
 
         Returns True if successful, False otherwise.
         """
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if the engine is available and ready."""
-        pass
 
     @abstractmethod
     def synthesize(self, request: TTSRequest) -> AudioData:
@@ -161,12 +157,10 @@ class TTSEngine(ABC):
         Returns:
             AudioData containing synthesized speech
         """
-        pass
 
     @abstractmethod
     def get_supported_formats(self) -> List[AudioFormat]:
         """Return list of supported output formats."""
-        pass
 
     def shutdown(self) -> None:
         """Clean up engine resources."""
@@ -283,7 +277,6 @@ class MockTTSEngine(TTSEngine):
 
 class TTSEngineError(Exception):
     """Exception raised by TTS engines."""
-    pass
 
 
 class TTSEngineManager:

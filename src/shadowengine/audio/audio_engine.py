@@ -5,32 +5,22 @@ Coordinates TTS, sound effects, and ambient audio into
 a unified audio experience.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, Callable
 from enum import Enum
 import time
 
-from .voice import CharacterVoice, VoiceFactory, VoiceParameters, EmotionalState
+from .voice import CharacterVoice, VoiceFactory, EmotionalState
 from .tts_engine import (
-    TTSEngine,
     TTSEngineManager,
     TTSRequest,
     AudioData,
-    AudioFormat,
     MockTTSEngine,
     TTSEngineError
 )
 from .effects import (
     EffectsChain,
-    AudioEffect,
-    EffectType,
-    create_preset_chain,
-    PitchShiftEffect,
-    DistortionEffect,
-    ReverbEffect,
-    FilterEffect,
-    TelephoneEffect,
-    RadioEffect
+    create_preset_chain
 )
 from .sound import (
     SoundEffect,
@@ -41,10 +31,8 @@ from .sound import (
 )
 from .ambience import (
     AmbienceManager,
-    AmbienceType,
     WeatherType,
-    TimeOfDay,
-    TensionAudio
+    TimeOfDay
 )
 from .library import SoundLibrary, SoundID
 
@@ -162,7 +150,7 @@ class AudioEngine:
         Returns True if successful.
         """
         # Initialize TTS engines
-        results = self.tts_manager.initialize_all()
+        self.tts_manager.initialize_all()
 
         # Check if at least one engine is available
         available = self.tts_manager.get_available_engines()

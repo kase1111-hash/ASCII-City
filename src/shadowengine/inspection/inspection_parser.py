@@ -9,7 +9,7 @@ Parses commands like:
 - "look under the table"
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Tuple
 from enum import Enum
 import re

@@ -7,11 +7,10 @@ evaluation and emergent behavior.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 import time
-import json
 
-from .signals import Signal, SignalType, InputSignal, OutputSignal
+from .signals import SignalType, InputSignal, OutputSignal
 
 
 class CircuitType(Enum):

@@ -3,7 +3,7 @@ Dialogue System - Topic-based conversation management.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable
+from typing import Optional
 from enum import Enum
 
 

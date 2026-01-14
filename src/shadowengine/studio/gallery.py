@@ -13,7 +13,7 @@ import json
 from .art import ASCIIArt, ArtCategory
 from .static_art import StaticArt
 from .entity import DynamicEntity
-from .tags import ArtTags, ObjectType, EnvironmentType
+from .tags import ObjectType
 
 
 class GalleryCategory(Enum):

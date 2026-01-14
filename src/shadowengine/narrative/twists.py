@@ -10,7 +10,7 @@ Provides:
 
 from dataclasses import dataclass, field
 from typing import Optional, Callable
-from enum import Enum, auto
+from enum import Enum
 import random
 
 

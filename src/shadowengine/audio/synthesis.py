@@ -5,16 +5,16 @@ Coordinates all audio synthesis components including TTS,
 effects processing, motif generation, and ambient sound.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, List, Any, Callable
 import time
 
-from .tts import TTSEngine, TTSResult, TTSConfig, create_tts_engine
+from .tts import create_tts_engine
 from .voice import VoiceProfile, VoiceLibrary, CharacterVoiceTTS as CharacterVoice, EmotionalState
-from .effects import EffectsChain, Effect, EffectType
-from .motif import Motif, MotifGenerator, ThemeEngine, TensionMapper
-from .ambient import AmbientEngine, AmbientLayer, AmbientConfig
+from .effects import EffectsChain
+from .motif import Motif, ThemeEngine
+from .ambient import AmbientEngine, AmbientConfig
 
 
 class AudioPriority(Enum):

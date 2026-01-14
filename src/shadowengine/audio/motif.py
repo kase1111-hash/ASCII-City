@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Dict, List, Any, Tuple
 import random
-import math
 
 
 class MusicalKey(Enum):
@@ -695,7 +694,7 @@ class ThemeEngine:
     def generate_theme(self, theme_id: str, mood: str = "noir") -> List[Motif]:
         """Generate a complete theme with multiple motifs."""
         tension = self._tension_mapper.tension
-        key = self._tension_mapper.get_suggested_key()
+        self._tension_mapper.get_suggested_key()
 
         motifs = []
 

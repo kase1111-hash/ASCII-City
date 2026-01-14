@@ -11,12 +11,11 @@ The engine abstraction allows swapping backends without changing game code.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 from enum import Enum
 from datetime import datetime
 import uuid
 import time
-import threading
 import queue
 
 
@@ -115,12 +114,10 @@ class STTEngine(ABC):
         Returns:
             True if initialization succeeded
         """
-        pass
 
     @abstractmethod
     def shutdown(self) -> None:
         """Shutdown the STT engine and release resources."""
-        pass
 
     @abstractmethod
     def transcribe(self, audio_data: bytes) -> STTResult:
@@ -133,7 +130,6 @@ class STTEngine(ABC):
         Returns:
             STTResult with transcription
         """
-        pass
 
     @abstractmethod
     def transcribe_file(self, file_path: str) -> STTResult:
@@ -146,7 +142,6 @@ class STTEngine(ABC):
         Returns:
             STTResult with transcription
         """
-        pass
 
     @abstractmethod
     def start_streaming(self) -> bool:
@@ -156,7 +151,6 @@ class STTEngine(ABC):
         Returns:
             True if streaming started successfully
         """
-        pass
 
     @abstractmethod
     def stop_streaming(self) -> Optional[STTResult]:
@@ -166,7 +160,6 @@ class STTEngine(ABC):
         Returns:
             Final STTResult from streaming session
         """
-        pass
 
     @abstractmethod
     def feed_audio(self, audio_chunk: bytes) -> Optional[STTResult]:
@@ -179,7 +172,6 @@ class STTEngine(ABC):
         Returns:
             Partial STTResult if available, None otherwise
         """
-        pass
 
     def on_result(self, callback: Callable[[STTResult], None]) -> None:
         """Register callback for recognition results."""
@@ -208,7 +200,6 @@ class STTEngine(ABC):
     @abstractmethod
     def get_supported_languages(self) -> list[str]:
         """Get list of supported language codes."""
-        pass
 
     @abstractmethod
     def set_language(self, language: str) -> bool:
@@ -221,7 +212,6 @@ class STTEngine(ABC):
         Returns:
             True if language was set successfully
         """
-        pass
 
     def get_engine_info(self) -> dict:
         """Get information about the engine."""

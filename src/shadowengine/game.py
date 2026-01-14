@@ -4,17 +4,16 @@ Game - Main game engine and loop.
 Coordinates all systems and manages game state.
 """
 
-from typing import Optional, Callable
-import json
+from typing import Optional
 import os
 
 from .config import GameConfig, DEFAULT_CONFIG
 from .memory import MemoryBank, EventType
-from .character import Character, Archetype, DialogueManager, DialogueTopic
-from .narrative import NarrativeSpine, SpineGenerator, ConflictType
+from .character import Character, Archetype, DialogueManager
+from .narrative import NarrativeSpine
 from .interaction import CommandParser, Command, CommandType, Hotspot
 from .render import Scene, Location, Renderer
-from .environment import Environment, WeatherType, TimePeriod
+from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 
 

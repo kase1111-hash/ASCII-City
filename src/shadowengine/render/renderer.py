@@ -4,9 +4,8 @@ Renderer - Main rendering engine for terminal output.
 
 import os
 import sys
-from typing import Optional
 
-from .scene import Scene, Location
+from .scene import Scene
 
 
 class Renderer:

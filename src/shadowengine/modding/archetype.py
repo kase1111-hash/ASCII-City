@@ -8,8 +8,7 @@ dialogue tendencies.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Any, Set, Callable
-import json
+from typing import Dict, List, Optional, Any
 
 
 @dataclass
