@@ -198,6 +198,8 @@ class PlayerMemory:
             key=lambda x: x[1],
             reverse=True
         )
+        if len(sorted_shades) < 2:
+            return MoralShade(sorted_shades[0][0])
         return MoralShade(sorted_shades[1][0])
 
     def add_note(self, note: str) -> None:
