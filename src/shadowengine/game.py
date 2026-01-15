@@ -6,15 +6,18 @@ Coordinates all systems and manages game state.
 
 from typing import Optional
 import os
+import json
+import re
 
 from .config import GameConfig, DEFAULT_CONFIG
 from .memory import MemoryBank, EventType
 from .character import Character, Archetype, DialogueManager
 from .narrative import NarrativeSpine
-from .interaction import CommandParser, Command, CommandType, Hotspot
+from .interaction import CommandParser, Command, CommandType, Hotspot, HotspotType
 from .render import Scene, Location, Renderer
 from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
+from .llm import LLMIntegration, LocationPrompt, create_llm_client
 
 
 class GameState:
@@ -54,6 +57,16 @@ class Game:
         if self.config.enable_audio:
             self.audio_engine = create_audio_engine(use_mock_tts=True)
         self.speech_enabled = self.config.enable_speech
+
+        # LLM integration for dynamic content generation
+        self.llm_client = create_llm_client()
+        self.location_prompt = LocationPrompt()
+
+        # Track what directions are available from current location
+        self.location_connections: dict[str, dict[str, str]] = {}
+
+        # Genre/mood for world generation (can be changed dynamically)
+        self.world_genre = "noir mystery"
 
     def new_game(self, seed: int = None) -> None:
         """Start a new game."""
@@ -208,12 +221,53 @@ class Game:
             return
 
         if command.command_type == CommandType.UNKNOWN:
+            # Check if this is a directional movement or free-form "go somewhere"
+            raw = command.raw_input.lower().strip() if command.raw_input else ""
+
+            # Check for directional commands: north, south, east, west, n, s, e, w
+            directions = {
+                "north": "north", "n": "north",
+                "south": "south", "s": "south",
+                "east": "east", "e": "east",
+                "west": "west", "w": "west",
+                "back": "back", "b": "back",
+            }
+
+            # Check if raw input is a direction
+            if raw in directions:
+                self._handle_direction(directions[raw])
+                return
+
+            # Check for "go [somewhere]" pattern for free-form movement
+            go_match = re.match(r'^go\s+(.+)$', raw)
+            if go_match:
+                destination = go_match.group(1).strip()
+                # Check if it's a direction
+                if destination in directions:
+                    self._handle_direction(directions[destination])
+                else:
+                    # Free-form destination - generate it!
+                    self._handle_free_movement(destination)
+                return
+
             self._show_error(self.parser.get_error_suggestion(command, context))
             return
 
         # Find target hotspot for commands that need one
         hotspot = self._resolve_hotspot(command)
         if not hotspot:
+            # For GO commands, check if target is a direction or place name
+            if command.command_type == CommandType.GO and command.target:
+                target = command.target.lower()
+                directions = {"north", "south", "east", "west", "back", "n", "s", "e", "w", "b"}
+                if target in directions:
+                    dir_map = {"n": "north", "s": "south", "e": "east", "w": "west", "b": "back"}
+                    self._handle_direction(dir_map.get(target, target))
+                    return
+                else:
+                    # Free-form destination
+                    self._handle_free_movement(command.target)
+                    return
             self._show_error("I don't see that here.")
             return
 
@@ -359,9 +413,11 @@ class Game:
             return
 
         destination_id = hotspot.target_id
+
+        # If destination doesn't exist, generate it dynamically!
         if destination_id not in self.state.locations:
-            self.renderer.render_error("That destination doesn't exist.")
-            self.renderer.wait_for_key()
+            self.renderer.render_narration(f"Heading towards {hotspot.label}...")
+            self._generate_and_move(destination_id, hotspot.label)
             return
 
         self.state.current_location_id = destination_id
@@ -375,6 +431,342 @@ class Game:
 
         if self.config.time_passes_on_action:
             self.state.memory.advance_time(self.config.time_units_per_action)
+
+    def _handle_direction(self, direction: str) -> None:
+        """Handle directional movement (north, south, east, west, back)."""
+        current_loc = self.current_location
+        if not current_loc:
+            return
+
+        # Check if we have stored connections for this location
+        connections = self.location_connections.get(current_loc.id, {})
+
+        # Check existing exit hotspots for this direction
+        for hotspot in current_loc.hotspots:
+            if hotspot.hotspot_type == HotspotType.EXIT:
+                # Check if hotspot matches direction
+                label_lower = hotspot.label.lower()
+                if direction in label_lower or (hasattr(hotspot, 'direction') and hotspot.direction == direction):
+                    self._handle_go(hotspot)
+                    return
+
+        # No existing exit - generate new location in that direction!
+        self.renderer.render_narration(f"You head {direction}...")
+        self._generate_and_move(f"{current_loc.id}_{direction}", direction)
+
+    def _handle_free_movement(self, destination: str) -> None:
+        """Handle free-form movement to any place the player names."""
+        current_loc = self.current_location
+        if not current_loc:
+            return
+
+        # Check if this destination already exists
+        dest_id = destination.lower().replace(" ", "_").replace("'", "")
+
+        # Check existing locations for a match
+        for loc_id, location in self.state.locations.items():
+            if dest_id in loc_id or destination.lower() in location.name.lower():
+                self.state.current_location_id = loc_id
+                self.state.memory.world.record(
+                    event_type=EventType.MOVEMENT,
+                    description=f"Player traveled to {location.name}",
+                    location=loc_id,
+                    actors=["player"]
+                )
+                return
+
+        # Destination doesn't exist - generate it!
+        self.renderer.render_narration(f"You set out for {destination}...")
+        self._generate_and_move(dest_id, destination)
+
+    def _generate_and_move(self, dest_id: str, destination_desc: str) -> None:
+        """Generate a new location via LLM and move there."""
+        current_loc = self.current_location
+
+        # Build context for generation
+        story_context = ""
+        if self.state.spine:
+            story_context = f"Main conflict: {self.state.spine.conflict_description}"
+            if hasattr(self, 'mystery'):
+                story_context += f"\nVictim: {self.mystery.get('victim', 'unknown')}"
+
+        visited = list(self.state.memory.player.locations_visited)
+
+        # Get current environment info
+        time_str = self.state.environment.time.get_period().value if self.state.environment else "night"
+        weather_str = self.state.environment.weather.get_description() if self.state.environment else "clear"
+
+        # Generate via LLM
+        self.renderer.render_text("Generating new area...")
+
+        system_prompt = self.location_prompt.get_system_prompt()
+        generation_prompt = self.location_prompt.get_generation_prompt(
+            current_location=current_loc.name if current_loc else "unknown",
+            current_description=current_loc.description if current_loc else "",
+            destination=destination_desc,
+            time=time_str,
+            weather=weather_str,
+            genre=self.world_genre,
+            story_context=story_context,
+            visited_locations=visited,
+            inventory=self.state.inventory
+        )
+
+        response = self.llm_client.chat([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": generation_prompt}
+        ])
+
+        if response.success:
+            location = self._parse_location_response(response.text, dest_id, destination_desc)
+            if location:
+                self.add_location(location, is_indoor=not location.is_outdoor)
+                self.state.current_location_id = location.id
+
+                self.state.memory.world.record(
+                    event_type=EventType.MOVEMENT,
+                    description=f"Player discovered {location.name}",
+                    location=location.id,
+                    actors=["player"]
+                )
+
+                if self.config.time_passes_on_action:
+                    self.state.memory.advance_time(self.config.time_units_per_action * 2)  # Travel takes time
+                return
+
+        # Fallback: create a simple generated location
+        self._create_fallback_location(dest_id, destination_desc)
+
+    def _parse_location_response(self, text: str, fallback_id: str, fallback_name: str) -> Optional[Location]:
+        """Parse LLM response into a Location object."""
+        try:
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', text)
+            if not json_match:
+                return None
+
+            data = json.loads(json_match.group())
+
+            # Create Location
+            location = Location(
+                id=data.get("id", fallback_id),
+                name=data.get("name", fallback_name.title()),
+                description=data.get("description", f"You've arrived at {fallback_name}."),
+                art=self._get_art_for_type(data.get("location_type", "generic")),
+                is_outdoor=data.get("is_outdoor", True),
+                ambient_description=data.get("ambient", "")
+            )
+
+            # Add hotspots from response
+            for hs_data in data.get("hotspots", []):
+                hs_type_str = hs_data.get("type", "object")
+                hs_type = HotspotType(hs_type_str) if hs_type_str in [e.value for e in HotspotType] else HotspotType.OBJECT
+
+                if hs_type == HotspotType.PERSON:
+                    hotspot = Hotspot.create_person(
+                        id=hs_data.get("id", f"hs_{hs_data.get('label', 'unknown').lower().replace(' ', '_')}"),
+                        name=hs_data.get("label", "Someone"),
+                        position=(30, 10),
+                        character_id=hs_data.get("character_id"),
+                        description=hs_data.get("description", "")
+                    )
+                else:
+                    hotspot = Hotspot(
+                        id=hs_data.get("id", f"hs_{hs_data.get('label', 'unknown').lower().replace(' ', '_')}"),
+                        label=hs_data.get("label", "Something"),
+                        hotspot_type=hs_type,
+                        position=(30, 10),
+                        description=hs_data.get("description", ""),
+                        examine_text=hs_data.get("examine_text", hs_data.get("description", "")),
+                        target_id=hs_data.get("exit_to") if hs_type == HotspotType.EXIT else None
+                    )
+                location.add_hotspot(hotspot)
+
+            # Create any NPCs defined in response
+            for npc_data in data.get("npcs", []):
+                archetype_str = npc_data.get("archetype", "survivor").upper()
+                try:
+                    archetype = Archetype[archetype_str]
+                except KeyError:
+                    archetype = Archetype.SURVIVOR
+
+                npc = Character(
+                    id=npc_data.get("id", f"npc_{npc_data.get('name', 'stranger').lower().replace(' ', '_')}"),
+                    name=npc_data.get("name", "A Stranger"),
+                    archetype=archetype,
+                    description=npc_data.get("description", ""),
+                    secret_truth=npc_data.get("secret", ""),
+                    public_lie=npc_data.get("public_persona", ""),
+                    initial_location=location.id
+                )
+                for topic in npc_data.get("topics", []):
+                    npc.add_topic(topic)
+                self.add_character(npc)
+
+                # Add hotspot for this NPC
+                location.add_hotspot(Hotspot.create_person(
+                    id=f"hs_{npc.id}",
+                    name=npc.name,
+                    position=(30, 10),
+                    character_id=npc.id,
+                    description=npc.description
+                ))
+
+            # Store connections for directional movement
+            if "connections" in data:
+                self.location_connections[location.id] = data["connections"]
+
+            # Always add a "back" exit to where we came from
+            current = self.current_location
+            if current:
+                location.add_hotspot(Hotspot(
+                    id="hs_back",
+                    label=f"Back to {current.name}",
+                    hotspot_type=HotspotType.EXIT,
+                    position=(10, 15),
+                    description=f"Return to {current.name}",
+                    target_id=current.id
+                ))
+
+            return location
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            self.renderer.render_text(f"(Generation parsing issue: {e})")
+            return None
+
+    def _create_fallback_location(self, dest_id: str, destination_desc: str) -> None:
+        """Create a simple fallback location when LLM fails."""
+        current = self.current_location
+
+        location = Location(
+            id=dest_id,
+            name=destination_desc.title(),
+            description=f"You've arrived at {destination_desc}. The area is unfamiliar.",
+            art=self._get_art_for_type("generic"),
+            is_outdoor=True,
+            ambient_description="An unexplored area stretches before you."
+        )
+
+        # Add basic back exit
+        if current:
+            location.add_hotspot(Hotspot(
+                id="hs_back",
+                label=f"Back to {current.name}",
+                hotspot_type=HotspotType.EXIT,
+                position=(10, 15),
+                description=f"Return to {current.name}",
+                target_id=current.id
+            ))
+
+        # Add direction exits
+        for direction in ["north", "south", "east", "west"]:
+            location.add_hotspot(Hotspot(
+                id=f"hs_{direction}",
+                label=f"Go {direction.title()}",
+                hotspot_type=HotspotType.EXIT,
+                position=(30, 10),
+                description=f"Continue {direction}",
+                target_id=f"{dest_id}_{direction}"
+            ))
+
+        self.add_location(location, is_indoor=False)
+        self.state.current_location_id = location.id
+
+        self.state.memory.world.record(
+            event_type=EventType.MOVEMENT,
+            description=f"Player arrived at {destination_desc}",
+            location=dest_id,
+            actors=["player"]
+        )
+
+    def _get_art_for_type(self, location_type: str) -> list[str]:
+        """Get ASCII art for a location type."""
+        # Basic ASCII art templates - these would ideally come from the scenario
+        art_templates = {
+            "street": [
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+                "@@                                                                    @@",
+                "@@  The road stretches ahead into the unknown...                      @@",
+                "@@                                                                    @@",
+                "@@     @                                              @               @@",
+                "@@  FIGURE                                         FIGURE             @@",
+                "@@                                                                    @@",
+                "@@════════════════════════════════════════════════════════════════════@@",
+                "@@                         PATH                                       @@",
+                "@@════════════════════════════════════════════════════════════════════@@",
+                "@@                                                                    @@",
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+            ],
+            "wilderness": [
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+                "@@  @@@@   @@@@@@   @@@   @@@@@@   @@@@@   @@@@@@@   @@@@@@  @@@@@@   @@",
+                "@@   @@     @@@@    @@     @@@@    @@@@     @@@@@     @@@@    @@@@    @@",
+                "@@          @@             @@               @@@       @@      @@      @@",
+                "@@    *           *              *                *         *         @@",
+                "@@         *            *              *     *        *       *       @@",
+                "@@  ~~~         ~~~          ~~~            ~~~          ~~~          @@",
+                "@@     ~~~   ~~~      ~~~         ~~~    ~~~      ~~~        ~~~      @@",
+                "@@  WILDERNESS STRETCHES IN ALL DIRECTIONS                           @@",
+                "@@                                                                    @@",
+                "@@      @                                                             @@",
+                "@@     YOU                                                            @@",
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+            ],
+            "building": [
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+                "@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@",
+                "@@G                                                                  G@@",
+                "@@G   ┌──────────────────────────────────────────────────────────┐  G@@",
+                "@@G   │                                                          │  G@@",
+                "@@G   │                    INTERIOR                              │  G@@",
+                "@@G   │                                                          │  G@@",
+                "@@G   │                       @                                  │  G@@",
+                "@@G   │                      YOU                                 │  G@@",
+                "@@G   │                                                          │  G@@",
+                "@@G   └──────────────────────────────────────────────────────────┘  G@@",
+                "@@G                                                                  G@@",
+                "@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@",
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+            ],
+            "generic": [
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+                "@@                                                                    @@",
+                "@@                                                                    @@",
+                "@@                      [ NEW LOCATION ]                              @@",
+                "@@                                                                    @@",
+                "@@                                                                    @@",
+                "@@                            @                                       @@",
+                "@@                           YOU                                      @@",
+                "@@                                                                    @@",
+                "@@                                                                    @@",
+                "@@                                                                    @@",
+                "@@                                                                    @@",
+                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+            ],
+        }
+
+        # Map various types to our templates
+        type_map = {
+            "street": "street",
+            "road": "street",
+            "path": "street",
+            "bar": "building",
+            "office": "building",
+            "building": "building",
+            "shop": "building",
+            "house": "building",
+            "wilderness": "wilderness",
+            "forest": "wilderness",
+            "mountain": "wilderness",
+            "desert": "wilderness",
+            "arctic": "wilderness",
+            "alley": "street",
+            "vehicle": "building",
+            "other": "generic",
+        }
+
+        template_key = type_map.get(location_type.lower(), "generic")
+        return art_templates.get(template_key, art_templates["generic"])
 
     def _handle_wait(self) -> None:
         """Pass time."""

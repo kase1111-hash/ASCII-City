@@ -26,6 +26,7 @@ from .prompts import (
     CharacterPrompt,
     NarrativePrompt,
     BehaviorPrompt,
+    LocationPrompt,
 )
 
 from .integration import (
@@ -49,6 +50,7 @@ __all__ = [
     "CharacterPrompt",
     "NarrativePrompt",
     "BehaviorPrompt",
+    "LocationPrompt",
     # Integration
     "LLMIntegration",
     "DialogueGenerator",
