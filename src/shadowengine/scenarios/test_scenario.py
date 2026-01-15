@@ -7,6 +7,9 @@ Three suspects: the Butler, the Maid, and the Guest.
 The Butler did it, motivated by gambling debts.
 """
 
+import random
+import time
+
 from ..game import Game
 from ..character import Character, Archetype
 from ..narrative import NarrativeSpine, ConflictType, TrueResolution, Revelation
@@ -211,8 +214,13 @@ def create_test_scenario(seed: int = None) -> Game:
 
 def run_test_scenario():
     """Run the test scenario."""
+    # Generate random seed for unique gameplay each time
+    seed = int(time.time() * 1000) % (2**31)
+    random.seed(seed)
+
     print("Creating test scenario: The Missing Heirloom")
     print("=" * 50)
+    print(f"[Game Seed: {seed}]")
     print()
     print("A valuable family heirloom has been stolen!")
     print("Investigate the study, talk to the suspects,")
@@ -223,7 +231,7 @@ def run_test_scenario():
     print()
     input("Press Enter to begin...")
 
-    game = create_test_scenario()
+    game = create_test_scenario(seed=seed)
     game.run()
 
 
