@@ -18,6 +18,7 @@ from .render import Scene, Location, Renderer
 from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 from .llm import LLMIntegration, LocationPrompt, create_llm_client
+from .world_state import WorldState, StoryThread
 
 
 class GameState:
@@ -35,6 +36,7 @@ class GameState:
         self.in_conversation: bool = False
         self.conversation_partner: Optional[str] = None
         self.environment: Environment = Environment()
+        self.world_state: WorldState = WorldState()  # Tracks all generated content for consistency
 
 
 class Game:
@@ -65,8 +67,9 @@ class Game:
         # Track what directions are available from current location
         self.location_connections: dict[str, dict[str, str]] = {}
 
-        # Genre/mood for world generation (can be changed dynamically)
-        self.world_genre = "noir mystery"
+        # Track player distance from starting location for narrative adaptation
+        self.starting_location_id: Optional[str] = None
+        self.location_distances: dict[str, int] = {}  # location_id -> distance from start
 
     def new_game(self, seed: int = None) -> None:
         """Start a new game."""
@@ -145,6 +148,8 @@ class Game:
     def set_start_location(self, location_id: str) -> None:
         """Set the starting location."""
         self.state.current_location_id = location_id
+        self.starting_location_id = location_id
+        self.location_distances[location_id] = 0
 
     def set_spine(self, spine: NarrativeSpine) -> None:
         """Set the narrative spine."""
@@ -483,12 +488,33 @@ class Game:
         """Generate a new location via LLM and move there."""
         current_loc = self.current_location
 
-        # Build context for generation
-        story_context = ""
+        # Calculate distance for the new location
+        current_distance = self.location_distances.get(
+            self.state.current_location_id, 0
+        )
+        new_distance = current_distance + 1
+        self.location_distances[dest_id] = new_distance
+
+        # Build context using WorldState for consistency
+        world_context = self.state.world_state.get_world_context_for_generation("location")
+
+        # Add spine info if available
+        story_context = world_context
         if self.state.spine:
-            story_context = f"Main conflict: {self.state.spine.conflict_description}"
+            story_context += f"\n\nNARRATIVE SPINE: {self.state.spine.conflict_description}"
             if hasattr(self, 'mystery'):
                 story_context += f"\nVictim: {self.mystery.get('victim', 'unknown')}"
+
+        # Add narrative adaptation based on player distance from start
+        narrative_adaptation = self.state.world_state.get_narrative_prompt_addition(
+            self.state.current_location_id, new_distance
+        )
+        story_context += f"\n\n{narrative_adaptation}"
+
+        # Check for story convergence opportunities
+        convergence_hint = self.state.world_state.check_for_story_convergence()
+        if convergence_hint:
+            story_context += f"\n\nSTORY CONVERGENCE: {convergence_hint}"
 
         visited = list(self.state.memory.player.locations_visited)
 
@@ -506,7 +532,7 @@ class Game:
             destination=destination_desc,
             time=time_str,
             weather=weather_str,
-            genre=self.world_genre,
+            genre=self.state.world_state.world_genre,
             story_context=story_context,
             visited_locations=visited,
             inventory=self.state.inventory
@@ -557,6 +583,18 @@ class Game:
                 ambient_description=data.get("ambient", "")
             )
 
+            # Register location with WorldState for consistency tracking
+            current = self.current_location
+            self.state.world_state.register_location({
+                "id": location.id,
+                "name": location.name,
+                "location_type": data.get("location_type", "generic"),
+                "description": location.description,
+                "is_outdoor": location.is_outdoor,
+                "connections": data.get("connections", {}),
+                "generated_from": current.id if current else None
+            })
+
             # Add hotspots from response
             for hs_data in data.get("hotspots", []):
                 hs_type_str = hs_data.get("type", "object")
@@ -603,6 +641,9 @@ class Game:
                     npc.add_topic(topic)
                 self.add_character(npc)
 
+                # Register NPC with WorldState for consistency
+                self.state.world_state.register_npc(npc_data, location.id)
+
                 # Add hotspot for this NPC
                 location.add_hotspot(Hotspot.create_person(
                     id=f"hs_{npc.id}",
@@ -617,7 +658,6 @@ class Game:
                 self.location_connections[location.id] = data["connections"]
 
             # Always add a "back" exit to where we came from
-            current = self.current_location
             if current:
                 location.add_hotspot(Hotspot(
                     id="hs_back",
@@ -826,22 +866,21 @@ class Game:
         # Show character and available topics
         self.renderer.clear_screen()
         self.renderer.render_text(f"\nTalking to {character.name}")
+        self.renderer.render_text(f"{character.description}")
         self.renderer.render_text(f"Mood: {character.state.mood.value}")
 
         if character.state.is_cracked:
             self.renderer.render_text("(They seem broken, ready to confess)")
 
-        # Show topics
+        # Show topics as suggestions
         topics = list(character.available_topics)
         if topics:
-            self.renderer.render_text("\nTopics:")
+            self.renderer.render_text("\nSuggested topics:")
             for i, topic in enumerate(topics, 1):
                 exhausted = " (discussed)" if topic in character.exhausted_topics else ""
                 self.renderer.render_text(f"  [{i}] {topic}{exhausted}")
-        else:
-            self.renderer.render_text("\nNo specific topics available.")
 
-        self.renderer.render_text("\nCommands: ask [topic], accuse, threaten, leave")
+        self.renderer.render_text("\nYou can ask anything, or: accuse, threaten, leave")
 
         # Get input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
@@ -871,57 +910,145 @@ class Game:
                 self._handle_ask_topic(character, topics[topic_num])
                 return
 
-        # Default: character responds generically
-        mood_mod = character.get_response_mood_modifier()
-        if character.will_cooperate():
-            self.renderer.render_dialogue(
-                character.name,
-                "What would you like to know?",
-                mood_mod
-            )
-        else:
-            self.renderer.render_dialogue(
-                character.name,
-                "I don't have much to say to you.",
-                mood_mod
-            )
-
+        # FREE-FORM DIALOGUE: Send any input to LLM for dynamic response
+        self._handle_free_dialogue(character, raw_input)
         self.renderer.wait_for_key()
 
     def _handle_ask_topic(self, character: Character, topic: str) -> None:
-        """Handle asking about a topic."""
+        """Handle asking about a topic - uses LLM for dynamic response."""
+        # Use free dialogue with the topic as the question
+        self._handle_free_dialogue(character, f"Tell me about {topic}")
+        character.exhaust_topic(topic)
+        self.renderer.wait_for_key()
+
+    def _handle_free_dialogue(self, character: Character, player_input: str) -> None:
+        """Handle any free-form dialogue input via LLM."""
         mood_mod = character.get_response_mood_modifier()
 
+        # If character is cracked, they reveal their secret
         if character.state.is_cracked and character.secret_truth:
-            # Reveal secret if cracked
-            self._show_dialogue(
-                character,
-                f"Fine! You want the truth? {character.secret_truth}",
-                "desperately"
+            response_text = f"Fine! You want the truth? {character.secret_truth}"
+            self._show_dialogue(character, response_text, "desperately")
+            # Record the confession in memory
+            self.state.world_state.generation_memory.record_dialogue(
+                npc_id=character.id,
+                player_said=player_input,
+                npc_response=response_text,
+                location_id=self.state.current_location_id,
+                revealed=character.secret_truth,
+                timestamp=self.state.memory.current_time
             )
-        elif topic in character.exhausted_topics:
-            self._show_dialogue(
-                character,
-                "I've already told you everything I know about that.",
-                mood_mod
+            return
+
+        # Generate response via LLM
+        response = self._generate_character_dialogue(character, player_input)
+
+        if response:
+            self._show_dialogue(character, response, mood_mod)
+            # Record successful dialogue in generation memory
+            self.state.world_state.generation_memory.record_dialogue(
+                npc_id=character.id,
+                player_said=player_input,
+                npc_response=response,
+                location_id=self.state.current_location_id,
+                timestamp=self.state.memory.current_time
             )
         else:
-            # Normal response
-            if character.public_lie and not character.will_cooperate():
-                self._show_dialogue(
-                    character,
-                    character.public_lie,
-                    mood_mod
-                )
+            # Fallback if LLM fails
+            if character.will_cooperate():
+                fallback = "Hmm... I'm not sure what to say about that."
+                self._show_dialogue(character, fallback, mood_mod)
             else:
-                self._show_dialogue(
-                    character,
-                    f"About {topic}? I suppose I can tell you what I know.",
-                    mood_mod
-                )
-            character.exhaust_topic(topic)
+                fallback = "I don't have anything to tell you."
+                self._show_dialogue(character, fallback, mood_mod)
 
-        self.renderer.wait_for_key()
+    def _generate_character_dialogue(self, character: Character, player_input: str) -> Optional[str]:
+        """Generate NPC dialogue response using LLM."""
+        # Build character context using WorldState for consistency
+        story_context = ""
+        if self.state.spine:
+            story_context = f"Mystery: {self.state.spine.conflict_description}"
+        if hasattr(self, 'mystery'):
+            story_context += f"\nVictim: {self.mystery.get('victim', 'unknown')}"
+
+        # Get NPC's knowledge from WorldState (what they should know about)
+        npc_knowledge = self.state.world_state.get_npc_knowledge(character.id)
+
+        # Get NPC context (relationships, events they're involved in)
+        npc_context = self.state.world_state.get_npc_context(character.id)
+        relationships_str = ""
+        if npc_context.get("relationships"):
+            relationships_str = "PEOPLE YOU KNOW:\n" + "\n".join(f"- {r}" for r in npc_context["relationships"])
+
+        # Get conversation history
+        topics_discussed = list(character.exhausted_topics)
+        evidence_found = list(self.state.memory.player.discoveries.keys())
+
+        # Get previous dialogue with this NPC from generation memory
+        dialogue_history = self.state.world_state.generation_memory.get_npc_dialogue_history(
+            character.id, limit=3
+        )
+
+        # Build the prompt
+        system_prompt = f"""You are {character.name}, {character.description}
+
+PERSONALITY:
+- Archetype: {character.archetype.value}
+- Trust level: {character.state.trust} (0-100, higher = more open)
+- Current mood: {character.state.mood.value}
+- Pressure level: {character.state.pressure}
+
+YOUR SECRET (never reveal unless trust > 70 or you're "cracked"):
+{character.secret_truth}
+
+YOUR COVER STORY (use this to deflect):
+{character.public_lie}
+
+{relationships_str}
+
+WHAT YOU KNOW ABOUT THE WORLD:
+{npc_knowledge if npc_knowledge else 'Nothing special'}
+
+STORY CONTEXT:
+{story_context}
+
+RULES:
+1. Stay completely in character
+2. If trust < 30, be evasive and defensive
+3. If trust > 70, be more open but still cautious
+4. Never directly reveal your secret unless specifically pressured
+5. Respond in 1-3 sentences, noir dialogue style
+6. React based on your archetype and mood
+7. If asked about something you know, hint at it without fully revealing
+8. Reference people you know or events you've heard about when relevant"""
+
+        # Include previous conversation for consistency
+        history_section = ""
+        if dialogue_history:
+            history_section = f"\nPREVIOUS CONVERSATION WITH THIS DETECTIVE:\n{dialogue_history}\n"
+
+        user_prompt = f"""The detective says: "{player_input}"
+{history_section}
+Topics already discussed: {', '.join(topics_discussed) if topics_discussed else 'None'}
+Evidence the detective has shown: {', '.join(evidence_found) if evidence_found else 'None'}
+Current location: {self.state.current_location_id}
+
+Remember what you said before and stay consistent. Respond as {character.name} would."""
+
+        response = self.llm_client.chat([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
+        if response.success and response.text:
+            # Clean up the response
+            text = response.text.strip()
+            # Remove any "Character:" prefix the LLM might add
+            if text.lower().startswith(character.name.lower() + ":"):
+                text = text[len(character.name) + 1:].strip()
+            return text
+
+        return None
 
     def _handle_threaten(self, character: Character) -> None:
         """Handle threatening a character."""

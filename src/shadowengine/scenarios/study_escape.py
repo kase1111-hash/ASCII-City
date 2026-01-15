@@ -483,6 +483,96 @@ def create_study_escape(seed: int = None) -> Game:
         "victim": "Marcus Webb"
     }
 
+    # Initialize WorldState for consistent LLM generation
+    ws = game.state.world_state
+    ws.world_genre = "noir mystery"
+    ws.world_era = "1940s"
+    ws.world_rules = [
+        "Rain is constant in this city",
+        "Everyone has secrets",
+        "Trust is earned, not given",
+        "The night hides many sins"
+    ]
+
+    # Set the main mystery in world state
+    ws.set_main_mystery({
+        "victim": "Marcus Webb",
+        "crime": "murder",
+        "location": "alley behind O'Malley's Bar",
+        "suspects": ["Mickey O'Malley (bartender)", "Sally Malone (informant)", "Councilman Harrow"],
+        "culprit_id": chosen_culprit,  # Hidden from NPCs
+    })
+
+    # Register initial locations
+    for loc_id, loc in game.state.locations.items():
+        ws.register_location({
+            "id": loc.id,
+            "name": loc.name,
+            "location_type": "office" if "office" in loc.id else "bar" if "bar" in loc.id else "alley" if "alley" in loc.id else "street",
+            "description": loc.description,
+            "is_outdoor": loc.is_outdoor,
+        })
+
+    # Register initial NPCs with relationships
+    ws.register_npc({
+        "id": "bartender",
+        "name": "Mickey O'Malley",
+        "description": bartender.description,
+        "archetype": bartender.archetype.value,
+        "secret": bartender.secret_truth,
+        "public_persona": bartender.public_lie,
+        "topics": list(bartender.available_topics)
+    }, "bar")
+
+    ws.register_npc({
+        "id": "informant",
+        "name": "Sally 'Whispers' Malone",
+        "description": informant.description,
+        "archetype": informant.archetype.value,
+        "secret": informant.secret_truth,
+        "public_persona": informant.public_lie,
+        "topics": list(informant.available_topics)
+    }, "street")
+
+    ws.register_npc({
+        "id": "politician",
+        "name": "Councilman Vincent Harrow",
+        "description": politician.description,
+        "archetype": politician.archetype.value,
+        "secret": politician.secret_truth,
+        "public_persona": politician.public_lie,
+        "topics": list(politician.available_topics)
+    }, "office")
+
+    # Set up NPC relationships
+    ws.add_npc_relationship("bartender", "informant", "knows")
+    ws.add_npc_relationship("politician", "bartender", "customer")
+    ws.add_npc_relationship("informant", "politician", "watches")
+
+    # Add initial story facts
+    ws.add_fact(
+        "victim_found",
+        "Marcus Webb was found dead in the alley behind O'Malley's Bar",
+        "case file",
+        related_locations=["alley", "bar"]
+    )
+
+    ws.add_fact(
+        "victim_occupation",
+        "Marcus Webb was an accountant who handled books for powerful people",
+        "case file",
+        related_npcs=["politician"]
+    )
+
+    # Record the murder event (public knowledge)
+    ws.record_event(
+        "marcus_murder",
+        "Marcus Webb was found murdered in the alley",
+        "alley",
+        npcs=[chosen_culprit],
+        is_public=True
+    )
+
     return game
 
 
