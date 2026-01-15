@@ -152,9 +152,6 @@ class Scene:
         if exits:
             lines.append("Exits: " + ", ".join(h.label for h in exits))
 
-        lines.append("")
-        lines.append("(Type what you want to do: examine, talk, go, take...)")
-
         return lines
 
     def get_rendered_scene(self) -> list[str]:

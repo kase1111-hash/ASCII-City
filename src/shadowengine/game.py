@@ -978,8 +978,6 @@ Interpret what the player wants to do and respond with JSON."""
         if character.state.is_cracked:
             self.renderer.render_text("\n(They seem broken, ready to confess...)")
 
-        self.renderer.render_text("\n(Type what you want to say, or: leave, threaten, accuse)")
-
         # Get free-form input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
 
