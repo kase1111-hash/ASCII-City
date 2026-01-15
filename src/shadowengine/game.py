@@ -83,9 +83,11 @@ class Game:
             Archetype.GUILTY: "gangster",
             Archetype.INNOCENT: "bartender",
             Archetype.OUTSIDER: "politician",
-            Archetype.WITNESS: "informant",
-            Archetype.ACCOMPLICE: "street_kid",
-            Archetype.CORRUPT: "corrupt_cop",
+            Archetype.PROTECTOR: "informant",
+            Archetype.OPPORTUNIST: "street_kid",
+            Archetype.TRUE_BELIEVER: "corrupt_cop",
+            Archetype.SURVIVOR: "bartender",
+            Archetype.AUTHORITY: "politician",
         }
         return mapping.get(archetype, "default")
 
