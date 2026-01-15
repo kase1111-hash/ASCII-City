@@ -255,7 +255,8 @@ class Game:
                     self._handle_free_movement(destination)
                 return
 
-            self._show_error(self.parser.get_error_suggestion(command, context))
+            # Send to LLM for interpretation
+            self._handle_free_exploration(command.raw_input, context)
             return
 
         # Find target hotspot for commands that need one
@@ -458,6 +459,110 @@ class Game:
         # No existing exit - generate new location in that direction!
         self.renderer.render_narration(f"You head {direction}...")
         self._generate_and_move(f"{current_loc.id}_{direction}", direction)
+
+    def _handle_free_exploration(self, player_input: str, context: dict) -> None:
+        """Handle free-form exploration input by sending to LLM for interpretation."""
+        location = self.current_location
+        if not location:
+            return
+
+        # Build context about what's available
+        hotspots_desc = []
+        for h in location.get_visible_hotspots():
+            hotspots_desc.append(f"- {h.label} ({h.hotspot_type.value}): {h.description or 'no description'}")
+
+        system_prompt = """You are interpreting player commands in a text adventure game.
+Given the player's free-form input and the current scene, determine what they want to do.
+
+Respond in JSON format with:
+{
+    "action": "examine|talk|take|go|wait|other",
+    "target": "name of target from available items/people/exits",
+    "narrative": "A brief atmospheric description of what happens (1-2 sentences)",
+    "success": true/false
+}
+
+RULES:
+1. If the player wants to examine/look at something, action = "examine"
+2. If they want to talk/speak to someone, action = "talk"
+3. If they want to take/get something, action = "take"
+4. If they want to go somewhere or through an exit, action = "go"
+5. If they want to wait or pass time, action = "wait"
+6. For anything else or if unclear, action = "other" with a narrative response
+7. Match target to the closest available hotspot name
+8. Write atmospheric noir-style narrative descriptions
+9. If they ask a question about the environment, describe what they observe"""
+
+        user_prompt = f"""CURRENT LOCATION: {location.name}
+{location.description}
+
+AVAILABLE IN THIS SCENE:
+{chr(10).join(hotspots_desc) if hotspots_desc else "Nothing notable"}
+
+PLAYER'S INVENTORY: {', '.join(self.state.inventory) if self.state.inventory else 'Empty'}
+
+PLAYER SAYS: "{player_input}"
+
+Interpret what the player wants to do and respond with JSON."""
+
+        response = self.llm_client.chat([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
+        if response.success and response.text:
+            try:
+                # Parse JSON from response
+                json_match = re.search(r'\{[\s\S]*\}', response.text)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    action = data.get("action", "other")
+                    target = data.get("target", "")
+                    narrative = data.get("narrative", "")
+
+                    # Show the narrative
+                    if narrative:
+                        self.renderer.render_narration(narrative)
+
+                    # Execute the interpreted action
+                    if action == "examine" and target:
+                        hotspot = location.get_hotspot_by_label(target)
+                        if hotspot:
+                            self._handle_examine(hotspot)
+                            return
+                    elif action == "talk" and target:
+                        hotspot = location.get_hotspot_by_label(target)
+                        if hotspot:
+                            self._handle_talk(hotspot)
+                            return
+                    elif action == "take" and target:
+                        hotspot = location.get_hotspot_by_label(target)
+                        if hotspot:
+                            self._handle_take(hotspot)
+                            return
+                    elif action == "go" and target:
+                        hotspot = location.get_hotspot_by_label(target)
+                        if hotspot:
+                            self._handle_go(hotspot)
+                            return
+                        else:
+                            # Maybe it's a new destination
+                            self._handle_free_movement(target)
+                            return
+                    elif action == "wait":
+                        self._handle_wait()
+                        return
+
+                    # For "other" or if no specific action, just show narrative
+                    self.renderer.wait_for_key()
+                    return
+
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # Fallback: show a generic response
+        self.renderer.render_narration("You consider your options...")
+        self.renderer.wait_for_key()
 
     def _handle_free_movement(self, destination: str) -> None:
         """Handle free-form movement to any place the player names."""
@@ -872,8 +977,6 @@ class Game:
 
         if character.state.is_cracked:
             self.renderer.render_text("\n(They seem broken, ready to confess...)")
-
-        self.renderer.render_text("\n(Type what you want to say, or: leave, threaten, accuse)")
 
         # Get free-form input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
