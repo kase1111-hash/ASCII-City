@@ -206,3 +206,120 @@ class BehaviorPrompt:
             time=time,
             nearby_npcs=", ".join(nearby_npcs) if nearby_npcs else "none"
         )
+
+
+# =============================================================================
+# LOCATION GENERATION - For procedural world building
+# =============================================================================
+
+LOCATION_SYSTEM = """You are a world-builder for a procedural noir/adventure game.
+You generate new locations as the player explores in any direction.
+
+The world is infinite - players can go anywhere: cities, wilderness, other countries,
+fantasy realms, the south pole, space - wherever their imagination takes them.
+
+Your job is to create coherent, interesting locations that:
+1. Make logical sense given where the player is coming from
+2. Maintain consistency with the game's current narrative/mood
+3. Provide interesting things to examine and people to talk to
+4. Can connect back to the main story or create new story threads
+
+Output format (JSON):
+{
+    "id": "unique_snake_case_id",
+    "name": "Location Display Name",
+    "description": "2-3 sentence atmospheric description",
+    "location_type": "street|bar|office|alley|wilderness|building|vehicle|other",
+    "is_outdoor": true/false,
+    "ambient": "Short ambient description for mood",
+    "hotspots": [
+        {
+            "id": "hs_unique_id",
+            "label": "Display Name",
+            "type": "object|person|exit|evidence|container",
+            "description": "What player sees",
+            "examine_text": "Detailed examination text",
+            "character_id": "only for person type - null otherwise",
+            "exit_to": "only for exit type - direction or place name"
+        }
+    ],
+    "npcs": [
+        {
+            "id": "unique_npc_id",
+            "name": "NPC Name",
+            "description": "Physical/personality description",
+            "archetype": "survivor|opportunist|authority|outsider|innocent|guilty",
+            "secret": "What they're hiding",
+            "public_persona": "How they present themselves",
+            "topics": ["topic1", "topic2"]
+        }
+    ],
+    "connections": {
+        "north": "brief description of what's north",
+        "south": "brief description of what's south",
+        "east": "brief description of what's east",
+        "west": "brief description of what's west",
+        "back": "the place player came from"
+    }
+}"""
+
+
+LOCATION_GENERATE = """Generate a new location for the player.
+
+CURRENT CONTEXT:
+- Player is at: $current_location ($current_description)
+- Player wants to go: $destination (direction or specific place)
+- Time of day: $time
+- Weather: $weather
+- Game genre/mood: $genre
+
+STORY CONTEXT:
+$story_context
+
+WORLD SO FAR:
+$visited_locations
+
+PLAYER INVENTORY:
+$inventory
+
+Generate an appropriate new location. Be creative but consistent.
+If the player wants to go somewhere unexpected (like "the moon" or "ancient Rome"),
+create a transition that makes narrative sense - maybe they find a vehicle,
+a portal, fall asleep and dream, or discover the world is stranger than expected."""
+
+
+@dataclass
+class LocationPrompt:
+    """Prompt generator for procedural location generation."""
+
+    def get_system_prompt(self) -> str:
+        """Get the system prompt for location generation."""
+        return LOCATION_SYSTEM
+
+    def get_generation_prompt(
+        self,
+        current_location: str,
+        current_description: str,
+        destination: str,
+        time: str = "night",
+        weather: str = "clear",
+        genre: str = "noir mystery",
+        story_context: str = "",
+        visited_locations: Optional[list] = None,
+        inventory: Optional[list] = None
+    ) -> str:
+        """Get prompt for generating a new location."""
+        visited = "\n".join([f"- {loc}" for loc in (visited_locations or [])]) or "None yet"
+        items = ", ".join(inventory or []) or "Nothing"
+
+        return Template(LOCATION_GENERATE).safe_substitute(
+            current_location=current_location,
+            current_description=current_description,
+            destination=destination,
+            time=time,
+            weather=weather,
+            genre=genre,
+            story_context=story_context or "No specific story yet - player is exploring freely",
+            visited_locations=visited,
+            inventory=items
+        )

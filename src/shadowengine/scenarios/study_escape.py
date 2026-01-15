@@ -1,646 +1,617 @@
 """
-Study Room Escape Game - A puzzle-based escape room experience.
+Noir Detective Scenario - An LLM-driven procedural mystery.
 
-You've been locked in a mysterious study. Find clues, solve puzzles,
-and escape before time runs out!
+The city generates as you explore. NPCs respond dynamically.
+Every playthrough is unique based on your actions and the LLM.
 """
 
 import random
 import time
+from typing import Optional
 
 from ..game import Game
 from ..character import Character, Archetype
 from ..narrative import NarrativeSpine, ConflictType, TrueResolution, Revelation
 from ..render import Location
 from ..interaction import Hotspot, HotspotType
+from ..llm import LLMIntegration, LLMConfig
 
 
 # ============================================================================
-# ASCII ART GALLERY - Detailed visuals for the escape room
+# ASCII ART - Dynamically selected based on location type
 # ============================================================================
 
-STUDY_ROOM_ART = [
-    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-    "@@@@@@@@@@0GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG0@@@@@@@@@@",
-    "@@@@@@@@@@G:                                                         :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ╔══════╗     ╔═══════════╗     ╔══════╗    ┌──────┐   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ║ BOOK ║     ║  LOCKED   ║     ║ BOOK ║    │░░░░░░│   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ║ CASE ║     ║   SAFE    ║     ║ CASE ║    │░░░░░░│   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ║══════║     ║  [????]   ║     ║══════║    │WINDOW│   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ║▓▓▓▓▓▓║     ╚═══════════╝     ║▓▓▓▓▓▓║    │░░░░░░│   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ╚══════╝                       ╚══════╝    └──────┘   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:                                                         :G@@@@@@@@@@",
-    "@@@@@@@@@@G:      ┌─────────────────────────────────────┐           :G@@@@@@@@@@",
-    "@@@@@@@@@@G:      │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│           :G@@@@@@@@@@",
-    "@@@@@@@@@@G:      │░░░░░░░░░░░ ORNATE DESK ░░░░░░░░░░░░░│           :G@@@@@@@@@@",
-    "@@@@@@@@@@G:      │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│           :G@@@@@@@@@@",
-    "@@@@@@@@@@G:      └───────┬───────────────────┬─────────┘           :G@@@@@@@@@@",
-    "@@@@@@@@@@G:              │                   │                      :G@@@@@@@@@@",
-    "@@@@@@@@@@G:                                                         :G@@@@@@@@@@",
-    "@@@@@@@@@@G:    ┌────┐                                 ┌────────┐   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:    │COAT│        ═══════════              │PAINTING│   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:    │RACK│        ║  CHAIR  ║              │ FRAME  │   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:    │ || │        ═══════════              │ ????? │   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:    └────┘                                 └────────┘   :G@@@@@@@@@@",
-    "@@@@@@@@@@G:                                                         :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ╔════════════════════════════════════════════════╗    :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ║░░░░░░░░░░░░░░░░░ LOCKED DOOR ░░░░░░░░░░░░░░░░░░║    :G@@@@@@@@@@",
-    "@@@@@@@@@@G:  ╚════════════════════════════════════════════════╝    :G@@@@@@@@@@",
-    "@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@",
-    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-    "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-]
+LOCATION_ART = {
+    "office": [
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+        "@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ╔══════╗                      ┌────────┐   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ║FILING║   @                  │ WINDOW │   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ║CABINT║  YOU                 │ ░░░░░░ │   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ╚══════╝                      │ ░░░░░░ │   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                 └────────┘   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ┌─────────────────────────┐                G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   │░░░░░░░░ YOUR DESK ░░░░░░│                G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   └─────────────────────────┘                G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G       ═══════════         ┌──────────────┐   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G       ║ CHAIR  ║         │   DOOR OUT   │   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G       ═══════════         └──────────────┘   G@@@@@@@@@@@@",
+        "@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@",
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    ],
+    "street": [
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+        "@@░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░@@",
+        "@@░░ NIGHT SKY ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░@@",
+        "@@░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░@@",
+        "@@ ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐     @@",
+        "@@ │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│     @@",
+        "@@ │BUILDING│ │BUILDING│ │  BAR │  │ SHOP │  │BUILDING│ │ALLEY │     @@",
+        "@@ │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│  │▓▓▓▓▓▓│     @@",
+        "@@ └──────┘  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘     @@",
+        "@@                                                                  @@",
+        "@@═══════════════════════════════════════════════════════════════════@@",
+        "@@  ░░░░░░░░░░░░░░  RAIN-SLICKED STREET  ░░░░░░░░░░░░░░░░░░░░░░░░░░  @@",
+        "@@═══════════════════════════════════════════════════════════════════@@",
+        "@@       @                    ╬                  @                   @@",
+        "@@    FIGURE               LAMPPOST           SHADOW                 @@",
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    ],
+    "bar": [
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+        "@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@@@",
+        "@@@@@@@@@@G  ┌──────────────────────────────────────────┐ G@@@@@@@@@@@@",
+        "@@@@@@@@@@G  │░░░░░░░░░░░░░░░░ BAR ░░░░░░░░░░░░░░░░░░░░░│ G@@@@@@@@@@@@",
+        "@@@@@@@@@@G  │  ╔═╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗   │ G@@@@@@@@@@@@",
+        "@@@@@@@@@@G  │  ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║ ║   │ G@@@@@@@@@@@@",
+        "@@@@@@@@@@G  └──────────────────────────────────────────┘ G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                   @                            G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                BARTENDER                       G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                                G@@@@@@@@@@@@",
+        "@@@@@@@@@@G    ═══    ═══    ═══    ═══                   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   STOOL  STOOL  STOOL  STOOL    @     @       G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                               PATRON PATRON    G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   ┌────────┐                                   G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   │ EXIT   │    ╔════════╗    JUKEBOX ♪       G@@@@@@@@@@@@",
+        "@@@@@@@@@@G   └────────┘    ║ BOOTH  ║                    G@@@@@@@@@@@@",
+        "@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@",
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    ],
+    "alley": [
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+        "@@▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓@@",
+        "@@▓▓                                                              ▓▓@@",
+        "@@▓▓   BRICK WALL                              BRICK WALL         ▓▓@@",
+        "@@▓▓                                                              ▓▓@@",
+        "@@▓▓       ┌─────────┐                                            ▓▓@@",
+        "@@▓▓       │ DUMPSTER│    ░░░░░░░░░░░░░░░                        ▓▓@@",
+        "@@▓▓       │ ▓▓▓▓▓▓▓ │    ░ SOMETHING ░░                         ▓▓@@",
+        "@@▓▓       └─────────┘    ░░ ON GROUND ░                          ▓▓@@",
+        "@@▓▓                      ░░░░░░░░░░░░░░░                         ▓▓@@",
+        "@@▓▓                                                              ▓▓@@",
+        "@@▓▓   @                                              FIRE        ▓▓@@",
+        "@@▓▓  RAT                                             ESCAPE      ▓▓@@",
+        "@@▓▓                                                    │         ▓▓@@",
+        "@@▓▓                                                    │         ▓▓@@",
+        "@@▓▓   ← STREET                              DEAD END →           ▓▓@@",
+        "@@▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓@@",
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    ],
+    "generic": [
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+        "@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G              [ LOCATION ]                     G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                   @                           G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                  YOU                          G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@G                                               G@@@@@@@@@@@@",
+        "@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@",
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    ],
+}
 
-MYSTERIOUS_PORTRAIT_ART = """
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@0GG00GGGGCCCCCCCCCCCCCCCCCGGGGGGG0@@@@@@
-@@@@@@@@@@L;1ttttt1;;;:,,,,,,,,:;iiiiiiiii;1@@@@@@
-@@@@@@@@@@Litffffftii;::::::::;iiiiiiiiiiit@@@@@@
-@@@@@@@@@@Li1fffff1ii;::::::::;ii;;;;ii1t1f@@@@@@
-@@@@@@@@@@Li1ttfff1ii;::::::::;i;;;ii11111t@@@@@@
-@@@@@@@@@@Li1ttttf1;i;::::::::;i;;i11i11111t@@@@@@
-@@@@@@@@@@Li1ttttf1;i;:::,,:::;iiii1iii11111f@@@@@@
-@@@@@@@@@@Litftttt1;i;::,::::;11iii111t1iiiiit@@@@@@
-@@@@@@@@@@Litftttf1;i;:,:::::,;iiiiiiii1111it@@@@@@
-@@@@@@@@@@L;tttttf1;;:,,,....,;iiii;iii11ti1@@@@@@
-@@@@@@@@@@L;tttttf1i;,,..,;i;;iiii;;iii11t@@@@@@
-@@@@@@@@@@Litttttf1;,....;iii1111;1111ii;iiit@@@@@@
-@@@@@@@@@@L;tttttft:....,iii11tttt1111ii;iiit@@@@@@
-@@@@@@@@@@L;tttttft,...,;iiittttt111111iii1@@@@@@
-@@@@@@@@@@L;1ttttft...,:;iiii111111111iiii;it@@@@@@
-@@@@@@@@@@L;tttttf;...,:;;iii1ttttttiiii;;it@@@@@@
-@@@@@@@@@@f;tttttf:...,:;;;;i11t111iiiii;;:it@@@@@@
-@@@@@@@@@@f;tttttf;..,,:;;;;i1ttffftt1iiii;it@@@@@@
-@@@@@@@@@@f;tttttf1..,,;;;;i111111111iii1ii;it@@@@@@
-@@@@@@@@@@f;tttttf;..,:;;i;:,,:;itLt1;:,,,:iif@@@@@@
-@@@@@@@@@@f;tttttf1...:i;,,.,;iii1111iii;;i1if@@@@@@
-@@@@@@@@@@f;tttttf1;:,:i;,:;;::::;i1ti;::;iiif@@@@@@
-@@@@@@@@@@f;tttttti;:,:i;::;;:,,,;tf1;:;i111if@@@@@@
-@@@@@@@@@@f;tttttfi:,,,;i;;:,.:i;itft1i1i;iif@@@@@@
-@@@@@@@@@@f;tttttti;;,.:ii;;;;;;;itt111111if@@@@@@
-@@@@@@@@@@f;tttttti;;:,,iiiiiiii;t1ii11tft1if@@@@@@
-@@@@@@@@@@f;t1tttti;;:,.;iii1111iftii1111ttL@@@@@@
-@@@@@@@@@@f;tttttti;;:,.:;;ii111tft111ii11tL@@@@@@
-@@@@@@@@@@f;tttttti;;:,,;;iiii;i11i;ii11i;:f@@@@@@
-@@@@@@@@@@f;t111tti:;:,..;;;;;;;;::;itft1if@@@@@@
-@@@@@@@@@@f;t1111ti:;:,,.:;;;;;;i;:;i11t1if@@@@@@
-@@@@@@@@@@f;t1111ti:;::,,;;;;;;;;:,:i1111if@@@@@@
-@@@@@@@@@@t;t1111t;:;:,,,,:;iiii;::,;i111if@@@@@@
-@@@@@@@@@@t;t11111;:;:,,,,,;i;ii1;,:1t111it@@@@@@
-@@@@@@@@@@t;111111;:;:,,,,,,;;;;i;,:1111iit@@@@@@
-@@@@@@@@@@t;t11111;:;::,,,,:;;;;:,;11iiit@@@@@@
-@@@@@@@@@@t;111111;:::::::::,:;;:;ii:;iiit@@@@@@
-@@@@@@@@@@t;111111;:::::::::,,::;;;;;iiitf@@@@@@
-@@@@@@@@@@t;111111;::::::::::,.,,;;;;ii;:@@@@@@
-@@@@@@@@@@t;111111;:::;::;:::,,..,,:;;:,,@@@@@@
-@@@@@@@@@@t;111111;:::::::,,,,,....,,,...@@@@@@
-@@@@@@@@@@fi111111;:::::::,,,,,;;......,@@@@@@
-@@@@@@@@@@f11111111i;;::,,,:,,;1:......,@@@@@@
-@@@@@@@@@@fiiii11tffti;1ft;:::;,.......,@@@@@@
-@@@@@@@@@@Ltt1iiii11ii;fGLi;:::,.......,@@@@@@
-@@@@@@@@@@Lttttiiii1Ltifft11;;;:.......,@@@@@@
-@@@@@@@@@@ti111i111t1ii1ii1t;::;:...,..@@@@@@
-@@@@@@@@@@fiiii1tfti:::::::::,::,...;;:@@@@@@
-@@@@@@@@@@tiii;;i1i:,.........,,.. ,:;;@@@@@@
-@@@@@@@@@@LfLftttt111111111111t111iitftG@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"""
 
-SAFE_CLOSE_UP_ART = """
-╔═══════════════════════════════════════════════════════╗
-║                                                       ║
-║    ╔═══════════════════════════════════════════╗     ║
-║    ║                                           ║     ║
-║    ║      ┌─────────────────────────┐         ║     ║
-║    ║      │   COMBINATION SAFE      │         ║     ║
-║    ║      │                         │         ║     ║
-║    ║      │    ┌───┐ ┌───┐ ┌───┐   │         ║     ║
-║    ║      │    │ ? │ │ ? │ │ ? │   │         ║     ║
-║    ║      │    └───┘ └───┘ └───┘   │         ║     ║
-║    ║      │                         │         ║     ║
-║    ║      │    [ENTER CODE]         │         ║     ║
-║    ║      │                         │         ║     ║
-║    ║      └─────────────────────────┘         ║     ║
-║    ║                                           ║     ║
-║    ╚═══════════════════════════════════════════╝     ║
-║                                                       ║
-║        A heavy steel safe. The dial shows             ║
-║        it needs a 3-digit code to open.               ║
-║                                                       ║
-╚═══════════════════════════════════════════════════════╝"""
-
-BOOKCASE_LEFT_ART = """
-╔═════════════════════════════════════════╗
-║          ANTIQUE BOOKCASE               ║
-╠═════════════════════════════════════════╣
-║ ┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐   ║
-║ │░░░░░││▓▓▓▓▓││░░░░░││▓▓▓▓▓││░░░░░│   ║
-║ │DANTE││HOMER││SHAKE││POETS││MYTHS│   ║
-║ └─────┘└─────┘└─────┘└─────┘└─────┘   ║
-╠═════════════════════════════════════════╣
-║ ┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐   ║
-║ │▓▓▓▓▓││░░░░░││▓▓▓▓▓││░░░░░││▓▓▓▓▓│   ║
-║ │ATLAS││?????││BIBLE││GUILD││STARS│   ║
-║ └─────┘└─────┘└─────┘└─────┘└─────┘   ║
-╠═════════════════════════════════════════╣
-║                                         ║
-║   One book appears slightly loose...    ║
-║   Title reads: "SECRETS OF THE AGES"    ║
-║                                         ║
-╚═════════════════════════════════════════╝"""
-
-DESK_CLOSE_UP_ART = """
-╔═══════════════════════════════════════════════════════════════════╗
-║                         ORNATE MAHOGANY DESK                       ║
-╠═══════════════════════════════════════════════════════════════════╣
-║                                                                     ║
-║    ┌──────────┐    ┌────────────────┐    ┌──────────┐             ║
-║    │ INKWELL  │    │    JOURNAL     │    │  CANDLE  │             ║
-║    │    ◯     │    │ ░░░░░░░░░░░░░░ │    │    ╥     │             ║
-║    └──────────┘    │ ░░░░░░░░░░░░░░ │    │   ═╩═    │             ║
-║                    │ ░░░░░░░░░░░░░░ │    └──────────┘             ║
-║                    └────────────────┘                              ║
-║                                                                     ║
-║    ┌─────────────────────────────────────────────────────────┐    ║
-║    │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│    ║
-║    │          D R A W E R   (locked)                         │    ║
-║    │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│    ║
-║    └─────────────────────────────────────────────────────────┘    ║
-║                                                                     ║
-║    A brass nameplate reads: "Prof. Edmund Blackwood"               ║
-║                                                                     ║
-╚═══════════════════════════════════════════════════════════════════╝"""
-
-WINDOW_ART = """
-╔═══════════════════════════════════════════════════════╗
-║                                                       ║
-║      ┌─────────────────────────────────────┐         ║
-║      │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│         ║
-║      │░░░╔══╗░░░░░░░░░╔══╗░░░░░░░░░░░░░░░░│         ║
-║      │░░░║  ║░░░░░░░░░║  ║░░░░░░░░░░░░░░░░│         ║
-║      │░░░╚══╝░░░░░░░░░╚══╝░░░░░░░░░░░░░░░░│         ║
-║      │░░░░░░░░░░░░NIGHT SKY░░░░░░░░░░░░░░░│         ║
-║      │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│         ║
-║      │░░░░░░░MOONLIGHT░░░░░░░░░░░░░░░░░░░░│         ║
-║      │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│         ║
-║      └─────────────────────────────────────┘         ║
-║                                                       ║
-║      The window is barred from outside.              ║
-║      Through it, you see only darkness               ║
-║      and the faint glow of distant stars.            ║
-║                                                       ║
-║      Wait... is that a number scratched              ║
-║      into the windowsill? "7"                        ║
-║                                                       ║
-╚═══════════════════════════════════════════════════════╝"""
-
-PAINTING_ART = """
-╔═══════════════════════════════════════════════════════════════════╗
-║                                                                    ║
-║    ╔══════════════════════════════════════════════════════════╗   ║
-║    ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░▓▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓░░░○░░░░░░░░○░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓░░░░░░░░░░░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓░░░░░░╔══╗░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓░░░░░░║  ║░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓░░░░░░╚══╝░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░▓▓▓░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║   ║
-║    ╚══════════════════════════════════════════════════════════╝   ║
-║                                                                    ║
-║         A portrait of someone long forgotten.                      ║
-║         The eyes seem to follow you...                             ║
-║                                                                    ║
-║         Something is written on the frame:                         ║
-║         "The second number hides in plain sight - 4"               ║
-║                                                                    ║
-╚═══════════════════════════════════════════════════════════════════╝"""
-
-COAT_RACK_ART = """
-╔═══════════════════════════════════════════╗
-║           COAT RACK                       ║
-╠═══════════════════════════════════════════╣
-║                                           ║
-║              ┌───┐                        ║
-║              │ ○ │                        ║
-║           ───┴───┴───                     ║
-║           /         \\                     ║
-║          /           \\                    ║
-║         │             │                   ║
-║        ┌┴─────────────┴┐                  ║
-║        │░░░░░░░░░░░░░░░│                  ║
-║        │░░░ OLD COAT ░░│                  ║
-║        │░░░░░░░░░░░░░░░│                  ║
-║        │░░░░░░░░░░░░░░░│                  ║
-║        │░░░░░░░░░░░░░░░│                  ║
-║        │░░░░░░░░░░░░░░░│                  ║
-║        └───────────────┘                  ║
-║              ║                            ║
-║              ║                            ║
-║           ═══╩═══                         ║
-║                                           ║
-║    A dusty coat hangs here.               ║
-║    Something jingles in the pocket...     ║
-║                                           ║
-╚═══════════════════════════════════════════╝"""
-
-LOCKED_DOOR_ART = """
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@0GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG0@@@@@@@@
-@@@@@@@@G                                              G@@@@@@@@
-@@@@@@@@G     ╔══════════════════════════════════╗    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║ ○  G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ║░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░║    G@@@@@@@@
-@@@@@@@@G     ╚══════════════════════════════════╝    G@@@@@@@@
-@@@@@@@@G                                              G@@@@@@@@
-@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
-             THE HEAVY OAK DOOR IS LOCKED.
-
-       A brass keyhole gleams in the dim light.
-       You'll need to find the key to escape...
-"""
-
-JOURNAL_ART = """
-╔═══════════════════════════════════════════════════════════════════╗
-║                         LEATHER JOURNAL                            ║
-╠═══════════════════════════════════════════════════════════════════╣
-║                                                                     ║
-║    ┌─────────────────────────────────────────────────────────┐    ║
-║    │                                                         │    ║
-║    │  "To whomever finds themselves trapped in my study,     │    ║
-║    │                                                         │    ║
-║    │   The code you seek is scattered across the room.       │    ║
-║    │   Each number hides in a different place:               │    ║
-║    │                                                         │    ║
-║    │   - The first digit marks the window                    │    ║
-║    │   - The second watches from the portrait                │    ║
-║    │   - The third rests with forgotten things               │    ║
-║    │                                                         │    ║
-║    │   The safe holds what you need.                         │    ║
-║    │   But remember - things are not always as they seem.    │    ║
-║    │                                                         │    ║
-║    │                              - E.B."                    │    ║
-║    │                                                         │    ║
-║    └─────────────────────────────────────────────────────────┘    ║
-║                                                                     ║
-║    The pages are yellowed with age. This journal holds              ║
-║    the secret to escaping this room...                              ║
-║                                                                     ║
-╚═══════════════════════════════════════════════════════════════════╝"""
-
-SECRET_BOOK_ART = """
-╔═══════════════════════════════════════════════════════════════════╗
-║              "SECRETS OF THE AGES" - HOLLOW BOOK                   ║
-╠═══════════════════════════════════════════════════════════════════╣
-║                                                                     ║
-║         ┌─────────────────────────────────────────┐                ║
-║         │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│                ║
-║         │░░░┌─────────────────────────────┐░░░░░│                ║
-║         │░░░│                             │░░░░░│                ║
-║         │░░░│     ╔═══════════════╗      │░░░░░│                ║
-║         │░░░│     ║               ║      │░░░░░│                ║
-║         │░░░│     ║   BRASS KEY   ║      │░░░░░│                ║
-║         │░░░│     ║    ╔═══╗      ║      │░░░░░│                ║
-║         │░░░│     ║    ║   ║░░░   ║      │░░░░░│                ║
-║         │░░░│     ║    ╚═══╝      ║      │░░░░░│                ║
-║         │░░░│     ║               ║      │░░░░░│                ║
-║         │░░░│     ╚═══════════════╝      │░░░░░│                ║
-║         │░░░│                             │░░░░░│                ║
-║         │░░░└─────────────────────────────┘░░░░░│                ║
-║         │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│                ║
-║         └─────────────────────────────────────────┘                ║
-║                                                                     ║
-║    The book is hollow inside! A brass key rests in                 ║
-║    the carved compartment. This must be the drawer key!            ║
-║                                                                     ║
-╚═══════════════════════════════════════════════════════════════════╝"""
-
-KEY_FOUND_ART = """
-╔═══════════════════════════════════════════════════════════════════╗
-║                        ESCAPE KEY FOUND!                           ║
-╠═══════════════════════════════════════════════════════════════════╣
-║                                                                     ║
-║                                                                     ║
-║                     ╔═══════════════════╗                          ║
-║                     ║                   ║                          ║
-║                     ║    ┌─────────┐    ║                          ║
-║                     ║    │ ╔═════╗ │    ║                          ║
-║                     ║    │ ║     ║ │    ║                          ║
-║                     ║    │ ║     ╠═╧══════════╗                    ║
-║                     ║    │ ║     ║░░░░░░░░░░░░║                    ║
-║                     ║    │ ║     ╠═╤══════════╝                    ║
-║                     ║    │ ║     ║ │    ║                          ║
-║                     ║    │ ╚═════╝ │    ║                          ║
-║                     ║    └─────────┘    ║                          ║
-║                     ║                   ║                          ║
-║                     ╚═══════════════════╝                          ║
-║                                                                     ║
-║                    THE KEY TO THE DOOR!                            ║
-║                                                                     ║
-║          You've found the ornate brass key that                    ║
-║          unlocks the study door. FREEDOM AWAITS!                   ║
-║                                                                     ║
-╚═══════════════════════════════════════════════════════════════════╝"""
-
-ESCAPE_SUCCESS_ART = """
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@
-@@@@@@@@@@G                                                           G@@@@@@@@@@
-@@@@@@@@@@G    ╔═══════════════════════════════════════════════╗     G@@@@@@@@@@
-@@@@@@@@@@G    ║                                               ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║    ██╗   ██╗ ██████╗ ██╗   ██╗                ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║    ╚██╗ ██╔╝██╔═══██╗██║   ██║                ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║     ╚████╔╝ ██║   ██║██║   ██║                ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║      ╚██╔╝  ██║   ██║██║   ██║                ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║       ██║   ╚██████╔╝╚██████╔╝                ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║       ╚═╝    ╚═════╝  ╚═════╝                 ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║                                               ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   ███████╗███████╗ ██████╗ █████╗ ██████╗ ███████╗  ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   ██╔════╝██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝  ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   █████╗  ███████╗██║     ███████║██████╔╝█████╗    ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   ██╔══╝  ╚════██║██║     ██╔══██║██╔═══╝ ██╔══╝    ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   ███████╗███████║╚██████╗██║  ██║██║     ███████╗  ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║   ╚══════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝     ╚══════╝  ║     G@@@@@@@@@@
-@@@@@@@@@@G    ║                                               ║     G@@@@@@@@@@
-@@@@@@@@@@G    ╚═══════════════════════════════════════════════╝     G@@@@@@@@@@
-@@@@@@@@@@G                                                           G@@@@@@@@@@
-@@@@@@@@@@G           You unlocked the door and escaped!              G@@@@@@@@@@
-@@@@@@@@@@G              Congratulations, detective!                  G@@@@@@@@@@
-@@@@@@@@@@G                                                           G@@@@@@@@@@
-@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"""
+def get_art_for_location(location_type: str) -> list[str]:
+    """Get appropriate ASCII art for a location type."""
+    return LOCATION_ART.get(location_type, LOCATION_ART["generic"])
 
 
 def create_study_escape(seed: int = None) -> Game:
     """
-    Create the Study Room Escape scenario.
+    Create a noir detective scenario.
 
-    A puzzle-based escape room with:
-    - 1 main location (the locked study)
-    - Multiple puzzles to solve
-    - Clues scattered around the room
-    - A 3-digit safe code to discover
-    - Keys to find and doors to unlock
+    This is an LLM-driven mystery where:
+    - The narrative spine defines the hidden truth
+    - NPCs have personalities and secrets - LLM generates their dialogue
+    - The city expands as you explore
+    - Clues emerge from your investigations
     """
     game = Game()
     game.new_game(seed=seed)
 
-    # Randomize the safe code for replayability
+    # Initialize LLM integration
+    llm = LLMIntegration()
+    game.llm = llm  # Attach for dynamic generation
+
+    # Randomize the mystery for each playthrough
     if seed:
         random.seed(seed)
-    code_digits = [
-        random.randint(1, 9),
-        random.randint(1, 9),
-        random.randint(1, 9)
-    ]
-    safe_code = f"{code_digits[0]}{code_digits[1]}{code_digits[2]}"
 
-    # Create narrative spine for escape room
+    # Generate the hidden truth - this is what the LLM uses to stay consistent
+    culprits = ["bartender", "informant", "politician"]
+    motives = [
+        "gambling debts to dangerous people",
+        "blackmail - the victim knew their secret",
+        "jealousy over a love affair",
+        "business deal gone wrong",
+        "witness to a crime that needed silencing",
+    ]
+    methods = [
+        "poison in a drink",
+        "hired muscle",
+        "staged accident",
+        "pushed from a height",
+    ]
+
+    chosen_culprit = random.choice(culprits)
+    chosen_motive = random.choice(motives)
+    chosen_method = random.choice(methods)
+
+    # Create the narrative spine - the hidden truth
     spine = NarrativeSpine(
-        conflict_type=ConflictType.THEFT,  # Using THEFT as closest match
-        conflict_description=f"You're trapped in a mysterious study. Find the clues, crack the safe code ({safe_code}), and escape!",
+        conflict_type=ConflictType.MURDER,
+        conflict_description="A body was found in the alley behind O'Malley's Bar. "
+                           "The victim: Marcus Webb, a small-time accountant with big connections.",
         true_resolution=TrueResolution(
-            culprit_id="puzzle",
-            motive="escape the room",
-            method="solve puzzles and find the key",
-            opportunity="explore everything",
-            evidence_chain=["find_journal", "find_code_1", "find_code_2", "find_code_3", "open_safe", "get_key", "escape"]
+            culprit_id=chosen_culprit,
+            motive=chosen_motive,
+            method=chosen_method,
+            opportunity="was alone with the victim that night",
+            evidence_chain=["witness_account", "physical_evidence", "motive_revealed", "confession"]
         ),
         revelations=[
             Revelation(
-                id="find_journal",
-                description="The journal reveals the puzzle structure",
-                importance=1,
-                source="Examine the desk"
-            ),
-            Revelation(
-                id="find_code_1",
-                description=f"First digit of safe code: {code_digits[0]}",
+                id="witness_account",
+                description="Someone saw the victim with another person",
                 importance=2,
-                prerequisites=["find_journal"],
-                source="Examine the window"
+                source="Talk to people who were there that night"
             ),
             Revelation(
-                id="find_code_2",
-                description=f"Second digit of safe code: {code_digits[1]}",
-                importance=2,
-                prerequisites=["find_journal"],
-                source="Examine the painting"
-            ),
-            Revelation(
-                id="find_code_3",
-                description=f"Third digit of safe code: {code_digits[2]}",
-                importance=2,
-                prerequisites=["find_journal"],
-                source="Search the coat"
-            ),
-            Revelation(
-                id="open_safe",
-                description="Safe opened - brass key found!",
+                id="physical_evidence",
+                description="Evidence at the crime scene",
                 importance=3,
-                prerequisites=["find_code_1", "find_code_2", "find_code_3"],
-                source="Enter the correct code"
+                prerequisites=["witness_account"],
+                source="Examine the alley carefully"
             ),
             Revelation(
-                id="get_drawer_key",
-                description="Found drawer key in hollow book",
-                importance=2,
-                source="Examine the bookcase"
-            ),
-            Revelation(
-                id="escape",
-                description="Door unlocked - FREEDOM!",
+                id="motive_revealed",
+                description=f"The culprit's motive: {chosen_motive}",
                 importance=3,
-                prerequisites=["open_safe"],
-                source="Use the key on the door"
+                prerequisites=["physical_evidence"],
+                source="Dig into the suspect's background"
+            ),
+            Revelation(
+                id="confession",
+                description="The culprit breaks down and confesses",
+                importance=3,
+                prerequisites=["motive_revealed"],
+                source="Confront the culprit with evidence"
             )
         ],
-        twist_probability=0.0
+        twist_probability=0.2
     )
     game.set_spine(spine)
 
-    # Store the safe code in game state for verification
-    game.safe_code = safe_code
-    game.code_digits = code_digits
+    # Create starting characters with rich personalities
+    # The LLM will generate their dialogue based on these traits
 
-    # Create the study location with full ASCII art
-    study = Location(
-        id="study",
-        name="The Locked Study",
-        description="You wake up in a wood-paneled study. The heavy oak door is locked tight. You must find a way to escape!",
-        art=STUDY_ROOM_ART,
+    bartender = Character(
+        id="bartender",
+        name="Mickey O'Malley",
+        archetype=Archetype.SURVIVOR if chosen_culprit != "bartender" else Archetype.GUILTY,
+        description="A weathered bartender who's seen too much. "
+                   "Gray hair, tired eyes, hands that never stop moving.",
+        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+                    if chosen_culprit == "bartender"
+                    else "I saw who Marcus was talking to that night, but I'm scared to say.",
+        public_lie="I don't know nothing. I just pour drinks."
+                  if chosen_culprit == "bartender"
+                  else "Busy night, didn't see much.",
+        role_in_spine="culprit" if chosen_culprit == "bartender" else "witness",
+        trust_threshold=30,
+        initial_location="bar"
+    )
+    bartender.add_topic("marcus webb")
+    bartender.add_topic("that night")
+    bartender.add_topic("the bar")
+    bartender.add_topic("regulars")
+    game.add_character(bartender)
+
+    informant = Character(
+        id="informant",
+        name="Sally 'Whispers' Malone",
+        archetype=Archetype.OPPORTUNIST if chosen_culprit != "informant" else Archetype.GUILTY,
+        description="A street informant with ears everywhere. "
+                   "Small, quick, always watching the exits.",
+        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+                    if chosen_culprit == "informant"
+                    else "I know who did it, but information isn't free.",
+        public_lie="Marcus? Sure, I knew him. Everybody did."
+                  if chosen_culprit == "informant"
+                  else "I hear things, but I don't remember them for free.",
+        role_in_spine="culprit" if chosen_culprit == "informant" else "informant",
+        trust_threshold=25,
+        initial_location="street"
+    )
+    informant.add_topic("marcus webb")
+    informant.add_topic("rumors")
+    informant.add_topic("the streets")
+    informant.add_topic("who to trust")
+    game.add_character(informant)
+
+    politician = Character(
+        id="politician",
+        name="Councilman Vincent Harrow",
+        archetype=Archetype.AUTHORITY if chosen_culprit != "politician" else Archetype.GUILTY,
+        description="A city councilman with expensive tastes and powerful friends. "
+                   "Slicked hair, gold watch, smile that doesn't reach his eyes.",
+        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+                    if chosen_culprit == "politician"
+                    else "Marcus was doing my books. He found something he shouldn't have.",
+        public_lie="Tragic loss. Marcus was a... friend of the community."
+                  if chosen_culprit == "politician"
+                  else "I barely knew the man. Ask his employer.",
+        role_in_spine="culprit" if chosen_culprit == "politician" else "connected",
+        trust_threshold=45,
+        initial_location="office"
+    )
+    politician.add_topic("marcus webb")
+    politician.add_topic("city business")
+    politician.add_topic("your connections")
+    politician.add_topic("the night in question")
+    game.add_character(politician)
+
+    # Create starting location - your detective office
+    office = Location(
+        id="office",
+        name="Your Office",
+        description="A cramped detective's office. Rain streaks the window. "
+                   "The phone just stopped ringing - a new case.",
+        art=get_art_for_location("office"),
         is_outdoor=False,
-        ambient_description="Dust motes dance in the moonlight filtering through barred windows. The room holds many secrets..."
+        ambient_description="The neon sign outside flickers. Another long night ahead."
     )
 
-    # Add all interactive hotspots
-
-    # The locked safe - main puzzle
-    study.add_hotspot(Hotspot(
-        id="hs_safe",
-        label="Locked Safe",
-        hotspot_type=HotspotType.CONTAINER,
-        position=(35, 7),
-        description="A heavy steel safe mounted on the wall.",
-        examine_text=SAFE_CLOSE_UP_ART + f"\n\nThe safe requires a 3-digit code. You'll need to search the room for clues."
-    ))
-
-    # Left bookcase
-    study.add_hotspot(Hotspot(
-        id="hs_bookcase_left",
-        label="Left Bookcase",
-        hotspot_type=HotspotType.CONTAINER,
-        position=(8, 6),
-        description="An antique bookcase filled with dusty tomes.",
-        examine_text=BOOKCASE_LEFT_ART + "\n\nYou pull the loose book... It's hollow inside!\n" + SECRET_BOOK_ART,
-        reveals_fact="get_drawer_key"
-    ))
-
-    # Right bookcase
-    study.add_hotspot(Hotspot(
-        id="hs_bookcase_right",
-        label="Right Bookcase",
-        hotspot_type=HotspotType.OBJECT,
-        position=(50, 6),
-        description="Another bookcase, these books seem ordinary.",
-        examine_text="Rows of leather-bound books on history and philosophy. Nothing unusual here."
-    ))
-
-    # The desk with journal
-    study.add_hotspot(Hotspot(
+    office.add_hotspot(Hotspot(
         id="hs_desk",
-        label="Ornate Desk",
+        label="Your Desk",
         hotspot_type=HotspotType.OBJECT,
-        position=(35, 14),
-        description="A large mahogany desk dominates the center of the room.",
-        examine_text=DESK_CLOSE_UP_ART + "\n\nYou open the journal and read...\n" + JOURNAL_ART,
-        reveals_fact="find_journal"
+        position=(25, 10),
+        description="Cluttered with case files and cold coffee.",
+        examine_text="A folder sits on top: 'WEBB, Marcus - Deceased'. "
+                    "Body found in the alley behind O'Malley's Bar. No witnesses... yet."
     ))
 
-    # Window with first clue
-    study.add_hotspot(Hotspot(
+    office.add_hotspot(Hotspot(
         id="hs_window",
-        label="Barred Window",
+        label="Window",
         hotspot_type=HotspotType.OBJECT,
-        position=(62, 8),
-        description="A window looking out into darkness.",
-        examine_text=WINDOW_ART.replace('"7"', f'"{code_digits[0]}"'),
-        reveals_fact="find_code_1",
-        requires_discovery="find_journal"
+        position=(55, 5),
+        description="Looking out at the rain-slicked streets.",
+        examine_text="The city sprawls below. Somewhere out there, a killer thinks they got away with it."
     ))
 
-    # Painting with second clue
-    study.add_hotspot(Hotspot(
-        id="hs_painting",
-        label="Mysterious Painting",
-        hotspot_type=HotspotType.EVIDENCE,
-        position=(62, 21),
-        description="A dusty portrait in an ornate frame.",
-        examine_text=PAINTING_ART.replace('"The second number hides in plain sight - 4"',
-                                         f'"The second number hides in plain sight - {code_digits[1]}"') +
-                     "\n\n" + MYSTERIOUS_PORTRAIT_ART,
-        reveals_fact="find_code_2",
-        requires_discovery="find_journal"
-    ))
-
-    # Coat rack with third clue
-    study.add_hotspot(Hotspot(
-        id="hs_coat_rack",
-        label="Coat Rack",
-        hotspot_type=HotspotType.OBJECT,
-        position=(8, 20),
-        description="An old coat hangs on this rack.",
-        examine_text=COAT_RACK_ART + f"\n\nYou search the coat pocket and find a crumpled note: '{code_digits[2]}'",
-        reveals_fact="find_code_3",
-        requires_discovery="find_journal"
-    ))
-
-    # Chair
-    study.add_hotspot(Hotspot(
-        id="hs_chair",
-        label="Leather Chair",
-        hotspot_type=HotspotType.OBJECT,
-        position=(35, 21),
-        description="A comfortable-looking leather chair.",
-        examine_text="A worn leather chair. Someone spent many hours here. Nothing hidden underneath."
-    ))
-
-    # The locked door - exit
-    study.add_hotspot(Hotspot(
-        id="hs_door",
-        label="Locked Door",
+    office.add_hotspot(Hotspot(
+        id="hs_door_out",
+        label="Door to Street",
         hotspot_type=HotspotType.EXIT,
-        position=(35, 26),
-        description="The heavy oak door. Your only way out.",
-        examine_text=LOCKED_DOOR_ART,
-        requires_discovery="open_safe"  # Can only use after getting key from safe
+        position=(55, 14),
+        description="Time to hit the streets.",
+        examine_text="The city awaits.",
+        target_id="street"
     ))
 
-    game.add_location(study)
-    game.set_start_location("study")
+    game.add_location(office)
+
+    # Create the street - hub location
+    street = Location(
+        id="street",
+        name="Rain-Slicked Street",
+        description="A noir tableau. Streetlights cast pools of sickly yellow. "
+                   "The rain never stops in this city.",
+        art=get_art_for_location("street"),
+        is_outdoor=True,
+        ambient_description="Distant sirens. The smell of wet asphalt. Shadows move in doorways."
+    )
+
+    street.add_hotspot(Hotspot.create_person(
+        id="hs_informant",
+        name="Shadowy Figure (Sally)",
+        position=(8, 14),
+        character_id="informant",
+        description="A small figure lurks near the lamppost, watching."
+    ))
+
+    street.add_hotspot(Hotspot(
+        id="hs_bar_entrance",
+        label="O'Malley's Bar",
+        hotspot_type=HotspotType.EXIT,
+        position=(25, 7),
+        description="A dive bar. Neon sign buzzing.",
+        examine_text="The kind of place where questions get answered - for a price.",
+        target_id="bar"
+    ))
+
+    street.add_hotspot(Hotspot(
+        id="hs_alley",
+        label="Dark Alley",
+        hotspot_type=HotspotType.EXIT,
+        position=(60, 7),
+        description="The crime scene. Police tape flutters.",
+        examine_text="Where Marcus Webb took his last breath.",
+        target_id="alley"
+    ))
+
+    street.add_hotspot(Hotspot(
+        id="hs_office_return",
+        label="Your Office Building",
+        hotspot_type=HotspotType.EXIT,
+        position=(8, 7),
+        description="Back to base.",
+        target_id="office"
+    ))
+
+    game.add_location(street)
+
+    # Create the bar
+    bar = Location(
+        id="bar",
+        name="O'Malley's Bar",
+        description="Smoke hangs in the air. A jukebox plays something sad. "
+                   "The bartender polishes a glass that's already clean.",
+        art=get_art_for_location("bar"),
+        is_outdoor=False,
+        ambient_description="The clink of glasses. Murmured conversations that stop when you get close."
+    )
+
+    bar.add_hotspot(Hotspot.create_person(
+        id="hs_bartender",
+        name="Mickey O'Malley (Bartender)",
+        position=(35, 8),
+        character_id="bartender",
+        description="The owner. He's seen your type before."
+    ))
+
+    bar.add_hotspot(Hotspot(
+        id="hs_bar_counter",
+        label="Bar Counter",
+        hotspot_type=HotspotType.OBJECT,
+        position=(35, 5),
+        description="Sticky with years of spilled drinks.",
+        examine_text="Initials carved into the wood. 'MW' - Marcus Webb? He was a regular."
+    ))
+
+    bar.add_hotspot(Hotspot(
+        id="hs_booth",
+        label="Back Booth",
+        hotspot_type=HotspotType.OBJECT,
+        position=(35, 15),
+        description="A private booth in the shadows.",
+        examine_text="Someone left a napkin with a phone number. The ink is fresh.",
+        reveals_fact="witness_account"
+    ))
+
+    bar.add_hotspot(Hotspot(
+        id="hs_bar_exit",
+        label="Exit to Street",
+        hotspot_type=HotspotType.EXIT,
+        position=(10, 14),
+        target_id="street"
+    ))
+
+    game.add_location(bar)
+
+    # Create the alley - crime scene
+    alley = Location(
+        id="alley",
+        name="Dark Alley (Crime Scene)",
+        description="Police tape marks where the body was found. "
+                   "The rain has washed away most of the blood, but not all.",
+        art=get_art_for_location("alley"),
+        is_outdoor=True,
+        ambient_description="Rats scatter at your approach. The fire escape creaks in the wind."
+    )
+
+    alley.add_hotspot(Hotspot(
+        id="hs_crime_scene",
+        label="Chalk Outline",
+        hotspot_type=HotspotType.EVIDENCE,
+        position=(40, 8),
+        description="Where Marcus Webb fell.",
+        examine_text="The body position suggests he was taken by surprise. "
+                    "He never saw it coming.",
+        reveals_fact="physical_evidence",
+        requires_discovery="witness_account"
+    ))
+
+    alley.add_hotspot(Hotspot(
+        id="hs_dumpster",
+        label="Dumpster",
+        hotspot_type=HotspotType.CONTAINER,
+        position=(15, 7),
+        description="Overflowing with garbage.",
+        examine_text="Under the trash... a torn piece of fabric. Expensive material. "
+                    "Someone wealthy was here."
+    ))
+
+    alley.add_hotspot(Hotspot(
+        id="hs_fire_escape",
+        label="Fire Escape",
+        hotspot_type=HotspotType.OBJECT,
+        position=(60, 12),
+        description="Rusty ladder leading up.",
+        examine_text="Fresh scuff marks. Someone climbed down recently. An escape route?"
+    ))
+
+    alley.add_hotspot(Hotspot(
+        id="hs_alley_exit",
+        label="Back to Street",
+        hotspot_type=HotspotType.EXIT,
+        position=(10, 16),
+        target_id="street"
+    ))
+
+    game.add_location(alley)
+
+    game.set_start_location("office")
+
+    # Store mystery details for LLM context
+    game.mystery = {
+        "culprit": chosen_culprit,
+        "motive": chosen_motive,
+        "method": chosen_method,
+        "victim": "Marcus Webb"
+    }
+
+    # Initialize WorldState for consistent LLM generation
+    ws = game.state.world_state
+    ws.world_genre = "noir mystery"
+    ws.world_era = "1940s"
+    ws.world_rules = [
+        "Rain is constant in this city",
+        "Everyone has secrets",
+        "Trust is earned, not given",
+        "The night hides many sins"
+    ]
+
+    # Set the main mystery in world state
+    ws.set_main_mystery({
+        "victim": "Marcus Webb",
+        "crime": "murder",
+        "location": "alley behind O'Malley's Bar",
+        "suspects": ["Mickey O'Malley (bartender)", "Sally Malone (informant)", "Councilman Harrow"],
+        "culprit_id": chosen_culprit,  # Hidden from NPCs
+    })
+
+    # Register initial locations
+    for loc_id, loc in game.state.locations.items():
+        ws.register_location({
+            "id": loc.id,
+            "name": loc.name,
+            "location_type": "office" if "office" in loc.id else "bar" if "bar" in loc.id else "alley" if "alley" in loc.id else "street",
+            "description": loc.description,
+            "is_outdoor": loc.is_outdoor,
+        })
+
+    # Register initial NPCs with relationships
+    ws.register_npc({
+        "id": "bartender",
+        "name": "Mickey O'Malley",
+        "description": bartender.description,
+        "archetype": bartender.archetype.value,
+        "secret": bartender.secret_truth,
+        "public_persona": bartender.public_lie,
+        "topics": list(bartender.available_topics)
+    }, "bar")
+
+    ws.register_npc({
+        "id": "informant",
+        "name": "Sally 'Whispers' Malone",
+        "description": informant.description,
+        "archetype": informant.archetype.value,
+        "secret": informant.secret_truth,
+        "public_persona": informant.public_lie,
+        "topics": list(informant.available_topics)
+    }, "street")
+
+    ws.register_npc({
+        "id": "politician",
+        "name": "Councilman Vincent Harrow",
+        "description": politician.description,
+        "archetype": politician.archetype.value,
+        "secret": politician.secret_truth,
+        "public_persona": politician.public_lie,
+        "topics": list(politician.available_topics)
+    }, "office")
+
+    # Set up NPC relationships
+    ws.add_npc_relationship("bartender", "informant", "knows")
+    ws.add_npc_relationship("politician", "bartender", "customer")
+    ws.add_npc_relationship("informant", "politician", "watches")
+
+    # Add initial story facts
+    ws.add_fact(
+        "victim_found",
+        "Marcus Webb was found dead in the alley behind O'Malley's Bar",
+        "case file",
+        related_locations=["alley", "bar"]
+    )
+
+    ws.add_fact(
+        "victim_occupation",
+        "Marcus Webb was an accountant who handled books for powerful people",
+        "case file",
+        related_npcs=["politician"]
+    )
+
+    # Record the murder event (public knowledge)
+    ws.record_event(
+        "marcus_murder",
+        "Marcus Webb was found murdered in the alley",
+        "alley",
+        npcs=[chosen_culprit],
+        is_public=True
+    )
 
     return game
 
 
 def run_study_escape():
-    """Run the Study Room Escape scenario."""
-    # Generate random seed for unique gameplay each time
+    """Run the Noir Detective scenario."""
     seed = int(time.time() * 1000) % (2**31)
     random.seed(seed)
 
     print()
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print("@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@@@")
-    print("@@@@@@@@@@G                                             G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ╔═══════════════════════════════════╗   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║    STUDY ROOM ESCAPE              ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║                                   ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║    You wake in a locked study.    ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║    Find the clues. Crack the      ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║    code. ESCAPE!                  ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ║                                   ║   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G    ╚═══════════════════════════════════╝   G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G                                             G@@@@@@@@@@@@")
-    print("@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@")
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print("@@@@@@@@@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@@@@@@@@@@@")
+    print("@@@@@@@@@@G                                               G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ╔═════════════════════════════════════╗    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║         SHADOWENGINE                ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║     Procedural Noir Detective       ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║                                     ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║   The city never sleeps.            ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║   Neither do you.                   ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ╚═════════════════════════════════════╝    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G                                               G@@@@@@@@@@@@")
+    print("@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@")
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
     print()
-    print("=" * 70)
+    print("=" * 72)
     print(f"[Game Seed: {seed}]")
-    print("=" * 70)
+    print("=" * 72)
     print()
-    print("Commands: examine [number/name], look, inventory, help")
-    print("          use [item] on [object], open [container]")
+    print("A body in the alley. A city full of secrets.")
+    print("Everyone's got something to hide. Find the truth.")
     print()
-    input("Press Enter to begin your escape...")
+    print("Commands: examine [object], talk [person], go [place]")
+    print("          threaten, accuse, inventory, wait, help")
+    print()
+    print("The LLM generates NPC dialogue and narrative dynamically.")
+    print("Every playthrough tells a different story.")
+    print()
+    input("Press Enter to begin your investigation...")
 
     game = create_study_escape(seed=seed)
     game.run()

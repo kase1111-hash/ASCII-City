@@ -25,7 +25,7 @@ def main():
     print("@@@@@@@@@@G   ║         SHADOWENGINE                ║    G@@@@@@@@@@@@")
     print("@@@@@@@@@@G   ║   A Procedural ASCII Game Engine    ║    G@@@@@@@@@@@@")
     print("@@@@@@@@@@G   ║                                     ║    G@@@@@@@@@@@@")
-    print("@@@@@@@@@@G   ║       STUDY ROOM ESCAPE             ║    G@@@@@@@@@@@@")
+    print("@@@@@@@@@@G   ║     Procedural Noir Detective       ║    G@@@@@@@@@@@@")
     print("@@@@@@@@@@G   ╚═════════════════════════════════════╝    G@@@@@@@@@@@@")
     print("@@@@@@@@@@G                                               G@@@@@@@@@@@@")
     print("@@@@@@@@@@GLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLG@@@@@@@@@@@@")
