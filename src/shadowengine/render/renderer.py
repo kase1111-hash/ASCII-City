@@ -208,5 +208,7 @@ class Renderer:
         return lines
 
 
-# Global renderer instance
-renderer = Renderer()
+# Global renderer instance - uses default terminal size from config
+from ..config import get_terminal_size
+_width, _height = get_terminal_size()
+renderer = Renderer(width=_width, height=_height)
