@@ -554,14 +554,14 @@ def create_study_escape(seed: int = None) -> Game:
         "victim_found",
         "Marcus Webb was found dead in the alley behind O'Malley's Bar",
         "case file",
-        related_locations=["alley", "bar"]
+        locations=["alley", "bar"]
     )
 
     ws.add_fact(
         "victim_occupation",
         "Marcus Webb was an accountant who handled books for powerful people",
         "case file",
-        related_npcs=["politician"]
+        npcs=["politician"]
     )
 
     # Record the murder event (public knowledge)
