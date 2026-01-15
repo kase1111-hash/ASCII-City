@@ -131,15 +131,29 @@ class Scene:
             hotspot.number = i
 
     def get_hotspot_legend(self) -> list[str]:
-        """Generate legend showing hotspot numbers and labels."""
+        """Generate legend showing what's in the scene."""
         visible = self.location.get_visible_hotspots()
         if not visible:
             return []
 
-        lines = ["", "You can interact with:"]
-        for h in visible:
-            action = h.get_default_action()
-            lines.append(f"  [{h.number}] {h.label} ({action})")
+        # Group by type for cleaner display
+        people = [h for h in visible if h.hotspot_type.value == "person"]
+        exits = [h for h in visible if h.hotspot_type.value == "exit"]
+        objects = [h for h in visible if h.hotspot_type.value not in ("person", "exit")]
+
+        lines = [""]
+
+        if people:
+            lines.append("People here: " + ", ".join(h.label for h in people))
+
+        if objects:
+            lines.append("You notice: " + ", ".join(h.label for h in objects))
+
+        if exits:
+            lines.append("Exits: " + ", ".join(h.label for h in exits))
+
+        lines.append("")
+        lines.append("(Type what you want to do: examine, talk, go, take...)")
 
         return lines
 
