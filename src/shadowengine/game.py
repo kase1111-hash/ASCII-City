@@ -855,7 +855,7 @@ class Game:
         self.renderer.wait_for_key()
 
     def _conversation_loop(self) -> None:
-        """Handle conversation mode."""
+        """Handle conversation mode - free-form dialogue."""
         character_id = self.state.conversation_partner
         character = self.state.characters.get(character_id)
 
@@ -863,54 +863,40 @@ class Game:
             self.state.in_conversation = False
             return
 
-        # Show character and available topics
+        # Show character info
         self.renderer.clear_screen()
-        self.renderer.render_text(f"\nTalking to {character.name}")
-        self.renderer.render_text(f"{character.description}")
-        self.renderer.render_text(f"Mood: {character.state.mood.value}")
+        self.renderer.render_text(f"\n{'='*60}")
+        self.renderer.render_text(f"  {character.name}")
+        self.renderer.render_text(f"  {character.description}")
+        self.renderer.render_text(f"{'='*60}")
 
         if character.state.is_cracked:
-            self.renderer.render_text("(They seem broken, ready to confess)")
+            self.renderer.render_text("\n(They seem broken, ready to confess...)")
 
-        # Show topics as suggestions
-        topics = list(character.available_topics)
-        if topics:
-            self.renderer.render_text("\nSuggested topics:")
-            for i, topic in enumerate(topics, 1):
-                exhausted = " (discussed)" if topic in character.exhausted_topics else ""
-                self.renderer.render_text(f"  [{i}] {topic}{exhausted}")
+        self.renderer.render_text("\n(Type what you want to say, or: leave, threaten, accuse)")
 
-        self.renderer.render_text("\nYou can ask anything, or: accuse, threaten, leave")
-
-        # Get input
+        # Get free-form input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
 
-        # Parse dialogue command
-        command = self.parser.parse(raw_input)
+        # Check for special commands
+        input_lower = raw_input.lower().strip()
 
-        if command.command_type == CommandType.LEAVE or raw_input.lower() in ["leave", "bye", "goodbye"]:
+        if input_lower in ["leave", "bye", "goodbye", "exit", "go", "back"]:
             self.state.in_conversation = False
             self.state.conversation_partner = None
             self.renderer.render_narration(f"You end the conversation with {character.name}.")
             self.renderer.wait_for_key()
             return
 
-        if command.command_type == CommandType.THREATEN or raw_input.lower() == "threaten":
+        if input_lower == "threaten":
             self._handle_threaten(character)
             return
 
-        if command.command_type == CommandType.ACCUSE or raw_input.lower() == "accuse":
+        if input_lower == "accuse":
             self._handle_accuse(character)
             return
 
-        # Try topic selection by number
-        if raw_input.isdigit():
-            topic_num = int(raw_input) - 1
-            if 0 <= topic_num < len(topics):
-                self._handle_ask_topic(character, topics[topic_num])
-                return
-
-        # FREE-FORM DIALOGUE: Send any input to LLM for dynamic response
+        # All other input goes to free-form LLM dialogue
         self._handle_free_dialogue(character, raw_input)
         self.renderer.wait_for_key()
 
