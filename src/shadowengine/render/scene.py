@@ -112,8 +112,8 @@ class Scene:
     """
 
     location: Location
-    width: int = 60
-    height: int = 15
+    width: int = 120  # Default wider (overridden by game config with actual terminal size)
+    height: int = 40
 
     # Current state
     weather_overlay: Optional[str] = None

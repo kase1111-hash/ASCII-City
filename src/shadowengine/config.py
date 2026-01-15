@@ -6,15 +6,32 @@ from dataclasses import dataclass, field
 from typing import Optional
 import json
 import os
+import shutil
+
+
+def get_terminal_size() -> tuple[int, int]:
+    """Get the current terminal size, with fallback defaults."""
+    try:
+        size = shutil.get_terminal_size(fallback=(120, 40))
+        # Ensure minimum usable size
+        width = max(size.columns, 80)
+        height = max(size.lines, 24)
+        return width, height
+    except Exception:
+        return 120, 40
+
+
+# Get terminal size at module load time
+_TERMINAL_WIDTH, _TERMINAL_HEIGHT = get_terminal_size()
 
 
 @dataclass
 class GameConfig:
     """Main game configuration."""
 
-    # Display
-    screen_width: int = 80
-    screen_height: int = 24
+    # Display - defaults to full terminal size
+    screen_width: int = _TERMINAL_WIDTH
+    screen_height: int = _TERMINAL_HEIGHT
 
     # Game settings
     seed: Optional[int] = None  # None = random seed
