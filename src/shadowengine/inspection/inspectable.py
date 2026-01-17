@@ -160,7 +160,7 @@ class InspectableObject:
     ) -> list[DetailLayer]:
         """Get all layers visible up to max_zoom level."""
         visible = []
-        for level in [ZoomLevel.COARSE, ZoomLevel.MEDIUM, ZoomLevel.FINE]:
+        for level in [ZoomLevel.COARSE, ZoomLevel.MEDIUM, ZoomLevel.CLOSE, ZoomLevel.FINE]:
             if level.value > max_zoom.value:
                 break
             layer = self.layers.get(level)
@@ -299,11 +299,20 @@ class InspectableFactory:
         name: str,
         description: str,
         detailed_description: str = "",
+        close_description: str = "",
         fine_description: str = "",
         tags: list[str] = None,
         category: str = "standard"
     ) -> InspectableObject:
-        """Create a simple inspectable with basic layers."""
+        """
+        Create a simple inspectable with basic layers.
+
+        Zoom levels:
+        - COARSE: Basic description (across the room)
+        - MEDIUM: Detailed view (arm's length)
+        - CLOSE: Close inspection, woodgrain visible (inches away, naked eye)
+        - FINE: Magnified view, fibers visible (requires magnifying glass)
+        """
         obj = InspectableObject(
             name=name,
             base_description=description,
@@ -311,24 +320,32 @@ class InspectableFactory:
             tags=tags or []
         )
 
-        # Coarse layer
+        # Coarse layer - basic overview
         obj.add_layer(DetailLayer(
             zoom_level=ZoomLevel.COARSE,
             description=description
         ))
 
-        # Medium layer if provided
+        # Medium layer - detailed view
         if detailed_description:
             obj.add_layer(DetailLayer(
                 zoom_level=ZoomLevel.MEDIUM,
                 description=detailed_description
             ))
 
-        # Fine layer if provided
+        # Close layer - fine textures like woodgrain (naked eye limit)
+        if close_description:
+            obj.add_layer(DetailLayer(
+                zoom_level=ZoomLevel.CLOSE,
+                description=close_description
+            ))
+
+        # Fine layer - magnified (fibers, tiny marks - needs tool)
         if fine_description:
             obj.add_layer(DetailLayer(
                 zoom_level=ZoomLevel.FINE,
-                description=fine_description
+                description=fine_description,
+                requires_tool="magnifying_glass"
             ))
 
         return obj
@@ -341,7 +358,7 @@ class InspectableFactory:
         hidden_description: str,
         requires_tool: str = "magnifying_glass"
     ) -> InspectableObject:
-        """Create an inspectable with a hidden detail at fine zoom."""
+        """Create an inspectable with a hidden detail at fine (magnified) zoom."""
         from .zoom_level import ZoomConstraints
 
         obj = InspectableObject(
@@ -350,7 +367,8 @@ class InspectableFactory:
             category="small",
             constraints=ZoomConstraints(
                 requires_tool_for_fine=True,
-                required_tool_type=requires_tool
+                required_tool_type=requires_tool,
+                max_unaided_level=ZoomLevel.CLOSE
             )
         )
 
@@ -376,7 +394,7 @@ class InspectableFactory:
         telescope_description: str,
         position: tuple[int, int] = None
     ) -> InspectableObject:
-        """Create a distant object requiring telescope."""
+        """Create a distant object requiring telescope to see clearly."""
         from .zoom_level import ZoomConstraints
 
         obj = InspectableObject(
@@ -386,9 +404,10 @@ class InspectableFactory:
             is_distant=True,
             position=position,
             constraints=ZoomConstraints(
-                max_level=ZoomLevel.FINE,
+                max_level=ZoomLevel.CLOSE,  # Telescope brings distant to CLOSE detail
                 requires_tool_for_fine=True,
-                required_tool_type="telescope"
+                required_tool_type="telescope",
+                max_unaided_level=ZoomLevel.COARSE
             )
         )
 
@@ -399,11 +418,11 @@ class InspectableFactory:
 
         obj.add_layer(DetailLayer(
             zoom_level=ZoomLevel.MEDIUM,
-            description="Even from here, you can make out some details..."
+            description="Squinting, you can make out some general features..."
         ))
 
         obj.add_layer(DetailLayer(
-            zoom_level=ZoomLevel.FINE,
+            zoom_level=ZoomLevel.CLOSE,
             description=telescope_description,
             requires_tool="telescope",
             first_time_text=f"Through the telescope: {telescope_description}"
@@ -419,7 +438,7 @@ class InspectableFactory:
         evidence_description: str,
         character_related: Optional[str] = None
     ) -> InspectableObject:
-        """Create an evidence item with facts revealed on inspection."""
+        """Create an evidence item with facts revealed on close inspection."""
         obj = InspectableObject(
             name=name,
             base_description=description,
@@ -433,11 +452,71 @@ class InspectableFactory:
         ))
 
         obj.add_layer(DetailLayer(
-            zoom_level=ZoomLevel.MEDIUM,
+            zoom_level=ZoomLevel.CLOSE,
             description=evidence_description,
             reveals_facts=[evidence_fact],
             first_time_text=f"On closer inspection: {evidence_description}",
             tags=["clue", character_related] if character_related else ["clue"]
         ))
+
+        return obj
+
+    @staticmethod
+    def create_detailed_surface(
+        name: str,
+        description: str,
+        medium_description: str,
+        close_description: str,
+        fine_description: str = "",
+        material: str = "wood",
+        tags: list[str] = None
+    ) -> InspectableObject:
+        """
+        Create an object with rich surface detail at all zoom levels.
+
+        Example: A wooden desk where you can see:
+        - COARSE: "A sturdy oak desk"
+        - MEDIUM: "The desktop shows signs of use, with some scratches"
+        - CLOSE: "The wood grain flows in elegant patterns, with tiny scratches"
+        - FINE: "Individual wood fibers are visible, along with hairline cracks"
+        """
+        from .zoom_level import ZoomConstraints
+
+        obj = InspectableObject(
+            name=name,
+            base_description=description,
+            category="standard",
+            material=material,
+            tags=tags or [material, "furniture"],
+            constraints=ZoomConstraints(
+                max_level=ZoomLevel.FINE,
+                requires_tool_for_fine=True,
+                required_tool_type="magnifying_glass",
+                max_unaided_level=ZoomLevel.CLOSE
+            )
+        )
+
+        obj.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.COARSE,
+            description=description
+        ))
+
+        obj.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.MEDIUM,
+            description=medium_description
+        ))
+
+        obj.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.CLOSE,
+            description=close_description
+        ))
+
+        if fine_description:
+            obj.add_layer(DetailLayer(
+                zoom_level=ZoomLevel.FINE,
+                description=fine_description,
+                requires_tool="magnifying_glass",
+                first_time_text=f"Through the magnifying glass: {fine_description}"
+            ))
 
         return obj

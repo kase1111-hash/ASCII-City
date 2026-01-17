@@ -310,6 +310,8 @@ class InspectionEngine:
     ) -> InspectionResult:
         """Zoom in one level on an object."""
         current = self.zoom_manager.get_current_zoom(object_id)
+        obj = self.objects.get(object_id)
+
         if not current.can_zoom_in():
             return InspectionResult(
                 success=False,
@@ -319,6 +321,19 @@ class InspectionEngine:
             )
 
         new_level = current.zoom_in()
+
+        # Check if we need a tool for the next level
+        if obj and new_level == ZoomLevel.FINE:
+            tool_type = tool.tool_type.value if tool else None
+            has_tool = tool is not None
+            if not obj.can_zoom_to(new_level, has_tool, tool_type):
+                return InspectionResult(
+                    success=False,
+                    description=f"You're as close as you can get without a magnifying tool. At {current.description}, you can see {current.viewing_description}.",
+                    zoom_level=current,
+                    hint="You might need a magnifying glass to see finer details like individual fibers."
+                )
+
         return self.inspect_object(object_id, new_level, tool)
 
     def zoom_out_from(self, object_id: str) -> InspectionResult:

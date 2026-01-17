@@ -454,25 +454,49 @@ class DetailGenerator:
         zoom_level: int,
         material: Optional[str] = None
     ) -> str:
-        """Enhance ASCII art based on zoom level."""
+        """
+        Enhance ASCII art based on zoom level.
+
+        Zoom levels and what they show:
+        - 1 (COARSE): Basic shapes, solid fills
+        - 2 (MEDIUM): Textures and patterns visible
+        - 3 (CLOSE): Fine details like woodgrain, weave patterns
+        - 4 (FINE): Magnified details like fibers, hairline cracks
+        """
         if zoom_level <= 1:
             return base_ascii
 
-        # Add detail characters based on zoom level
-        detail_chars = {
-            "wood": ["~", "=", "-"],
-            "metal": ["*", ".", "+"],
-            "stone": [".", ":", "'"],
-            "fabric": ['"', "'", ","],
+        # Detail characters for different materials at different zoom levels
+        # CLOSE level (3) - patterns like woodgrain
+        close_detail_chars = {
+            "wood": ["~", "≈", "—"],      # Woodgrain patterns
+            "metal": ["·", "°", "˚"],     # Surface texture
+            "stone": [".", ":", "·"],     # Pitted surface
+            "fabric": ["≡", "‖", "║"],    # Weave pattern
+            "leather": ["~", "≈", "∿"],   # Grain pattern
+            "paper": ["·", ".", "'"],     # Fiber texture
         }
 
-        detail_chars.get(material, [".", "'", "`"])
+        # FINE level (4) - individual fibers/microscopic details (magnifying glass)
+        fine_detail_chars = {
+            "wood": ["⋮", "┊", "│"],      # Wood fibers
+            "metal": ["✦", "✧", "·"],     # Crystal structure hints
+            "stone": ["⁙", "⁖", "⁘"],     # Mineral grains
+            "fabric": ["⋯", "⋰", "⋱"],    # Thread fibers
+            "leather": ["∵", "∴", "⁘"],   # Pore structure
+            "paper": ["⋮", "⋰", "⋱"],     # Paper fibers
+        }
 
-        # Simple enhancement: add detail characters
-        if zoom_level >= 2:
-            # Could enhance ASCII art here
-            pass
+        if zoom_level == 3:
+            chars = close_detail_chars.get(material, [".", "'", "`"])
+        elif zoom_level >= 4:
+            chars = fine_detail_chars.get(material, ["·", ":", "'"])
+        else:
+            # zoom_level 2 - basic texture
+            chars = [".", "'", "`"]
 
+        # Note: Actual ASCII enhancement would need more sophisticated logic
+        # This is a placeholder for the enhancement system
         return base_ascii
 
     def clear_cache(self, object_id: Optional[str] = None) -> None:

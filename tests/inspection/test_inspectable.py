@@ -186,11 +186,14 @@ class TestInspectableObject:
         assert "hotspot1" in reveals["hotspots"]
 
     def test_can_zoom_to_default(self):
-        """Test can_zoom_to with default constraints."""
+        """Test can_zoom_to with default constraints (FINE requires tool by default)."""
         obj = InspectableObject(name="Test")
         assert obj.can_zoom_to(ZoomLevel.COARSE) is True
         assert obj.can_zoom_to(ZoomLevel.MEDIUM) is True
-        assert obj.can_zoom_to(ZoomLevel.FINE) is True
+        assert obj.can_zoom_to(ZoomLevel.CLOSE) is True
+        # FINE requires magnifying glass by default
+        assert obj.can_zoom_to(ZoomLevel.FINE, has_tool=False) is False
+        assert obj.can_zoom_to(ZoomLevel.FINE, has_tool=True, tool_type="magnifying_glass") is True
 
     def test_can_zoom_to_with_constraints(self):
         """Test can_zoom_to with custom constraints."""
@@ -201,17 +204,22 @@ class TestInspectableObject:
                 required_tool_type="magnifying_glass"
             )
         )
+        assert obj.can_zoom_to(ZoomLevel.CLOSE, has_tool=False) is True
         assert obj.can_zoom_to(ZoomLevel.FINE, has_tool=False) is False
         assert obj.can_zoom_to(ZoomLevel.FINE, has_tool=True, tool_type="magnifying_glass") is True
 
     def test_get_max_zoom_with_tool(self):
-        """Test getting max zoom based on tools."""
+        """Test getting max zoom based on tools - CLOSE without tool, FINE with correct tool."""
         obj = InspectableObject(
             name="Test",
-            constraints=ZoomConstraints(requires_tool_for_fine=True)
+            constraints=ZoomConstraints(requires_tool_for_fine=True, required_tool_type="magnifying_glass")
         )
-        assert obj.get_max_zoom_with_tool(has_tool=False) == ZoomLevel.MEDIUM
-        assert obj.get_max_zoom_with_tool(has_tool=True) == ZoomLevel.FINE
+        # Without tool, can only reach CLOSE (not FINE)
+        assert obj.get_max_zoom_with_tool(has_tool=False) == ZoomLevel.CLOSE
+        # With the correct tool type, can reach FINE
+        assert obj.get_max_zoom_with_tool(has_tool=True, tool_type="magnifying_glass") == ZoomLevel.FINE
+        # With wrong tool type, still only CLOSE
+        assert obj.get_max_zoom_with_tool(has_tool=True, tool_type="telescope") == ZoomLevel.CLOSE
 
     def test_serialization(self):
         """Test to_dict/from_dict."""
@@ -275,7 +283,7 @@ class TestInspectableFactory:
         assert obj.constraints.required_tool_type == "telescope"
 
     def test_create_evidence(self):
-        """Test creating evidence item."""
+        """Test creating evidence item - reveals facts at CLOSE zoom level."""
         obj = InspectableFactory.create_evidence(
             name="Bloody Knife",
             description="A knife with stains",
@@ -283,6 +291,7 @@ class TestInspectableFactory:
             evidence_description="The blood matches the victim"
         )
         assert "evidence" in obj.tags
-        medium_layer = obj.get_layer(ZoomLevel.MEDIUM)
-        assert medium_layer is not None
-        assert "murder_weapon" in medium_layer.reveals_facts
+        # Evidence is revealed at CLOSE level (close inspection)
+        close_layer = obj.get_layer(ZoomLevel.CLOSE)
+        assert close_layer is not None
+        assert "murder_weapon" in close_layer.reveals_facts

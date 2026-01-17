@@ -240,12 +240,15 @@ class TestZoomStateManager:
         assert len(manager.history) == 1
 
     def test_zoom_in(self):
-        """Test zooming in on object."""
+        """Test zooming in on object through all 4 levels."""
         manager = ZoomStateManager()
 
         new_level = manager.zoom_in("obj_1")
         assert new_level == ZoomLevel.MEDIUM
         assert manager.get_current_zoom("obj_1") == ZoomLevel.MEDIUM
+
+        new_level = manager.zoom_in("obj_1")
+        assert new_level == ZoomLevel.CLOSE
 
         new_level = manager.zoom_in("obj_1")
         assert new_level == ZoomLevel.FINE
@@ -255,9 +258,12 @@ class TestZoomStateManager:
         assert new_level is None
 
     def test_zoom_out(self):
-        """Test zooming out from object."""
+        """Test zooming out from object through all 4 levels."""
         manager = ZoomStateManager()
         manager.record_zoom("obj_1", ZoomLevel.FINE)
+
+        new_level = manager.zoom_out("obj_1")
+        assert new_level == ZoomLevel.CLOSE
 
         new_level = manager.zoom_out("obj_1")
         assert new_level == ZoomLevel.MEDIUM

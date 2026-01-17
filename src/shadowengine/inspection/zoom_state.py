@@ -343,6 +343,7 @@ class ZoomStateManager:
         zoom_distribution = {
             ZoomLevel.COARSE: 0,
             ZoomLevel.MEDIUM: 0,
+            ZoomLevel.CLOSE: 0,
             ZoomLevel.FINE: 0
         }
         for state in self.states.values():
