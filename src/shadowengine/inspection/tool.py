@@ -2,10 +2,13 @@
 InspectionTool - Tools that enhance inspection capabilities.
 
 Different tools allow different kinds of inspection:
-- Magnifying glass: See tiny details up close
-- Telescope: See distant objects clearly
+- Magnifying glass: See fine details (fibers, tiny marks) - CLOSE to FINE
+- Telescope: See distant objects at CLOSE detail level
 - Lantern: See in darkness
 - Special lenses: See hidden markings
+
+Note: Tools provide realistic magnification. A magnifying glass lets you
+see wood fibers and fine scratches, but not microscopic/cellular details.
 """
 
 from dataclasses import dataclass, field
@@ -133,12 +136,12 @@ INSPECTION_TOOLS = {
         id="magnifying_glass",
         name="Magnifying Glass",
         tool_type=ToolType.MAGNIFYING_GLASS,
-        description="A brass-rimmed magnifying glass for examining small details.",
+        description="A brass-rimmed magnifying glass for examining fine details like fibers and tiny marks.",
         affordances=[ToolAffordance.MAGNIFY, ToolAffordance.READ_SMALL],
-        zoom_bonus=1,
+        zoom_bonus=1,  # Enables CLOSE -> FINE (see fibers, fine scratches)
         detail_multiplier=1.5,
         effective_range=0.5,
-        use_text="You peer through the {tool} at {target}...",
+        use_text="You peer through the {tool} at {target}, bringing fine details into focus...",
         fail_text="The {tool} can't help with something this large."
     ),
 
@@ -146,13 +149,13 @@ INSPECTION_TOOLS = {
         id="telescope",
         name="Telescope",
         tool_type=ToolType.TELESCOPE,
-        description="A collapsible brass telescope for viewing distant objects.",
+        description="A collapsible brass telescope for viewing distant objects as if they were close.",
         affordances=[ToolAffordance.DISTANT_VIEW],
-        zoom_bonus=2,
+        zoom_bonus=2,  # Allows distant objects to be seen at CLOSE detail
         detail_multiplier=1.3,
         requires_proximity=False,
         effective_range=100.0,
-        use_text="You extend the {tool} and focus on {target}...",
+        use_text="You extend the {tool} and focus on {target}, bringing it into clear view...",
         fail_text="The {tool} is meant for distant objects."
     ),
 
@@ -160,13 +163,13 @@ INSPECTION_TOOLS = {
         id="lantern",
         name="Oil Lantern",
         tool_type=ToolType.LANTERN,
-        description="A small oil lantern that casts warm light.",
+        description="A small oil lantern that casts warm light, revealing details hidden in shadow.",
         affordances=[ToolAffordance.ILLUMINATE],
         zoom_bonus=0,
         detail_multiplier=1.2,
         requires_light=False,  # Provides its own light
         effective_range=3.0,
-        use_text="You hold up the {tool}, casting light over {target}...",
+        use_text="You hold up the {tool}, casting warm light over {target}...",
         fail_text="The light doesn't reveal anything new."
     ),
 
@@ -174,9 +177,9 @@ INSPECTION_TOOLS = {
         id="spectacles",
         name="Reading Spectacles",
         tool_type=ToolType.SPECTACLES,
-        description="Wire-framed spectacles for reading fine print.",
+        description="Wire-framed spectacles for reading fine print and small text.",
         affordances=[ToolAffordance.READ_SMALL],
-        zoom_bonus=1,
+        zoom_bonus=1,  # Helps with small text at FINE level
         detail_multiplier=1.4,
         effective_range=0.3,
         use_text="You put on the {tool} and lean in to examine {target}...",
@@ -187,7 +190,7 @@ INSPECTION_TOOLS = {
         id="uv_light",
         name="Ultraviolet Lamp",
         tool_type=ToolType.UV_LIGHT,
-        description="A special lamp that reveals hidden markings and stains.",
+        description="A special lamp that reveals hidden markings, stains, and fluorescent residue.",
         affordances=[ToolAffordance.REVEAL_HIDDEN, ToolAffordance.ILLUMINATE],
         zoom_bonus=0,
         detail_multiplier=1.0,
@@ -200,7 +203,7 @@ INSPECTION_TOOLS = {
         id="mirror",
         name="Small Mirror",
         tool_type=ToolType.MIRROR,
-        description="A small hand mirror for seeing around corners.",
+        description="A small hand mirror for seeing around corners and behind objects.",
         affordances=[ToolAffordance.INDIRECT_VIEW],
         zoom_bonus=0,
         detail_multiplier=0.8,  # Slight reduction due to reflection
@@ -213,12 +216,12 @@ INSPECTION_TOOLS = {
         id="stethoscope",
         name="Stethoscope",
         tool_type=ToolType.STETHOSCOPE,
-        description="A medical stethoscope for listening to sounds.",
+        description="A medical stethoscope for listening to internal sounds and mechanisms.",
         affordances=[ToolAffordance.LISTEN],
         zoom_bonus=0,
         detail_multiplier=1.0,
         effective_range=0.1,  # Must touch the object
-        use_text="You press the {tool} against {target} and listen...",
+        use_text="You press the {tool} against {target} and listen carefully...",
         fail_text="You can't hear anything useful through the stethoscope."
     ),
 
@@ -226,7 +229,7 @@ INSPECTION_TOOLS = {
         id="probe",
         name="Investigation Probe",
         tool_type=ToolType.PROBE,
-        description="A thin metal probe for physical inspection of crevices.",
+        description="A thin metal probe for physical inspection of crevices and hidden spaces.",
         affordances=[ToolAffordance.PHYSICAL],
         zoom_bonus=0,
         detail_multiplier=1.3,
@@ -239,13 +242,13 @@ INSPECTION_TOOLS = {
         id="jewelers_loupe",
         name="Jeweler's Loupe",
         tool_type=ToolType.MAGNIFYING_GLASS,
-        description="A high-powered loupe for examining gems and fine details.",
+        description="A high-powered loupe for examining gems, engravings, and very fine details.",
         affordances=[ToolAffordance.MAGNIFY],
-        zoom_bonus=2,
-        detail_multiplier=2.0,
+        zoom_bonus=1,  # Same zoom as magnifying glass, but better detail multiplier
+        detail_multiplier=2.0,  # Higher quality magnification
         effective_range=0.1,
         min_size=0.0,  # Can examine very small things
-        use_text="You hold the {tool} to your eye and examine {target}...",
+        use_text="You hold the {tool} to your eye and examine {target} in fine detail...",
         fail_text="You need something much smaller for the loupe."
     ),
 }

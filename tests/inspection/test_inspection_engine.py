@@ -207,27 +207,42 @@ class TestInspectionEngine:
         assert result.description is not None
 
     def test_inspect_at_different_zoom_levels(self):
-        """Test inspection at different zoom levels."""
+        """Test inspection at different zoom levels - FINE requires tool."""
         engine = InspectionEngine()
         obj = InspectableFactory.create_simple(
             name="Book",
             description="A leather-bound book",
             detailed_description="Gold lettering on spine",
+            close_description="Texture of leather visible",
             fine_description="Hidden notes in margins"
         )
         engine.register_object(obj)
+
+        # Add a magnifying glass for FINE inspection
+        tool = InspectionTool(
+            id="mag_glass",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="A magnifying glass"
+        )
+        engine.add_player_tool(tool)
 
         # Inspect at coarse
         result_coarse = engine.inspect_object(obj.id, zoom_level=ZoomLevel.COARSE)
         assert result_coarse.success is True
 
-        # Inspect at fine
-        result_fine = engine.inspect_object(obj.id, zoom_level=ZoomLevel.FINE)
+        # Inspect at CLOSE (no tool needed)
+        result_close = engine.inspect_object(obj.id, zoom_level=ZoomLevel.CLOSE)
+        assert result_close.success is True
+        assert result_close.zoom_level == ZoomLevel.CLOSE
+
+        # Inspect at fine (requires tool)
+        result_fine = engine.inspect_object(obj.id, zoom_level=ZoomLevel.FINE, tool=tool)
         assert result_fine.success is True
         assert result_fine.zoom_level == ZoomLevel.FINE
 
     def test_zoom_in_on_object(self):
-        """Test zooming in on an object."""
+        """Test zooming in on an object - stops at CLOSE without tool."""
         engine = InspectionEngine()
         obj = InspectableFactory.create_simple(
             name="Painting",
@@ -235,18 +250,48 @@ class TestInspectionEngine:
         )
         engine.register_object(obj)
 
-        # Start at coarse, zoom in
+        # Start at coarse, zoom in to MEDIUM
         result = engine.zoom_in_on(obj.id)
         assert result.success is True
         assert result.zoom_level == ZoomLevel.MEDIUM
 
-        # Zoom in again
+        # Zoom in again to CLOSE (naked eye limit)
         result = engine.zoom_in_on(obj.id)
+        assert result.success is True
+        assert result.zoom_level == ZoomLevel.CLOSE
+
+        # Try to zoom in to FINE without tool - should fail
+        result = engine.zoom_in_on(obj.id)
+        assert result.success is False  # Can't reach FINE without magnifying glass
+
+    def test_zoom_in_with_tool(self):
+        """Test zooming in with a magnifying glass reaches FINE level."""
+        engine = InspectionEngine()
+        obj = InspectableFactory.create_simple(
+            name="Painting",
+            description="An oil painting"
+        )
+        engine.register_object(obj)
+
+        tool = InspectionTool(
+            id="mag_glass",
+            name="Magnifying Glass",
+            tool_type=ToolType.MAGNIFYING_GLASS,
+            description="A magnifying glass"
+        )
+        engine.add_player_tool(tool)
+
+        # Zoom in to CLOSE first
+        engine.zoom_in_on(obj.id)
+        engine.zoom_in_on(obj.id)
+
+        # Now zoom in with tool to FINE
+        result = engine.zoom_in_on(obj.id, tool=tool)
         assert result.success is True
         assert result.zoom_level == ZoomLevel.FINE
 
     def test_zoom_out_from_object(self):
-        """Test zooming out from an object."""
+        """Test zooming out from an object through all levels."""
         engine = InspectionEngine()
         obj = InspectableFactory.create_simple(
             name="Statue",
@@ -254,9 +299,9 @@ class TestInspectionEngine:
         )
         engine.register_object(obj)
 
-        # Zoom in first
-        engine.zoom_in_on(obj.id)
-        engine.zoom_in_on(obj.id)
+        # Zoom in to CLOSE first (the max without tool)
+        engine.zoom_in_on(obj.id)  # MEDIUM
+        engine.zoom_in_on(obj.id)  # CLOSE
 
         # Now zoom out
         result = engine.zoom_out_from(obj.id)
