@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, Optional, List
 import hashlib
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 from .voice import CharacterVoice, VoiceParameters
 
@@ -345,7 +348,8 @@ class TTSEngineManager:
         for engine_type, engine in self._engines.items():
             try:
                 results[engine_type] = engine.initialize()
-            except Exception:
+            except Exception as e:
+                logger.error("Failed to initialize TTS engine %s: %s", engine_type.name, e)
                 results[engine_type] = False
         return results
 
@@ -432,8 +436,8 @@ class TTSEngineManager:
         for engine in self._engines.values():
             try:
                 engine.shutdown()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Error shutting down TTS engine %s: %s", engine.name, e)
 
 
 # Placeholder implementations for real engines

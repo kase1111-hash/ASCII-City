@@ -9,9 +9,12 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable, Any
 from enum import Enum
 from datetime import datetime
+import logging
 import uuid
 import time
 import threading
+
+logger = logging.getLogger(__name__)
 
 from .stt import STTEngine, STTResult
 from .intent import IntentParser, Intent, IntentType, NLUResult
@@ -248,8 +251,8 @@ class ThreatResponseManager:
         for callback in self._threat_callbacks:
             try:
                 callback(threat_data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Error in threat callback: %s", e)
 
         return time_to_impact_ms
 
@@ -614,21 +617,21 @@ class RealtimeHandler:
             for callback in self._event_callbacks:
                 try:
                     callback(event)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Error in event callback: %s", e)
 
             for callback in self._intent_callbacks:
                 try:
                     callback(nlu_result.primary_intent)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Error in intent callback: %s", e)
 
             # Execute response callback if present
             if event.response_callback:
                 try:
                     event.response_callback(nlu_result)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Error in response callback for event %s: %s", event.id, e)
 
         except Exception:
             event.processed = False

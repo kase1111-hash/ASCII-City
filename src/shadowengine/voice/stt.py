@@ -14,9 +14,12 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable
 from enum import Enum
 from datetime import datetime
+import logging
 import uuid
 import time
 import queue
+
+logger = logging.getLogger(__name__)
 
 
 class STTStatus(Enum):
@@ -186,16 +189,16 @@ class STTEngine(ABC):
         for callback in self._callbacks:
             try:
                 callback(result)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Error in STT result callback: %s", e)
 
     def _emit_error(self, error: Exception) -> None:
         """Emit error to all registered callbacks."""
         for callback in self._error_callbacks:
             try:
                 callback(error)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Error in STT error callback: %s", e)
 
     @abstractmethod
     def get_supported_languages(self) -> list[str]:

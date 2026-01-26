@@ -6,7 +6,10 @@ from __future__ import annotations
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional, Callable, List, TYPE_CHECKING
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .tile import Tile
@@ -117,9 +120,12 @@ class TileEventManager:
         for handler in self._handlers[event.event_type]:
             try:
                 handler(event)
-            except Exception:
-                # Log error but continue processing
-                pass
+            except Exception as e:
+                logger.error(
+                    "Error in tile event handler for %s: %s",
+                    event.event_type.name, e,
+                    exc_info=True
+                )
 
     def get_history(
         self,
@@ -150,7 +156,7 @@ class TileEventManager:
 
 # Default event handlers
 
-def on_tile_entered(event: TileEvent) -> None:
+def on_tile_entered(event: TileEvent, event_manager: Optional[TileEventManager] = None) -> None:
     """Handle entity entering a tile."""
     tile = event.tile
     entity = event.cause
@@ -161,19 +167,26 @@ def on_tile_entered(event: TileEvent) -> None:
     # Check for triggers
     if "triggerable" in tile.get_affordances():
         # Emit triggered event
-        _trigger_event = TileEvent(
+        trigger_event = TileEvent(
             event_type=TileEventType.TRIGGERED,
             tile=tile,
             cause=entity,
             data={"trigger_type": "pressure_plate"}
         )
-        # TODO: Emit through grid's event manager
+        if event_manager is not None:
+            event_manager.emit(trigger_event)
+        else:
+            logger.debug("Trigger event created but no event manager available to emit")
 
     # Notify entities on tile about proximity
     for other_entity in tile.entities:
         if other_entity != entity:
             # Signal proximity to other entities
-            pass
+            if hasattr(other_entity, 'on_proximity'):
+                try:
+                    other_entity.on_proximity(entity, tile)
+                except Exception as e:
+                    logger.error("Error signaling proximity to entity %s: %s", other_entity.id, e)
 
 
 def on_tile_damaged(event: TileEvent) -> None:
@@ -195,8 +208,15 @@ def on_tile_damaged(event: TileEvent) -> None:
 
     # Check for collapse
     if tile.stability < (damage / 100):
-        # Tile collapses
-        pass
+        # Tile collapses - mark as impassable and add collapsed modifier
+        tile.passable = False
+        tile.add_modifier(
+            __import__("shadowengine.grid.terrain", fromlist=["TerrainModifier"]).TerrainModifier(
+                type="collapsed",
+                intensity=1.0
+            )
+        )
+        logger.info("Tile at %s collapsed due to damage", tile.position)
 
 
 def on_tile_flooded(event: TileEvent) -> None:
