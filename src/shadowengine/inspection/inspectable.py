@@ -404,7 +404,7 @@ class InspectableFactory:
             is_distant=True,
             position=position,
             constraints=ZoomConstraints(
-                max_level=ZoomLevel.CLOSE,  # Telescope brings distant to CLOSE detail
+                max_level=ZoomLevel.FINE,  # Telescope brings distant to FINE detail
                 requires_tool_for_fine=True,
                 required_tool_type="telescope",
                 max_unaided_level=ZoomLevel.COARSE
@@ -426,6 +426,13 @@ class InspectableFactory:
             description=telescope_description,
             requires_tool="telescope",
             first_time_text=f"Through the telescope: {telescope_description}"
+        ))
+
+        obj.add_layer(DetailLayer(
+            zoom_level=ZoomLevel.FINE,
+            description=f"Fine details: {telescope_description}",
+            requires_tool="telescope",
+            first_time_text=f"With the telescope, you can see even finer details: {telescope_description}"
         ))
 
         return obj

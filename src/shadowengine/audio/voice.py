@@ -283,6 +283,14 @@ EMOTION_MODULATIONS: Dict[EmotionalState, Dict[str, float]] = {
         'pitch_variation': 0.3,
         'emphasis_strength': 0.2,
         'rhythm_variation': 0.15
+    },
+    EmotionalState.SURPRISED: {
+        'pitch': 0.2,
+        'speed': 0.1,
+        'pitch_variation': 0.35,
+        'emphasis_strength': 0.25,
+        'rhythm_variation': 0.2,
+        'breathiness': 0.1
     }
 }
 
@@ -669,6 +677,41 @@ class VoiceModulator:
             emotion_strength=profile.emotion_strength * (1.0 - 0.3 * intensity),  # Reduced emotion
         )
 
+    def age_voice(self, profile: VoiceProfile, years: float) -> VoiceProfile:
+        """Apply aging effect to a voice profile.
+
+        Args:
+            profile: Voice profile to modify
+            years: Number of years to age (positive = older, negative = younger)
+
+        Returns:
+            New VoiceProfile with aged voice characteristics
+        """
+        # Normalize years to a reasonable range (-50 to +50)
+        years = max(-50, min(50, years))
+        age_factor = years / 50.0  # -1.0 to 1.0
+
+        # Calculate age-related changes
+        # Older: lower pitch, slower, more roughness, more breathiness
+        # Younger: higher pitch, faster, less rough, clearer
+        pitch_change = -0.15 * age_factor  # Lower pitch when older
+        speed_change = -0.1 * age_factor  # Slower when older
+        roughness_change = 0.2 * max(0, age_factor)  # More rough when older
+        breathiness_change = 0.15 * max(0, age_factor)  # More breathy when older
+
+        return VoiceProfile(
+            voice_id=profile.voice_id,
+            base_voice=profile.base_voice,
+            name=profile.name,
+            pitch=max(-1.0, min(1.0, profile.pitch + pitch_change)),
+            speed=max(-1.0, min(1.0, profile.speed + speed_change)),
+            roughness=max(0.0, min(1.0, profile.roughness + roughness_change)),
+            breathiness=max(0.0, min(1.0, profile.breathiness + breathiness_change)),
+            resonance=max(0.0, min(1.0, profile.resonance - 0.1 * max(0, age_factor))),
+            age_modifier=profile.age_modifier + age_factor * 0.5,
+            emotion_strength=profile.emotion_strength,
+        )
+
 
 class VoiceLibrary:
     """
@@ -732,6 +775,61 @@ class VoiceLibrary:
             'breathiness': 0.0,
             'resonance': 0.5,
             'age_modifier': 0.0,
+        },
+        # Additional presets for character variety
+        'gruff_male': {
+            'base_voice': 'male_2',
+            'pitch': -0.3,
+            'speed': -0.1,
+            'roughness': 0.6,
+            'breathiness': 0.0,
+            'resonance': 0.3,
+            'age_modifier': 0.3,
+        },
+        'young_female': {
+            'base_voice': 'female_1',
+            'pitch': 0.2,
+            'speed': 0.1,
+            'roughness': 0.0,
+            'breathiness': 0.2,
+            'resonance': 0.6,
+            'age_modifier': -0.2,
+        },
+        'bartender': {
+            'base_voice': 'male_1',
+            'pitch': 0.0,
+            'speed': 0.0,
+            'roughness': 0.2,
+            'breathiness': 0.1,
+            'resonance': 0.5,
+            'age_modifier': 0.1,
+        },
+        'politician': {
+            'base_voice': 'male_1',
+            'pitch': 0.1,
+            'speed': -0.05,
+            'roughness': 0.0,
+            'breathiness': 0.1,
+            'resonance': 0.6,
+            'age_modifier': 0.2,
+        },
+        'street_kid': {
+            'base_voice': 'male_1',
+            'pitch': 0.2,
+            'speed': 0.2,
+            'roughness': 0.1,
+            'breathiness': 0.1,
+            'resonance': 0.5,
+            'age_modifier': -0.3,
+        },
+        'corrupt_cop': {
+            'base_voice': 'male_2',
+            'pitch': -0.1,
+            'speed': 0.0,
+            'roughness': 0.3,
+            'breathiness': 0.0,
+            'resonance': 0.4,
+            'age_modifier': 0.1,
         },
     }
 

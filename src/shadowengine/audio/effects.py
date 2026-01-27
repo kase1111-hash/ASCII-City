@@ -259,6 +259,37 @@ class AudioEffect(ABC):
             result.extend(struct.pack('<h', sample))
         return bytes(result)
 
+    def set_parameter(self, name: str, value: Any) -> bool:
+        """Set a parameter by name.
+
+        Args:
+            name: Parameter name (e.g., 'semitones', 'wet', 'drive')
+            value: New value for the parameter
+
+        Returns:
+            True if parameter was set successfully
+        """
+        # Handle common parameter aliases
+        param_aliases = {
+            'wet': 'mix',
+            'dry': 'mix',  # Note: dry would need inverse logic
+        }
+        name = param_aliases.get(name, name)
+
+        if hasattr(self.params, name):
+            setattr(self.params, name, value)
+            return True
+        return False
+
+    def get_parameter(self, name: str) -> Any:
+        """Get a parameter by name."""
+        param_aliases = {'wet': 'mix'}
+        name = param_aliases.get(name, name)
+
+        if hasattr(self.params, name):
+            return getattr(self.params, name)
+        return None
+
 
 class PitchShiftEffect(AudioEffect):
     """Pitch shifting effect."""
@@ -684,10 +715,27 @@ class EffectsChain:
     def __init__(self):
         self._effects: List[AudioEffect] = []
         self._enabled = True
+        self._bypass = False
+
+    @property
+    def bypass(self) -> bool:
+        """Get bypass state."""
+        return self._bypass
+
+    @bypass.setter
+    def bypass(self, value: bool) -> None:
+        """Set bypass state."""
+        self._bypass = value
 
     def add_effect(self, effect: AudioEffect) -> None:
         """Add an effect to the chain."""
         self._effects.append(effect)
+
+    def get_effect(self, index: int) -> Optional[AudioEffect]:
+        """Get effect by index."""
+        if 0 <= index < len(self._effects):
+            return self._effects[index]
+        return None
 
     def remove_effect(self, effect_type: EffectType) -> bool:
         """Remove all effects of a given type."""
@@ -707,12 +755,36 @@ class EffectsChain:
         """Enable or disable the entire chain."""
         self._enabled = enabled
 
-    def process(self, audio: AudioData) -> AudioData:
-        """Process audio through all effects in sequence."""
-        if not self._enabled:
-            return audio
+    def process(self, audio_or_bytes, sample_rate: int = 22050) -> Any:
+        """Process audio through all effects in sequence.
 
-        result = audio
+        Supports both AudioData objects and raw bytes for compatibility.
+        """
+        if self._bypass:
+            return audio_or_bytes
+
+        if not self._enabled:
+            return audio_or_bytes
+
+        # Handle raw bytes input for backwards compatibility
+        if isinstance(audio_or_bytes, bytes):
+            audio = AudioData(
+                data=audio_or_bytes,
+                format="raw",
+                sample_rate=sample_rate,
+                channels=1,
+                bit_depth=16,
+                text="",
+                voice_id="",
+                engine=""
+            )
+            result = audio
+            for effect in self._effects:
+                result = effect.process(result)
+            return result.data
+
+        # Handle AudioData input
+        result = audio_or_bytes
         for effect in self._effects:
             result = effect.process(result)
 
@@ -722,6 +794,7 @@ class EffectsChain:
         """Serialize chain configuration."""
         return {
             'enabled': self._enabled,
+            'bypass': self._bypass,
             'effects': [
                 {
                     'type': e.effect_type.value,
@@ -730,6 +803,49 @@ class EffectsChain:
                 for e in self._effects
             ]
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'EffectsChain':
+        """Restore effects chain from dictionary.
+
+        Args:
+            data: Serialized chain data from to_dict()
+
+        Returns:
+            New EffectsChain instance
+        """
+        chain = cls()
+        chain._enabled = data.get('enabled', True)
+        chain._bypass = data.get('bypass', False)
+
+        effect_type_map = {
+            'pitch_shift': (PitchShiftEffect, PitchShiftParams),
+            'distortion': (DistortionEffect, DistortionParams),
+            'reverb': (ReverbEffect, ReverbParams),
+            'delay': (DelayEffect, DelayParams),
+            'filter': (FilterEffect, FilterParams),
+            'compression': (CompressionEffect, CompressionParams),
+            'telephone': (TelephoneEffect, EffectParameters),
+            'radio': (RadioEffect, EffectParameters),
+        }
+
+        for effect_data in data.get('effects', []):
+            effect_type = effect_data.get('type', '')
+            params_data = effect_data.get('params', {})
+
+            if effect_type in effect_type_map:
+                effect_cls, params_cls = effect_type_map[effect_type]
+                try:
+                    # Try to create params from dict
+                    params = params_cls(**{k: v for k, v in params_data.items()
+                                          if hasattr(params_cls, '__dataclass_fields__') and
+                                          k in params_cls.__dataclass_fields__})
+                    chain.add_effect(effect_cls(params))
+                except (TypeError, ValueError):
+                    # Fall back to default params
+                    chain.add_effect(effect_cls())
+
+        return chain
 
     def load_preset(self, preset_name: str) -> bool:
         """Load a preset effect chain by name.
@@ -797,6 +913,15 @@ EFFECT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         {'type': EffectType.PITCH_SHIFT, 'params': PitchShiftParams(semitones=-3)},
         {'type': EffectType.REVERB, 'params': ReverbParams(room_size=0.9, damping=0.2, mix=0.5)},
         {'type': EffectType.DELAY, 'params': DelayParams(time_ms=200, feedback=0.4, mix=0.3)}
+    ],
+    'robot': [
+        {'type': EffectType.DISTORTION, 'params': DistortionParams(drive=0.4, type='hard')},
+        {'type': EffectType.FILTER, 'params': FilterParams(filter_type='bandpass', frequency=1200)}
+    ],
+    'underwater': [
+        {'type': EffectType.FILTER, 'params': FilterParams(filter_type='lowpass', frequency=600)},
+        {'type': EffectType.REVERB, 'params': ReverbParams(room_size=0.7, damping=0.6, mix=0.5)},
+        {'type': EffectType.DELAY, 'params': DelayParams(time_ms=100, feedback=0.2, mix=0.2)}
     ]
 }
 
@@ -831,6 +956,74 @@ def create_preset_chain(preset_name: str) -> Optional[EffectsChain]:
     return chain
 
 
+# Compression effect implementation
+class CompressionEffect(AudioEffect):
+    """Dynamic range compression effect."""
+
+    def __init__(self, params: Optional[CompressionParams] = None, **kwargs):
+        # Allow direct keyword arguments for convenience
+        if params is None and kwargs:
+            params = CompressionParams(**{k: v for k, v in kwargs.items()
+                                          if k in ['enabled', 'mix', 'threshold', 'ratio', 'attack_ms', 'release_ms', 'makeup_gain']})
+        super().__init__(params or CompressionParams())
+
+    @property
+    def effect_type(self) -> EffectType:
+        return EffectType.COMPRESSION
+
+    @property
+    def name(self) -> str:
+        return "Compression"
+
+    def process(self, audio: AudioData) -> AudioData:
+        if not self.params.enabled:
+            return audio
+
+        params = self.params
+        if not isinstance(params, CompressionParams):
+            return audio
+
+        samples = self._bytes_to_samples(audio.data)
+
+        threshold_linear = 10 ** (params.threshold / 20.0)
+        ratio = params.ratio
+        makeup_linear = 10 ** (params.makeup_gain / 20.0)
+
+        compressed = []
+        for sample in samples:
+            normalized = sample / 32768.0
+            abs_sample = abs(normalized)
+
+            if abs_sample > threshold_linear:
+                # Apply compression above threshold
+                over = abs_sample - threshold_linear
+                compressed_over = over / ratio
+                new_level = threshold_linear + compressed_over
+                if normalized < 0:
+                    new_level = -new_level
+                normalized = new_level
+
+            # Apply makeup gain
+            normalized *= makeup_linear
+
+            # Clamp and convert back
+            compressed.append(int(max(-1.0, min(1.0, normalized)) * 32767))
+
+        new_data = self._samples_to_bytes(compressed)
+        new_data = self._mix(audio.data, new_data, self.params.mix)
+
+        return AudioData(
+            data=new_data,
+            format=audio.format,
+            sample_rate=audio.sample_rate,
+            channels=audio.channels,
+            bit_depth=audio.bit_depth,
+            text=audio.text,
+            voice_id=audio.voice_id,
+            engine=audio.engine
+        )
+
+
 # Aliases for backwards compatibility with test imports
 Effect = AudioEffect
 EffectPreset = EffectsChain
@@ -841,5 +1034,5 @@ Reverb = ReverbEffect
 Distortion = DistortionEffect
 EQ = FilterEffect  # EQ not implemented, use Filter as placeholder
 Delay = DelayEffect
-Compression = FilterEffect  # Compression not implemented, use Filter as placeholder
+Compression = CompressionEffect  # Now properly implemented
 Tremolo = FilterEffect  # Tremolo not implemented, use Filter as placeholder
