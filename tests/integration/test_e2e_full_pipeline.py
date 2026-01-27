@@ -318,9 +318,31 @@ class TestFullGameLoopE2E:
         )
         actions.append("examine coat")
 
-        # 6. Accuse butler
+        # 6. Accuse the actual culprit (determined by seed)
+        # First, add the required evidence that matches the spine's evidence_chain
+        game.state.memory.player_discovers(
+            fact_id="witness_account",
+            description="Someone saw the suspect with the victim",
+            location="bar",
+            source="Witness testimony"
+        )
+        game.state.memory.player_discovers(
+            fact_id="physical_evidence",
+            description="Physical evidence found at scene",
+            location="alley",
+            source="Crime scene investigation",
+            is_evidence=True
+        )
+        game.state.memory.player_discovers(
+            fact_id="motive_revealed",
+            description="The suspect had a motive",
+            location="study",
+            source="Background investigation"
+        )
+
         evidence = set(game.state.memory.player.discoveries.keys())
-        is_correct, message = game.state.spine.check_solution("butler", evidence)
+        culprit = game.mystery["culprit"]  # Get the actual culprit from scenario
+        is_correct, message = game.state.spine.check_solution(culprit, evidence)
 
         assert is_correct is True
         assert len(actions) == 5
