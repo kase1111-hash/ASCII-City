@@ -152,6 +152,12 @@ class Scene:
         if exits:
             lines.append("Exits: " + ", ".join(h.label for h in exits))
 
+        # Add interaction hint if there are numbered hotspots
+        numbered = [h for h in visible if h.number is not None]
+        if numbered:
+            lines.append("")
+            lines.append("(Type a number to interact with that item)")
+
         return lines
 
     def get_rendered_scene(self) -> list[str]:
