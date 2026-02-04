@@ -9,6 +9,44 @@ import os
 import shutil
 
 
+# =============================================================================
+# Game Constants
+# =============================================================================
+
+# Time constants (in minutes)
+WAIT_TIME_MINUTES = 15  # Time passed when player waits
+TRAVEL_TIME_MULTIPLIER = 2  # Travel takes longer than normal actions
+
+# Pressure/Trust constants
+THREATEN_PRESSURE_AMOUNT = 20
+THREATEN_TRUST_PENALTY = -10
+ACCUSE_PRESSURE_AMOUNT = 30
+ACCUSE_WRONG_TRUST_PENALTY = -20
+
+# Moral action weights
+THREATEN_MORAL_WEIGHT = 0.8
+THREATEN_RUTHLESS_EFFECT = 0.3
+THREATEN_COMPASSIONATE_EFFECT = -0.2
+THREATEN_IDEALISTIC_EFFECT = -0.1
+
+# Memory/History limits
+MAX_DIALOGUE_HISTORY_PER_NPC = 50
+MAX_LOCATION_DETAILS_HISTORY = 100
+MAX_REVEALED_CLUES_HISTORY = 200
+MAX_GENERATED_LORE_HISTORY = 100
+
+# LLM context limits
+MAX_LOCATIONS_IN_CONTEXT = 10
+MAX_NPCS_IN_CONTEXT = 8
+MAX_RECENT_EVENTS_IN_CONTEXT = 5
+MAX_PUBLIC_FACTS_IN_CONTEXT = 5
+MAX_ACTIVE_THREADS_IN_CONTEXT = 3
+
+# Narrative adaptation thresholds
+NARRATIVE_WEAK_CONNECTION_DISTANCE = 5
+NARRATIVE_NO_CONNECTION_DISTANCE = 10
+
+
 def get_terminal_size() -> tuple[int, int]:
     """Get the current terminal size, with fallback defaults."""
     try:

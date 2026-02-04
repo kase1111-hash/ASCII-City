@@ -9,7 +9,14 @@ import os
 import json
 import re
 
-from .config import GameConfig, DEFAULT_CONFIG
+from .config import (
+    GameConfig, DEFAULT_CONFIG,
+    WAIT_TIME_MINUTES, TRAVEL_TIME_MULTIPLIER,
+    THREATEN_PRESSURE_AMOUNT, THREATEN_TRUST_PENALTY,
+    ACCUSE_PRESSURE_AMOUNT, ACCUSE_WRONG_TRUST_PENALTY,
+    THREATEN_MORAL_WEIGHT, THREATEN_RUTHLESS_EFFECT,
+    THREATEN_COMPASSIONATE_EFFECT, THREATEN_IDEALISTIC_EFFECT,
+)
 from .memory import MemoryBank, EventType
 from .character import Character, Archetype, DialogueManager
 from .narrative import NarrativeSpine
@@ -18,6 +25,9 @@ from .render import Scene, Location, Renderer
 from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 from .llm import LLMIntegration, LocationPrompt, create_llm_client
+from .llm.validation import (
+    safe_parse_json, validate_location_response, validate_free_exploration_response
+)
 from .world_state import WorldState, StoryThread
 
 
@@ -94,7 +104,19 @@ class Game:
             )
 
     def _get_voice_archetype(self, archetype: Archetype) -> str:
-        """Map character archetype to voice archetype."""
+        """
+        Map character archetype to voice archetype for TTS.
+
+        Voice Archetype Mapping Rationale:
+        - GUILTY → "gangster": Nervous, defensive tone suits someone hiding guilt
+        - INNOCENT → "bartender": Warm, approachable voice for trustworthy characters
+        - OUTSIDER → "politician": Measured, careful speech of someone navigating unfamiliar territory
+        - PROTECTOR → "informant": Hushed, conspiratorial tone of someone sharing secrets to help
+        - OPPORTUNIST → "street_kid": Fast-talking, persuasive voice for self-serving characters
+        - TRUE_BELIEVER → "corrupt_cop": Authoritative but with underlying menace
+        - SURVIVOR → "bartender": Weathered but friendly, like someone who's seen things
+        - AUTHORITY → "politician": Commanding, formal speech patterns
+        """
         mapping = {
             Archetype.GUILTY: "gangster",
             Archetype.INNOCENT: "bartender",
@@ -511,54 +533,53 @@ Interpret what the player wants to do and respond with JSON."""
         ])
 
         if response.success and response.text:
-            try:
-                # Parse JSON from response
-                json_match = re.search(r'\{[\s\S]*\}', response.text)
-                if json_match:
-                    data = json.loads(json_match.group())
-                    action = data.get("action", "other")
-                    target = data.get("target", "")
-                    narrative = data.get("narrative", "")
+            # Parse and validate JSON response
+            data, error = safe_parse_json(
+                response.text,
+                validator=validate_free_exploration_response
+            )
 
-                    # Show the narrative
-                    if narrative:
-                        self.renderer.render_narration(narrative)
+            if data:
+                action = data["action"]
+                target = data["target"]
+                narrative = data["narrative"]
 
-                    # Execute the interpreted action
-                    if action == "examine" and target:
-                        hotspot = location.get_hotspot_by_label(target)
-                        if hotspot:
-                            self._handle_examine(hotspot)
-                            return
-                    elif action == "talk" and target:
-                        hotspot = location.get_hotspot_by_label(target)
-                        if hotspot:
-                            self._handle_talk(hotspot)
-                            return
-                    elif action == "take" and target:
-                        hotspot = location.get_hotspot_by_label(target)
-                        if hotspot:
-                            self._handle_take(hotspot)
-                            return
-                    elif action == "go" and target:
-                        hotspot = location.get_hotspot_by_label(target)
-                        if hotspot:
-                            self._handle_go(hotspot)
-                            return
-                        else:
-                            # Maybe it's a new destination
-                            self._handle_free_movement(target)
-                            return
-                    elif action == "wait":
-                        self._handle_wait()
+                # Show the narrative
+                if narrative:
+                    self.renderer.render_narration(narrative)
+
+                # Execute the interpreted action
+                if action == "examine" and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot:
+                        self._handle_examine(hotspot)
                         return
-
-                    # For "other" or if no specific action, just show narrative
-                    self.renderer.wait_for_key()
+                elif action == "talk" and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot:
+                        self._handle_talk(hotspot)
+                        return
+                elif action == "take" and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot:
+                        self._handle_take(hotspot)
+                        return
+                elif action == "go" and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot:
+                        self._handle_go(hotspot)
+                        return
+                    else:
+                        # Maybe it's a new destination
+                        self._handle_free_movement(target)
+                        return
+                elif action == "wait":
+                    self._handle_wait()
                     return
 
-            except (json.JSONDecodeError, KeyError):
-                pass
+                # For "other" or if no specific action, just show narrative
+                self.renderer.wait_for_key()
+                return
 
         # Fallback: show a generic response
         self.renderer.render_narration("You consider your options...")
@@ -670,22 +691,26 @@ Interpret what the player wants to do and respond with JSON."""
 
     def _parse_location_response(self, text: str, fallback_id: str, fallback_name: str) -> Optional[Location]:
         """Parse LLM response into a Location object."""
+        # Parse and validate JSON response
+        data, error = safe_parse_json(text, validator=validate_location_response)
+
+        if error:
+            self.renderer.render_text(f"(Generation parsing issue: {error})")
+            return None
+
         try:
-            # Extract JSON from response
-            json_match = re.search(r'\{[\s\S]*\}', text)
-            if not json_match:
-                return None
+            # Use validated data with fallbacks
+            location_id = data["id"] if data["id"] else fallback_id
+            location_name = data["name"] if data["name"] else fallback_name.title()
 
-            data = json.loads(json_match.group())
-
-            # Create Location
+            # Create Location from validated data
             location = Location(
-                id=data.get("id", fallback_id),
-                name=data.get("name", fallback_name.title()),
-                description=data.get("description", f"You've arrived at {fallback_name}."),
-                art=self._get_art_for_type(data.get("location_type", "generic")),
-                is_outdoor=data.get("is_outdoor", True),
-                ambient_description=data.get("ambient", "")
+                id=location_id,
+                name=location_name,
+                description=data["description"],
+                art=self._get_art_for_type(data["location_type"]),
+                is_outdoor=data["is_outdoor"],
+                ambient_description=data["ambient"]
             )
 
             # Register location with WorldState for consistency tracking
@@ -775,8 +800,8 @@ Interpret what the player wants to do and respond with JSON."""
 
             return location
 
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            self.renderer.render_text(f"(Generation parsing issue: {e})")
+        except (KeyError, TypeError, ValueError) as e:
+            self.renderer.render_text(f"(Location creation issue: {e})")
             return None
 
     def _create_fallback_location(self, dest_id: str, destination_desc: str) -> None:
@@ -825,7 +850,29 @@ Interpret what the player wants to do and respond with JSON."""
         )
 
     def _get_art_for_type(self, location_type: str) -> list[str]:
-        """Get ASCII art for a location type."""
+        """
+        Get ASCII art template for a location type.
+
+        Fallback ASCII Art Logic:
+        This method provides default visual templates when the scenario doesn't
+        supply custom art for a location. The templates serve three purposes:
+
+        1. Visual Consistency: Every location has some visual representation
+        2. Player Orientation: Templates include "YOU" marker for positioning
+        3. Atmosphere Setting: Different templates convey different moods
+           - street: Open, transitional space with paths
+           - wilderness: Natural, expansive outdoor areas
+           - building: Enclosed, interior spaces
+           - generic: Neutral fallback for unknown types
+
+        The type_map below normalizes various LLM-generated location types
+        to our four base templates. This handles the variability in how the
+        LLM might describe a location (e.g., "bar", "pub", "tavern" all map
+        to "building" since they're indoor establishments).
+
+        Future Enhancement: These templates should be moved to the scenario/
+        theme system so different game themes can have their own visual style.
+        """
         # Basic ASCII art templates - these would ideally come from the scenario
         art_templates = {
             "street": [
@@ -915,8 +962,8 @@ Interpret what the player wants to do and respond with JSON."""
 
     def _handle_wait(self) -> None:
         """Pass time."""
-        # Advance environment time
-        changes = self.state.environment.update(15)  # 15 minutes pass
+        # Advance environment time using configured wait duration
+        changes = self.state.environment.update(WAIT_TIME_MINUTES)
 
         self.renderer.render_narration("Time passes...")
 
@@ -934,7 +981,7 @@ Interpret what the player wants to do and respond with JSON."""
             if event.description:
                 self.renderer.render_narration(event.description)
 
-        self.state.memory.advance_time(5)
+        self.state.memory.advance_time(self.config.time_units_per_action)
         self.renderer.wait_for_key()
 
     def _handle_save(self) -> None:
@@ -1141,17 +1188,21 @@ Remember what you said before and stay consistent. Respond as {character.name} w
 
     def _handle_threaten(self, character: Character) -> None:
         """Handle threatening a character."""
-        # Apply pressure
-        cracked = character.apply_pressure(20)
+        # Apply pressure using configured amount
+        cracked = character.apply_pressure(THREATEN_PRESSURE_AMOUNT)
 
-        # Record moral action
+        # Record moral action with configured effects
         self.state.memory.player.record_moral_action(
             action_type="threaten",
             description=f"Threatened {character.name}",
             timestamp=self.state.memory.current_time,
             target=character.id,
-            shade_effects={"ruthless": 0.3, "compassionate": -0.2, "idealistic": -0.1},
-            weight=0.8
+            shade_effects={
+                "ruthless": THREATEN_RUTHLESS_EFFECT,
+                "compassionate": THREATEN_COMPASSIONATE_EFFECT,
+                "idealistic": THREATEN_IDEALISTIC_EFFECT
+            },
+            weight=THREATEN_MORAL_WEIGHT
         )
 
         if cracked:
@@ -1171,12 +1222,12 @@ Remember what you said before and stay consistent. Respond as {character.name} w
                 mood_mod
             )
 
-        character.modify_trust(-10)
+        character.modify_trust(THREATEN_TRUST_PENALTY)
         self.renderer.wait_for_key()
 
     def _handle_accuse(self, character: Character) -> None:
         """Handle accusing a character."""
-        character.apply_pressure(30)
+        character.apply_pressure(ACCUSE_PRESSURE_AMOUNT)
 
         # Check if this is the real culprit
         if self.state.spine and character.id == self.state.spine.true_resolution.culprit_id:
@@ -1210,7 +1261,7 @@ Remember what you said before and stay consistent. Respond as {character.name} w
                 "What?! You're completely wrong! I didn't do anything!",
                 "angrily"
             )
-            character.modify_trust(-20)
+            character.modify_trust(ACCUSE_WRONG_TRUST_PENALTY)
 
         self.renderer.wait_for_key()
 
