@@ -7,10 +7,17 @@ evaluation and emergent behavior.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Callable
+from typing import Optional, Callable, TYPE_CHECKING
 import time
 
 from .signals import SignalType, InputSignal, OutputSignal
+
+# Type alias for circuit processor callback
+# Processor takes (circuit, signal) and returns list of output signals
+if TYPE_CHECKING:
+    CircuitProcessor = Callable[['BehaviorCircuit', InputSignal], list[OutputSignal]]
+else:
+    CircuitProcessor = Callable
 
 
 class CircuitType(Enum):
@@ -111,7 +118,8 @@ class BehaviorCircuit:
     max_history: int = 100
 
     # Processing callback (for custom logic)
-    _processor: Optional[Callable] = field(default=None, repr=False)
+    # Type: CircuitProcessor = Callable[[BehaviorCircuit, InputSignal], list[OutputSignal]]
+    _processor: Optional[CircuitProcessor] = field(default=None, repr=False)
 
     def responds_to(self, signal_type: SignalType) -> bool:
         """Check if this circuit responds to a signal type."""

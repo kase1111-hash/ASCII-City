@@ -210,8 +210,10 @@ class OllamaClient(LLMClient):
                     latency_ms=latency
                 )
 
-        except Exception:
-            # Fall back to generate endpoint
+        except Exception as e:
+            # Log the error and fall back to generate endpoint
+            import logging
+            logging.warning(f"Ollama chat endpoint failed, falling back to generate: {e}")
             return super().chat(messages)
 
 

@@ -10,6 +10,14 @@ from typing import Optional
 from enum import Enum
 import json
 
+# Import history limit constants from config
+from .config import (
+    MAX_DIALOGUE_HISTORY_PER_NPC,
+    MAX_LOCATION_DETAILS_HISTORY,
+    MAX_REVEALED_CLUES_HISTORY,
+    MAX_GENERATED_LORE_HISTORY,
+)
+
 
 class StoryThread(Enum):
     """Active narrative threads the player can follow."""
@@ -74,6 +82,10 @@ class GenerationMemory:
         )
         self.npc_dialogues[npc_id].append(memory)
 
+        # Enforce max history limit per NPC to prevent unbounded growth
+        if len(self.npc_dialogues[npc_id]) > MAX_DIALOGUE_HISTORY_PER_NPC:
+            self.npc_dialogues[npc_id] = self.npc_dialogues[npc_id][-MAX_DIALOGUE_HISTORY_PER_NPC:]
+
     def get_npc_dialogue_history(self, npc_id: str, limit: int = 5) -> str:
         """Get recent dialogue history for an NPC."""
         if npc_id not in self.npc_dialogues:
@@ -94,6 +106,10 @@ class GenerationMemory:
             self.location_details[location_id] = []
         self.location_details[location_id].append(detail)
 
+        # Enforce max history limit per location to prevent unbounded growth
+        if len(self.location_details[location_id]) > MAX_LOCATION_DETAILS_HISTORY:
+            self.location_details[location_id] = self.location_details[location_id][-MAX_LOCATION_DETAILS_HISTORY:]
+
     def get_location_details(self, location_id: str) -> list[str]:
         """Get all generated details about a location."""
         return self.location_details.get(location_id, [])
@@ -111,6 +127,10 @@ class GenerationMemory:
             "related_to": related_to or []
         })
 
+        # Enforce max history limit to prevent unbounded growth
+        if len(self.revealed_clues) > MAX_REVEALED_CLUES_HISTORY:
+            self.revealed_clues = self.revealed_clues[-MAX_REVEALED_CLUES_HISTORY:]
+
     def record_lore(self, lore_type: str, content: str, source: str) -> None:
         """Record generated lore/backstory."""
         self.generated_lore.append({
@@ -118,6 +138,10 @@ class GenerationMemory:
             "content": content,
             "source": source
         })
+
+        # Enforce max history limit to prevent unbounded growth
+        if len(self.generated_lore) > MAX_GENERATED_LORE_HISTORY:
+            self.generated_lore = self.generated_lore[-MAX_GENERATED_LORE_HISTORY:]
 
     def get_relevant_lore(self, keywords: list[str], limit: int = 3) -> list[str]:
         """Get lore relevant to given keywords."""
