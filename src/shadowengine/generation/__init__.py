@@ -6,5 +6,6 @@ including locations, NPCs, and narrative elements.
 """
 
 from .location_generator import LocationGenerator
+from .dialogue_handler import DialogueHandler
 
-__all__ = ['LocationGenerator']
+__all__ = ['LocationGenerator', 'DialogueHandler']

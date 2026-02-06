@@ -16,8 +16,8 @@ Instead of scripted stories, this **text-based world simulation** engine simulat
 - **LLM-Driven Simulation** - **AI game simulation** with dynamic responses, not pre-scripted outcomes
 - **Memory & Rumor Networks** - **Psychological AI architecture** where NPCs remember, share information, evolve
 - **ASCII Art Studio** - Player-created art becomes world content through **human-AI collaboration**
-- **Sound & Vision Systems** - Realistic propagation for **procedural game** emergence
-- **Threat Proximity** - Real-time STT reactions enable urgent **natural language** actions
+- **Sound & Vision Systems** - Audio synthesis, TTS, and atmospheric rendering *(sound propagation planned)*
+- **Threat Proximity** - STT voice input with threat response framework *(real-time reaction timing planned)*
 - **Zoom Inspection** - Progressive detail reveal with tools
 - **Atmospheric Simulation** - Weather, time, and pressure affect everything in this **living world simulation**
 
@@ -46,7 +46,7 @@ Instead of scripted stories, this **text-based world simulation** engine simulat
 | NPC Intelligence | ✓ Complete | ~1800 |
 | Inspection & Zoom | ✓ Complete | ~2000 |
 | Audio & TTS | ✓ Complete | 2373 |
-| Modding System | ✓ Complete | 2631 |
+| Modding System | ✓ Complete | 3325 |
 
 See [ROADMAP.md](docs/ROADMAP.md) for development phases.
 
@@ -94,7 +94,7 @@ See [ROADMAP.md](docs/ROADMAP.md) for development phases.
 - **Save System**: JSON memory snapshots with **cognitive artifact storage**
 - **Deterministic**: **Procedural generation** with seeded replay capability
 - **Architecture**: **Agent orchestration framework** for NPC coordination
-- **Tests**: 2631 tests passing
+- **Tests**: 3325 tests passing
 
 ---
 

@@ -5,9 +5,12 @@ Coordinates all systems and manages game state.
 """
 
 from typing import Optional
+import logging
 import os
 import json
 import re
+
+logger = logging.getLogger(__name__)
 
 from .config import (
     GameConfig, DEFAULT_CONFIG,
@@ -26,9 +29,12 @@ from .environment import Environment, WeatherType
 from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
 from .llm import LLMIntegration, LocationPrompt, create_llm_client
 from .llm.validation import (
-    safe_parse_json, validate_location_response, validate_free_exploration_response
+    safe_parse_json, validate_location_response, validate_free_exploration_response,
+    sanitize_player_input,
 )
 from .world_state import WorldState, StoryThread
+from .generation.location_generator import LocationGenerator
+from .generation.dialogue_handler import DialogueHandler
 
 
 class GameState:
@@ -73,6 +79,12 @@ class Game:
         # LLM integration for dynamic content generation
         self.llm_client = create_llm_client()
         self.location_prompt = LocationPrompt()
+
+        # Location generator (delegates LLM-driven location creation)
+        self.location_generator = LocationGenerator(self.llm_client, self.state.world_state)
+
+        # Dialogue handler (delegates LLM-driven NPC dialogue)
+        self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)
 
         # Track what directions are available from current location
         self.location_connections: dict[str, dict[str, str]] = {}
@@ -523,7 +535,7 @@ AVAILABLE IN THIS SCENE:
 
 PLAYER'S INVENTORY: {', '.join(self.state.inventory) if self.state.inventory else 'Empty'}
 
-PLAYER SAYS: "{player_input}"
+PLAYER SAYS: "{sanitize_player_input(player_input)}"
 
 Interpret what the player wants to do and respond with JSON."""
 
@@ -695,7 +707,8 @@ Interpret what the player wants to do and respond with JSON."""
         data, error = safe_parse_json(text, validator=validate_location_response)
 
         if error:
-            self.renderer.render_text(f"(Generation parsing issue: {error})")
+            logger.warning(f"Location generation parsing issue: {error}")
+            self.renderer.render_error(f"Generation parsing issue: {error}")
             return None
 
         try:
@@ -850,115 +863,8 @@ Interpret what the player wants to do and respond with JSON."""
         )
 
     def _get_art_for_type(self, location_type: str) -> list[str]:
-        """
-        Get ASCII art template for a location type.
-
-        Fallback ASCII Art Logic:
-        This method provides default visual templates when the scenario doesn't
-        supply custom art for a location. The templates serve three purposes:
-
-        1. Visual Consistency: Every location has some visual representation
-        2. Player Orientation: Templates include "YOU" marker for positioning
-        3. Atmosphere Setting: Different templates convey different moods
-           - street: Open, transitional space with paths
-           - wilderness: Natural, expansive outdoor areas
-           - building: Enclosed, interior spaces
-           - generic: Neutral fallback for unknown types
-
-        The type_map below normalizes various LLM-generated location types
-        to our four base templates. This handles the variability in how the
-        LLM might describe a location (e.g., "bar", "pub", "tavern" all map
-        to "building" since they're indoor establishments).
-
-        Future Enhancement: These templates should be moved to the scenario/
-        theme system so different game themes can have their own visual style.
-        """
-        # Basic ASCII art templates - these would ideally come from the scenario
-        art_templates = {
-            "street": [
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-                "@@                                                                    @@",
-                "@@  The road stretches ahead into the unknown...                      @@",
-                "@@                                                                    @@",
-                "@@     @                                              @               @@",
-                "@@  FIGURE                                         FIGURE             @@",
-                "@@                                                                    @@",
-                "@@════════════════════════════════════════════════════════════════════@@",
-                "@@                         PATH                                       @@",
-                "@@════════════════════════════════════════════════════════════════════@@",
-                "@@                                                                    @@",
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-            ],
-            "wilderness": [
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-                "@@  @@@@   @@@@@@   @@@   @@@@@@   @@@@@   @@@@@@@   @@@@@@  @@@@@@   @@",
-                "@@   @@     @@@@    @@     @@@@    @@@@     @@@@@     @@@@    @@@@    @@",
-                "@@          @@             @@               @@@       @@      @@      @@",
-                "@@    *           *              *                *         *         @@",
-                "@@         *            *              *     *        *       *       @@",
-                "@@  ~~~         ~~~          ~~~            ~~~          ~~~          @@",
-                "@@     ~~~   ~~~      ~~~         ~~~    ~~~      ~~~        ~~~      @@",
-                "@@  WILDERNESS STRETCHES IN ALL DIRECTIONS                           @@",
-                "@@                                                                    @@",
-                "@@      @                                                             @@",
-                "@@     YOU                                                            @@",
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-            ],
-            "building": [
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-                "@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@",
-                "@@G                                                                  G@@",
-                "@@G   ┌──────────────────────────────────────────────────────────┐  G@@",
-                "@@G   │                                                          │  G@@",
-                "@@G   │                    INTERIOR                              │  G@@",
-                "@@G   │                                                          │  G@@",
-                "@@G   │                       @                                  │  G@@",
-                "@@G   │                      YOU                                 │  G@@",
-                "@@G   │                                                          │  G@@",
-                "@@G   └──────────────────────────────────────────────────────────┘  G@@",
-                "@@G                                                                  G@@",
-                "@@GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG@@",
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-            ],
-            "generic": [
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-                "@@                                                                    @@",
-                "@@                                                                    @@",
-                "@@                      [ NEW LOCATION ]                              @@",
-                "@@                                                                    @@",
-                "@@                                                                    @@",
-                "@@                            @                                       @@",
-                "@@                           YOU                                      @@",
-                "@@                                                                    @@",
-                "@@                                                                    @@",
-                "@@                                                                    @@",
-                "@@                                                                    @@",
-                "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
-            ],
-        }
-
-        # Map various types to our templates
-        type_map = {
-            "street": "street",
-            "road": "street",
-            "path": "street",
-            "bar": "building",
-            "office": "building",
-            "building": "building",
-            "shop": "building",
-            "house": "building",
-            "wilderness": "wilderness",
-            "forest": "wilderness",
-            "mountain": "wilderness",
-            "desert": "wilderness",
-            "arctic": "wilderness",
-            "alley": "street",
-            "vehicle": "building",
-            "other": "generic",
-        }
-
-        template_key = type_map.get(location_type.lower(), "generic")
-        return art_templates.get(template_key, art_templates["generic"])
+        """Get ASCII art template for a location type. Delegates to LocationGenerator."""
+        return LocationGenerator.get_art_for_type(location_type)
 
     def _handle_wait(self) -> None:
         """Pass time."""
@@ -1099,92 +1005,15 @@ Interpret what the player wants to do and respond with JSON."""
                 self._show_dialogue(character, fallback, mood_mod)
 
     def _generate_character_dialogue(self, character: Character, player_input: str) -> Optional[str]:
-        """Generate NPC dialogue response using LLM."""
-        # Build character context using WorldState for consistency
-        story_context = ""
-        if self.state.spine:
-            story_context = f"Mystery: {self.state.spine.conflict_description}"
-        if hasattr(self, 'mystery'):
-            story_context += f"\nVictim: {self.mystery.get('victim', 'unknown')}"
-
-        # Get NPC's knowledge from WorldState (what they should know about)
-        npc_knowledge = self.state.world_state.get_npc_knowledge(character.id)
-
-        # Get NPC context (relationships, events they're involved in)
-        npc_context = self.state.world_state.get_npc_context(character.id)
-        relationships_str = ""
-        if npc_context.get("relationships"):
-            relationships_str = "PEOPLE YOU KNOW:\n" + "\n".join(f"- {r}" for r in npc_context["relationships"])
-
-        # Get conversation history
-        topics_discussed = list(character.exhausted_topics)
-        evidence_found = list(self.state.memory.player.discoveries.keys())
-
-        # Get previous dialogue with this NPC from generation memory
-        dialogue_history = self.state.world_state.generation_memory.get_npc_dialogue_history(
-            character.id, limit=3
+        """Generate NPC dialogue response using LLM. Delegates to DialogueHandler."""
+        return self.dialogue_handler.generate_response(
+            character=character,
+            player_input=player_input,
+            spine=self.state.spine,
+            mystery=getattr(self, 'mystery', None),
+            evidence_found=list(self.state.memory.player.discoveries.keys()),
+            current_location_id=self.state.current_location_id,
         )
-
-        # Build the prompt
-        system_prompt = f"""You are {character.name}, {character.description}
-
-PERSONALITY:
-- Archetype: {character.archetype.value}
-- Trust level: {character.state.trust} (0-100, higher = more open)
-- Current mood: {character.state.mood.value}
-- Pressure level: {character.state.pressure}
-
-YOUR SECRET (never reveal unless trust > 70 or you're "cracked"):
-{character.secret_truth}
-
-YOUR COVER STORY (use this to deflect):
-{character.public_lie}
-
-{relationships_str}
-
-WHAT YOU KNOW ABOUT THE WORLD:
-{npc_knowledge if npc_knowledge else 'Nothing special'}
-
-STORY CONTEXT:
-{story_context}
-
-RULES:
-1. Stay completely in character
-2. If trust < 30, be evasive and defensive
-3. If trust > 70, be more open but still cautious
-4. Never directly reveal your secret unless specifically pressured
-5. Respond in 1-3 sentences, noir dialogue style
-6. React based on your archetype and mood
-7. If asked about something you know, hint at it without fully revealing
-8. Reference people you know or events you've heard about when relevant"""
-
-        # Include previous conversation for consistency
-        history_section = ""
-        if dialogue_history:
-            history_section = f"\nPREVIOUS CONVERSATION WITH THIS DETECTIVE:\n{dialogue_history}\n"
-
-        user_prompt = f"""The detective says: "{player_input}"
-{history_section}
-Topics already discussed: {', '.join(topics_discussed) if topics_discussed else 'None'}
-Evidence the detective has shown: {', '.join(evidence_found) if evidence_found else 'None'}
-Current location: {self.state.current_location_id}
-
-Remember what you said before and stay consistent. Respond as {character.name} would."""
-
-        response = self.llm_client.chat([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ])
-
-        if response.success and response.text:
-            # Clean up the response
-            text = response.text.strip()
-            # Remove any "Character:" prefix the LLM might add
-            if text.lower().startswith(character.name.lower() + ":"):
-                text = text[len(character.name) + 1:].strip()
-            return text
-
-        return None
 
     def _handle_threaten(self, character: Character) -> None:
         """Handle threatening a character."""

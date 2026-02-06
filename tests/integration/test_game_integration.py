@@ -252,7 +252,7 @@ class TestEnvironmentIntegration:
         """Setting weather should update environment."""
         from shadowengine.environment import WeatherType
         game = Game()
-        game.set_weather(WeatherType.RAIN)
+        game.set_weather(WeatherType.LIGHT_RAIN)
         assert game.state.environment.weather is not None
 
     def test_set_time(self):

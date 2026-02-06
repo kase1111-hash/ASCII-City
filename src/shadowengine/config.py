@@ -100,13 +100,29 @@ class GameConfig:
         with open(path, 'w') as f:
             json.dump(self.__dict__, f, indent=2)
 
+    # Fields allowed during deserialization (prevents injection of unexpected keys)
+    _VALID_FIELDS = {
+        "screen_width", "screen_height", "seed", "auto_save", "save_dir",
+        "debug_mode", "show_world_memory", "time_passes_on_action",
+        "time_units_per_action", "npc_trust_threshold_modifier",
+        "evidence_decay_rate", "enable_audio", "enable_speech",
+        "master_volume", "speech_volume", "ambient_volume",
+    }
+
     @classmethod
     def load(cls, path: str) -> 'GameConfig':
-        """Load config from JSON file."""
+        """Load config from JSON file with schema validation."""
         if os.path.exists(path):
             with open(path, 'r') as f:
                 data = json.load(f)
-                return cls(**data)
+                if not isinstance(data, dict):
+                    return cls()
+                # Only allow known fields to prevent injection
+                filtered = {k: v for k, v in data.items() if k in cls._VALID_FIELDS}
+                try:
+                    return cls(**filtered)
+                except (TypeError, ValueError):
+                    return cls()
         return cls()
 
 

@@ -16,6 +16,13 @@ from .config import (
     MAX_LOCATION_DETAILS_HISTORY,
     MAX_REVEALED_CLUES_HISTORY,
     MAX_GENERATED_LORE_HISTORY,
+    MAX_LOCATIONS_IN_CONTEXT,
+    MAX_NPCS_IN_CONTEXT,
+    MAX_RECENT_EVENTS_IN_CONTEXT,
+    MAX_PUBLIC_FACTS_IN_CONTEXT,
+    MAX_ACTIVE_THREADS_IN_CONTEXT,
+    NARRATIVE_WEAK_CONNECTION_DISTANCE,
+    NARRATIVE_NO_CONNECTION_DISTANCE,
 )
 
 
@@ -460,25 +467,25 @@ class WorldState:
         # Existing locations summary
         if self.locations:
             loc_summaries = []
-            for loc_id, loc in list(self.locations.items())[-10:]:  # Last 10 locations
+            for loc_id, loc in list(self.locations.items())[-MAX_LOCATIONS_IN_CONTEXT:]:
                 loc_summaries.append(f"- {loc.name} ({loc.location_type})")
             context_parts.append("KNOWN LOCATIONS:\n" + "\n".join(loc_summaries))
 
         # Key NPCs summary
         if self.npcs:
             npc_summaries = []
-            for npc_id, npc in list(self.npcs.items())[-8:]:  # Last 8 NPCs
+            for npc_id, npc in list(self.npcs.items())[-MAX_NPCS_IN_CONTEXT:]:
                 npc_summaries.append(f"- {npc.name} ({npc.archetype}) at {npc.location_id}")
             context_parts.append("KNOWN CHARACTERS:\n" + "\n".join(npc_summaries))
 
         # Recent events
-        recent_events = self.events[-5:] if self.events else []
+        recent_events = self.events[-MAX_RECENT_EVENTS_IN_CONTEXT:] if self.events else []
         if recent_events:
             event_summaries = [f"- {e.description}" for e in recent_events]
             context_parts.append("RECENT EVENTS:\n" + "\n".join(event_summaries))
 
         # Established facts (non-secret)
-        public_facts = [f for f in self.facts if not f.is_secret][-5:]
+        public_facts = [f for f in self.facts if not f.is_secret][-MAX_PUBLIC_FACTS_IN_CONTEXT:]
         if public_facts:
             fact_summaries = [f"- {f.fact}" for f in public_facts]
             context_parts.append("ESTABLISHED FACTS:\n" + "\n".join(fact_summaries))
@@ -487,7 +494,7 @@ class WorldState:
         active = [t for t in self.active_threads.values() if t.get("active")]
         if active:
             thread_summaries = []
-            for t in active[:3]:  # Top 3 active threads
+            for t in active[:MAX_ACTIVE_THREADS_IN_CONTEXT]:
                 if "description" in t.get("data", {}):
                     thread_summaries.append(f"- {t['data']['description']}")
             if thread_summaries:
@@ -525,7 +532,7 @@ class WorldState:
         # Public events they'd know about
         public_events = [e for e in self.events if e.is_public or npc_id in e.involved_npcs]
         if public_events:
-            event_knowledge = [e.description for e in public_events[-3:]]
+            event_knowledge = [e.description for e in public_events[-MAX_ACTIVE_THREADS_IN_CONTEXT:]]
             knowledge_parts.append("You've heard: " + "; ".join(event_knowledge))
 
         # Facts related to them
@@ -602,14 +609,14 @@ class WorldState:
         }
 
         # If player is far from starting area, weaken main mystery connection
-        if distance_from_start > 5:
+        if distance_from_start > NARRATIVE_WEAK_CONNECTION_DISTANCE:
             adaptation["connection_strength"] = "weak"
             adaptation["narrative_guidance"] = (
                 "The player has wandered far from the main mystery. "
                 "New content can hint at the main story but should also "
                 "introduce new mysteries or adventures that stand alone."
             )
-        elif distance_from_start > 10:
+        elif distance_from_start > NARRATIVE_NO_CONNECTION_DISTANCE:
             adaptation["should_connect_to_main"] = False
             adaptation["connection_strength"] = "none"
             adaptation["narrative_guidance"] = (
