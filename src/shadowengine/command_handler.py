@@ -12,6 +12,7 @@ import re
 
 from .config import GameConfig, WAIT_TIME_MINUTES
 from .memory import MemoryBank, EventType
+from .memory.character_memory import BeliefConfidence
 from .character import Character
 from .interaction import CommandParser, Command, CommandType, Hotspot, HotspotType
 from .render import Scene, Location, Renderer
@@ -184,6 +185,40 @@ class CommandHandler:
         else:
             self._handle_examine(hotspot, state, config)
 
+    def _get_npcs_at_location(self, state: 'GameState') -> list[str]:
+        """Get character IDs of NPCs present at the player's current location."""
+        location = state.locations.get(state.current_location_id)
+        if not location:
+            return []
+
+        npc_ids = []
+        for hotspot in location.hotspots:
+            if (
+                hotspot.hotspot_type == HotspotType.PERSON
+                and hotspot.target_id
+                and hotspot.target_id in state.characters
+                and hotspot.active
+            ):
+                npc_ids.append(hotspot.target_id)
+        return npc_ids
+
+    def _record_witnessed_event(
+        self, state: 'GameState', description: str
+    ) -> None:
+        """Record an event witnessed by NPCs present at the current location."""
+        witness_ids = self._get_npcs_at_location(state)
+        if not witness_ids:
+            return
+
+        state.memory.record_witnessed_event(
+            event_type=EventType.DISCOVERY,
+            description=description,
+            location=state.current_location_id,
+            actors=["player"],
+            witnesses=witness_ids,
+            player_witnessed=False,
+        )
+
     def _handle_examine(self, hotspot: Hotspot, state: 'GameState', config: GameConfig) -> None:
         """Handle examining something."""
         hotspot.mark_discovered()
@@ -203,6 +238,11 @@ class CommandHandler:
 
             if state.spine:
                 state.spine.make_revelation(hotspot.reveals_fact)
+
+            # NPCs present witness the player examining evidence
+            self._record_witnessed_event(
+                state, f"Player examined {hotspot.label} and found evidence"
+            )
 
         if config.time_passes_on_action:
             state.memory.advance_time(config.time_units_per_action)
@@ -253,6 +293,11 @@ class CommandHandler:
                 is_evidence=True,
             )
             self.renderer.render_discovery(hotspot.examine_text)
+
+        # NPCs present witness the player taking something
+        self._record_witnessed_event(
+            state, f"Player took {hotspot.label}"
+        )
 
         hotspot.deactivate()
 

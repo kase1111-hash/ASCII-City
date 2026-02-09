@@ -114,6 +114,7 @@ class ConversationManager:
     ) -> None:
         """Handle any free-form dialogue input via LLM."""
         mood_mod = character.get_response_mood_modifier()
+        char_memory = state.memory.get_character_memory(character.id)
 
         # If character is cracked, they reveal their secret
         if character.state.is_cracked and character.secret_truth:
@@ -127,9 +128,19 @@ class ConversationManager:
                 revealed=character.secret_truth,
                 timestamp=state.memory.current_time,
             )
+            # Record confession in character memory
+            if char_memory:
+                char_memory.record_player_interaction(
+                    timestamp=state.memory.current_time,
+                    interaction_type="confessed_to",
+                    player_tone="pressing",
+                    outcome="revealed_secret",
+                    trust_change=0,
+                    topic=player_input[:50],
+                )
             return
 
-        # Generate response via LLM
+        # Generate response via LLM (with character memory context)
         response = self.generate_dialogue(character, player_input, state)
 
         if response:
@@ -141,6 +152,16 @@ class ConversationManager:
                 location_id=state.current_location_id,
                 timestamp=state.memory.current_time,
             )
+            # Record interaction in character memory
+            if char_memory:
+                char_memory.record_player_interaction(
+                    timestamp=state.memory.current_time,
+                    interaction_type="talked",
+                    player_tone="neutral",
+                    outcome="shared_info" if character.will_cooperate() else "deflected",
+                    trust_change=0,
+                    topic=player_input[:50],
+                )
         else:
             if character.will_cooperate():
                 fallback = "Hmm... I'm not sure what to say about that."
@@ -151,7 +172,9 @@ class ConversationManager:
     def generate_dialogue(
         self, character: Character, player_input: str, state: 'GameState'
     ) -> Optional[str]:
-        """Generate NPC dialogue response using LLM."""
+        """Generate NPC dialogue response using LLM, enriched with character memory."""
+        char_memory = state.memory.get_character_memory(character.id)
+
         return self.dialogue_handler.generate_response(
             character=character,
             player_input=player_input,
@@ -159,6 +182,7 @@ class ConversationManager:
             mystery=getattr(state, 'mystery', None),
             evidence_found=list(state.memory.player.discoveries.keys()),
             current_location_id=state.current_location_id,
+            character_memory=char_memory,
         )
 
     def handle_threaten(self, character: Character, state: 'GameState') -> None:
@@ -192,6 +216,18 @@ class ConversationManager:
             self.show_dialogue(character, "You don't scare me... much.", mood_mod)
 
         character.modify_trust(THREATEN_TRUST_PENALTY)
+
+        # Record threat in character memory
+        char_memory = state.memory.get_character_memory(character.id)
+        if char_memory:
+            char_memory.record_player_interaction(
+                timestamp=state.memory.current_time,
+                interaction_type="threatened",
+                player_tone="aggressive",
+                outcome="cracked" if cracked else "resisted",
+                trust_change=THREATEN_TRUST_PENALTY,
+            )
+
         self.renderer.wait_for_key()
 
     def handle_accuse(self, character: Character, state: 'GameState') -> None:
@@ -229,5 +265,16 @@ class ConversationManager:
                 "angrily",
             )
             character.modify_trust(ACCUSE_WRONG_TRUST_PENALTY)
+
+        # Record accusation in character memory
+        char_memory = state.memory.get_character_memory(character.id)
+        if char_memory:
+            char_memory.record_player_interaction(
+                timestamp=state.memory.current_time,
+                interaction_type="accused",
+                player_tone="aggressive",
+                outcome="caught" if (not state.is_running) else "denied",
+                trust_change=ACCUSE_WRONG_TRUST_PENALTY if state.is_running else 0,
+            )
 
         self.renderer.wait_for_key()

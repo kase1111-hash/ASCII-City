@@ -246,3 +246,136 @@ class TestShowDialogue:
     def test_show_dialogue_without_mood(self, conv_mgr, bartender):
         conv_mgr.show_dialogue(bartender, "Hello.")
         conv_mgr.renderer.render_dialogue.assert_called_once_with("Joe", "Hello.", "")
+
+
+class TestMemoryRecording:
+    """Test that conversation interactions are recorded in CharacterMemory."""
+
+    def test_free_dialogue_records_interaction(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        conv_mgr.dialogue_handler.generate_response.return_value = "Some response."
+
+        conv_mgr.handle_free_dialogue(bartender, "what happened?", state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.player_interactions) == 1
+        interaction = char_mem.player_interactions[0]
+        assert interaction.interaction_type == "talked"
+        assert interaction.player_tone == "neutral"
+        assert interaction.topic == "what happened?"
+
+    def test_free_dialogue_records_topic_truncated(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        conv_mgr.dialogue_handler.generate_response.return_value = "Response."
+
+        long_input = "a" * 100
+        conv_mgr.handle_free_dialogue(bartender, long_input, state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.player_interactions[0].topic) == 50
+
+    def test_free_dialogue_cooperative_records_shared_info(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        conv_mgr.dialogue_handler.generate_response.return_value = "I'll help."
+        # Set high trust so character cooperates
+        bartender.base_trust = 80
+
+        conv_mgr.handle_free_dialogue(bartender, "help me", state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        interaction = char_mem.player_interactions[0]
+        assert interaction.outcome == "shared_info"
+
+    def test_free_dialogue_uncooperative_records_deflected(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        conv_mgr.dialogue_handler.generate_response.return_value = "I don't want to talk."
+        # Set hostile mood so character does not cooperate
+        from src.shadowengine.character.character import Mood
+        bartender.state.mood = Mood.HOSTILE
+
+        conv_mgr.handle_free_dialogue(bartender, "tell me", state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        interaction = char_mem.player_interactions[0]
+        assert interaction.outcome == "deflected"
+
+    def test_free_dialogue_no_memory_no_crash(self, conv_mgr, state, bartender):
+        # Don't register character memory — should not crash
+        conv_mgr.dialogue_handler.generate_response.return_value = "Hi."
+        conv_mgr.handle_free_dialogue(bartender, "hello", state)
+
+    def test_cracked_dialogue_records_confession(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        bartender.state.is_cracked = True
+
+        conv_mgr.handle_free_dialogue(bartender, "tell me", state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.player_interactions) == 1
+        interaction = char_mem.player_interactions[0]
+        assert interaction.interaction_type == "confessed_to"
+        assert interaction.outcome == "revealed_secret"
+
+    def test_threaten_records_in_memory(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+
+        conv_mgr.handle_threaten(bartender, state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.player_interactions) == 1
+        interaction = char_mem.player_interactions[0]
+        assert interaction.interaction_type == "threatened"
+        assert interaction.player_tone == "aggressive"
+        assert interaction.trust_change < 0
+
+    def test_threaten_crack_records_outcome(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        bartender.state.pressure_accumulated = 95  # Near breaking point
+
+        conv_mgr.handle_threaten(bartender, state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        interaction = char_mem.player_interactions[0]
+        if bartender.state.is_cracked:
+            assert interaction.outcome == "cracked"
+        else:
+            assert interaction.outcome == "resisted"
+
+    def test_accuse_records_in_memory(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        state.spine = None  # Wrong person
+
+        conv_mgr.handle_accuse(bartender, state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.player_interactions) == 1
+        interaction = char_mem.player_interactions[0]
+        assert interaction.interaction_type == "accused"
+        assert interaction.player_tone == "aggressive"
+        assert interaction.outcome == "denied"
+
+    def test_accuse_correct_records_caught(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+
+        spine = MagicMock()
+        spine.true_resolution.culprit_id = "bartender"
+        spine.check_solution.return_value = (True, "Case solved!")
+        state.spine = spine
+        state.memory.player.discoveries["evidence_1"] = {"fact": "test"}
+
+        conv_mgr.handle_accuse(bartender, state)
+
+        char_mem = state.memory.get_character_memory("bartender")
+        interaction = char_mem.player_interactions[0]
+        assert interaction.outcome == "caught"
+
+    def test_generate_dialogue_passes_memory(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        char_mem = state.memory.get_character_memory("bartender")
+
+        conv_mgr.generate_dialogue(bartender, "hello", state)
+
+        # Verify that generate_response was called with character_memory
+        call_kwargs = conv_mgr.dialogue_handler.generate_response.call_args
+        assert call_kwargs.kwargs.get("character_memory") is char_mem or \
+               (len(call_kwargs.args) > 0 and call_kwargs.kwargs.get("character_memory") == char_mem)

@@ -337,3 +337,248 @@ class TestHotspotDefault:
         cmd = Command(command_type=CommandType.HOTSPOT, target="NPC", raw_input="1")
         handler.handle_command(cmd, {}, state, config, lambda c: None)
         assert state.in_conversation is True
+
+
+class TestGetNpcsAtLocation:
+    """Test _get_npcs_at_location helper."""
+
+    def test_returns_npc_ids_at_location(self, handler, state):
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+
+        hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(hotspot)
+
+        result = handler._get_npcs_at_location(state)
+        assert result == ["bartender"]
+
+    def test_ignores_inactive_hotspots(self, handler, state):
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+
+        hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        hotspot.deactivate()
+        state.locations["bar"].add_hotspot(hotspot)
+
+        result = handler._get_npcs_at_location(state)
+        assert result == []
+
+    def test_ignores_non_person_hotspots(self, handler, state):
+        hotspot = Hotspot(
+            id="hs_lamp", label="Lamp", hotspot_type=HotspotType.OBJECT,
+            position=(10, 10), description="A lamp.",
+        )
+        state.locations["bar"].add_hotspot(hotspot)
+
+        result = handler._get_npcs_at_location(state)
+        assert result == []
+
+    def test_ignores_unregistered_characters(self, handler, state):
+        # Hotspot points to character not in state.characters
+        hotspot = Hotspot.create_person(
+            id="hs_ghost", name="Ghost", position=(30, 10),
+            character_id="nonexistent", description="A ghost.",
+        )
+        state.locations["bar"].add_hotspot(hotspot)
+
+        result = handler._get_npcs_at_location(state)
+        assert result == []
+
+    def test_empty_location(self, handler, state):
+        result = handler._get_npcs_at_location(state)
+        assert result == []
+
+    def test_multiple_npcs(self, handler, state):
+        for cid, cname in [("bartender", "Joe"), ("singer", "Mary")]:
+            char = Character(
+                id=cid, name=cname, archetype=Archetype.INNOCENT,
+                description=f"The {cid}.",
+            )
+            state.characters[cid] = char
+            hotspot = Hotspot.create_person(
+                id=f"hs_{cid}", name=cname, position=(30, 10),
+                character_id=cid, description=f"The {cid}.",
+            )
+            state.locations["bar"].add_hotspot(hotspot)
+
+        result = handler._get_npcs_at_location(state)
+        assert "bartender" in result
+        assert "singer" in result
+        assert len(result) == 2
+
+
+class TestRecordWitnessedEvent:
+    """Test _record_witnessed_event and its integration with examine/take."""
+
+    def test_witnessed_event_creates_beliefs(self, handler, state, config):
+        # Set up NPC at location with registered memory
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+
+        hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(hotspot)
+
+        handler._record_witnessed_event(state, "Player examined the knife")
+
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.beliefs) == 1
+        assert "knife" in char_mem.beliefs[0].content
+        assert char_mem.beliefs[0].confidence.value == "certain"
+        assert char_mem.beliefs[0].source == "witnessed"
+
+    def test_no_npcs_no_event_recorded(self, handler, state):
+        # No NPCs at location — should not crash
+        initial_event_count = len(state.memory.world.events)
+        handler._record_witnessed_event(state, "Something happened")
+        # No beliefs should be created since there are no registered character memories
+        # But also no crash
+
+    def test_examine_evidence_creates_witness_beliefs(self, handler, state, config):
+        # Set up NPC at location with registered memory
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+
+        npc_hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(npc_hotspot)
+
+        # Set up evidence to examine
+        evidence = Hotspot(
+            id="hs_note", label="Crumpled Note", hotspot_type=HotspotType.EVIDENCE,
+            position=(10, 10), description="A crumpled note.",
+            examine_text="The note reads: 'Meet me at midnight.'",
+            reveals_fact="midnight_meeting",
+        )
+        state.locations["bar"].add_hotspot(evidence)
+
+        # Examine the evidence
+        cmd = Command(command_type=CommandType.EXAMINE, target="Crumpled Note", raw_input="examine note")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # NPC should have witnessed this
+        char_mem = state.memory.get_character_memory("bartender")
+        witness_beliefs = [
+            b for b in char_mem.beliefs
+            if "examined" in b.content.lower() and "Crumpled Note" in b.content
+        ]
+        assert len(witness_beliefs) == 1
+
+    def test_examine_non_evidence_no_witness_event(self, handler, state, config):
+        # Set up NPC at location
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+
+        npc_hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(npc_hotspot)
+
+        # Set up non-evidence object
+        obj = Hotspot(
+            id="hs_lamp", label="Old Lamp", hotspot_type=HotspotType.OBJECT,
+            position=(10, 10), description="A dusty lamp.",
+            examine_text="The lamp flickers weakly.",
+        )
+        state.locations["bar"].add_hotspot(obj)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Old Lamp", raw_input="examine lamp")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # No evidence revealed, so no witness event
+        char_mem = state.memory.get_character_memory("bartender")
+        assert len(char_mem.beliefs) == 0
+
+    def test_take_item_creates_witness_beliefs(self, handler, state, config):
+        # Set up NPC at location
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+
+        npc_hotspot = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(npc_hotspot)
+
+        # Set up item to take
+        item = Hotspot(
+            id="hs_key", label="Rusty Key", hotspot_type=HotspotType.ITEM,
+            position=(10, 10), description="A rusty key.",
+            gives_item="rusty_key",
+        )
+        state.locations["bar"].add_hotspot(item)
+
+        cmd = Command(command_type=CommandType.TAKE, target="Rusty Key", raw_input="take key")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # NPC should have witnessed the player taking the key
+        char_mem = state.memory.get_character_memory("bartender")
+        witness_beliefs = [
+            b for b in char_mem.beliefs
+            if "took" in b.content.lower() and "Rusty Key" in b.content
+        ]
+        assert len(witness_beliefs) == 1
+
+    def test_multiple_npcs_all_witness(self, handler, state, config):
+        # Set up two NPCs
+        for cid, cname in [("bartender", "Joe"), ("singer", "Mary")]:
+            char = Character(
+                id=cid, name=cname, archetype=Archetype.INNOCENT,
+                description=f"The {cid}.",
+            )
+            state.characters[cid] = char
+            state.memory.register_character(cid)
+            npc_hotspot = Hotspot.create_person(
+                id=f"hs_{cid}", name=cname, position=(30, 10),
+                character_id=cid, description=f"The {cid}.",
+            )
+            state.locations["bar"].add_hotspot(npc_hotspot)
+
+        # Set up item to take
+        item = Hotspot(
+            id="hs_coin", label="Gold Coin", hotspot_type=HotspotType.ITEM,
+            position=(10, 10), description="A gold coin.",
+        )
+        state.locations["bar"].add_hotspot(item)
+
+        cmd = Command(command_type=CommandType.TAKE, target="Gold Coin", raw_input="take coin")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # Both NPCs should have witnessed
+        for cid in ["bartender", "singer"]:
+            char_mem = state.memory.get_character_memory(cid)
+            witness_beliefs = [b for b in char_mem.beliefs if "Gold Coin" in b.content]
+            assert len(witness_beliefs) == 1, f"{cid} should have witnessed the take"
