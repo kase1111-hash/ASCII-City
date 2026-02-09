@@ -3,7 +3,7 @@ Dialogue Handler - LLM-driven NPC dialogue generation.
 
 Handles generating character dialogue responses via the LLM,
 including building character context, conversation history,
-and cleaning up responses.
+memory-based beliefs, and cleaning up responses.
 """
 
 from typing import Optional, TYPE_CHECKING
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ..llm import LLMClient
     from ..world_state import WorldState
     from ..narrative import NarrativeSpine
+    from ..memory.character_memory import CharacterMemory
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class DialogueHandler:
         mystery: Optional[dict] = None,
         evidence_found: Optional[list[str]] = None,
         current_location_id: str = "",
+        character_memory: Optional['CharacterMemory'] = None,
     ) -> Optional[str]:
         """
         Generate an NPC dialogue response using the LLM.
@@ -51,6 +53,7 @@ class DialogueHandler:
             mystery: Mystery details dict (victim, crime, suspects)
             evidence_found: List of evidence IDs the player has found
             current_location_id: ID of the current location
+            character_memory: The NPC's subjective memory (beliefs, interactions)
 
         Returns:
             The generated dialogue string, or None if generation failed
@@ -83,21 +86,25 @@ class DialogueHandler:
             character.id, limit=3
         )
 
+        # Build memory context from CharacterMemory
+        memory_context = self._build_memory_context(character_memory)
+
         # Build the system prompt
         system_prompt = self._build_system_prompt(
-            character, relationships_str, npc_knowledge, story_context
+            character, relationships_str, npc_knowledge,
+            story_context, memory_context,
         )
 
         # Build the user prompt
         user_prompt = self._build_user_prompt(
             character, player_input, dialogue_history,
-            topics_discussed, evidence_found, current_location_id
+            topics_discussed, evidence_found, current_location_id,
         )
 
         # Call LLM
         response = self.llm_client.chat([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": user_prompt},
         ])
 
         if response.success and response.text:
@@ -107,20 +114,75 @@ class DialogueHandler:
         return None
 
     @staticmethod
+    def _build_memory_context(
+        character_memory: Optional['CharacterMemory'],
+    ) -> str:
+        """Build prompt context from character's subjective memory."""
+        if not character_memory:
+            return ""
+
+        parts = []
+
+        # Recent beliefs
+        recent_beliefs = character_memory.beliefs[-5:] if character_memory.beliefs else []
+        if recent_beliefs:
+            belief_lines = []
+            for b in recent_beliefs:
+                conf = b.confidence.value
+                belief_lines.append(f"- [{conf}] {b.content} (source: {b.source})")
+            parts.append("THINGS YOU BELIEVE:\n" + "\n".join(belief_lines))
+
+        # Suspicions
+        if character_memory.suspicions:
+            susp_lines = [
+                f"- {target}: {conf:.0%} suspicious"
+                for target, conf in character_memory.suspicions.items()
+                if conf > 0.1
+            ]
+            if susp_lines:
+                parts.append("YOUR SUSPICIONS:\n" + "\n".join(susp_lines))
+
+        # Previous interactions with the player
+        recent_interactions = character_memory.get_recent_interactions(3)
+        if recent_interactions:
+            interaction_lines = []
+            for i in recent_interactions:
+                topic_str = f" about {i.topic}" if i.topic else ""
+                interaction_lines.append(
+                    f"- Player {i.interaction_type}{topic_str} "
+                    f"(tone: {i.player_tone}, you {i.outcome})"
+                )
+            parts.append(
+                "YOUR HISTORY WITH THE DETECTIVE:\n"
+                + "\n".join(interaction_lines)
+            )
+
+        # Net trust from interactions
+        net_trust = character_memory.total_trust_change()
+        if net_trust != 0:
+            direction = "warmer toward" if net_trust > 0 else "colder toward"
+            parts.append(f"Overall you feel {direction} the detective (trust shift: {net_trust:+d})")
+
+        return "\n\n".join(parts)
+
+    @staticmethod
     def _build_system_prompt(
         character: Character,
         relationships_str: str,
         npc_knowledge: str,
         story_context: str,
+        memory_context: str = "",
     ) -> str:
         """Build the system prompt for character dialogue generation."""
+        memory_section = f"\n\n{memory_context}" if memory_context else ""
+
         return f"""You are {character.name}, {character.description}
 
 PERSONALITY:
 - Archetype: {character.archetype.value}
-- Trust level: {character.state.trust} (0-100, higher = more open)
+- Trust level: {character.current_trust} (higher = more open)
 - Current mood: {character.state.mood.value}
-- Pressure level: {character.state.pressure}
+- Pressure level: {character.state.pressure_accumulated}
 
 YOUR SECRET (never reveal unless trust > 70 or you're "cracked"):
 {character.secret_truth}
@@ -134,7 +196,7 @@ WHAT YOU KNOW ABOUT THE WORLD:
 {npc_knowledge if npc_knowledge else 'Nothing special'}
 
 STORY CONTEXT:
-{story_context}
+{story_context}{memory_section}
 
 RULES:
 1. Stay completely in character
@@ -144,7 +206,8 @@ RULES:
 5. Respond in 1-3 sentences, noir dialogue style
 6. React based on your archetype and mood
 7. If asked about something you know, hint at it without fully revealing
-8. Reference people you know or events you've heard about when relevant"""
+8. Reference people you know or events you've heard about when relevant
+9. Reference previous interactions with the detective when relevant — show that you remember"""
 
     @staticmethod
     def _build_user_prompt(
