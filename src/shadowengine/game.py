@@ -23,6 +23,7 @@ from .generation.dialogue_handler import DialogueHandler
 from .location_manager import LocationManager
 from .conversation import ConversationManager
 from .command_handler import CommandHandler
+from .signal_router import SignalRouter
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -98,12 +99,15 @@ class Game:
             speech_enabled=self.config.enable_speech,
         )
 
+        self.signal_router = SignalRouter(renderer=self.renderer)
+
         self.command_handler = CommandHandler(
             parser=self.parser,
             renderer=self.renderer,
             llm_client=self.llm_client,
             location_manager=self.location_manager,
             conversation_manager=self.conversation_manager,
+            signal_router=self.signal_router,
         )
 
     # ------------------------------------------------------------------

@@ -20,6 +20,7 @@ from .llm.client import LLMClient
 from .llm.validation import safe_parse_json, validate_free_exploration_response, sanitize_player_input
 from .location_manager import LocationManager
 from .conversation import ConversationManager
+from .circuits import SignalType, InputSignal, OutputSignal, ProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,14 @@ class CommandHandler:
         llm_client: LLMClient,
         location_manager: LocationManager,
         conversation_manager: ConversationManager,
+        signal_router=None,
     ):
         self.parser = parser
         self.renderer = renderer
         self.llm_client = llm_client
         self.location_manager = location_manager
         self.conversation_manager = conversation_manager
+        self.signal_router = signal_router
 
     def handle_command(
         self,
@@ -127,6 +130,7 @@ class CommandHandler:
             CommandType.EXAMINE: lambda h: self._handle_examine(h, state, config),
             CommandType.TALK: lambda h: self._handle_talk(h, state),
             CommandType.TAKE: lambda h: self._handle_take(h, state, config),
+            CommandType.USE: lambda h: self._handle_use(h, state, config),
             CommandType.GO: lambda h: self.location_manager.handle_go(
                 h, current_location, state, config, add_character_fn
             ),
@@ -219,11 +223,67 @@ class CommandHandler:
             player_witnessed=False,
         )
 
+    def _send_circuit_signal(
+        self,
+        hotspot: Hotspot,
+        signal_type: SignalType,
+        strength: float,
+        state: 'GameState',
+    ) -> Optional[ProcessingResult]:
+        """Send a signal to a hotspot's circuit and route the outputs.
+
+        Returns the ProcessingResult if the hotspot has a circuit, else None.
+        """
+        if not hotspot.circuit:
+            return None
+
+        signal = InputSignal(
+            type=signal_type,
+            strength=strength,
+            source_id="player",
+        )
+        outputs = hotspot.circuit.receive_signal(signal)
+
+        result = ProcessingResult(
+            circuit_id=hotspot.circuit.id,
+            input_signal=signal,
+            output_signals=outputs,
+        )
+
+        if self.signal_router and result.has_outputs():
+            location = state.locations.get(state.current_location_id)
+            self.signal_router.route_outputs(result, hotspot, state, location)
+
+        return result
+
+    def _handle_use(self, hotspot: Hotspot, state: 'GameState', config: GameConfig) -> None:
+        """Handle using an object — route through its circuit if present."""
+        if hotspot.circuit:
+            result = self._send_circuit_signal(
+                hotspot, SignalType.PRESS, 0.5, state,
+            )
+            # Show use_text as flavor text
+            if hotspot.use_text:
+                self.renderer.render_action_result(hotspot.use_text)
+        elif hotspot.use_text:
+            self.renderer.render_action_result(hotspot.use_text)
+        else:
+            self.renderer.render_error("You can't use that.")
+
+        if config.time_passes_on_action:
+            state.memory.advance_time(config.time_units_per_action)
+
+        self.renderer.wait_for_key()
+
     def _handle_examine(self, hotspot: Hotspot, state: 'GameState', config: GameConfig) -> None:
         """Handle examining something."""
         hotspot.mark_discovered()
 
         self.renderer.render_action_result(hotspot.examine_text or hotspot.description)
+
+        # If hotspot has a circuit, send a LOOK signal for dynamic response
+        if hotspot.circuit:
+            self._send_circuit_signal(hotspot, SignalType.LOOK, 0.5, state)
 
         if hotspot.reveals_fact:
             state.memory.player_discovers(
@@ -299,6 +359,10 @@ class CommandHandler:
             state, f"Player took {hotspot.label}"
         )
 
+        # If hotspot has a circuit, send a signal before deactivation
+        if hotspot.circuit:
+            self._send_circuit_signal(hotspot, SignalType.PULL, 0.5, state)
+
         hotspot.deactivate()
 
         if config.time_passes_on_action:
@@ -324,7 +388,7 @@ Given the player's free-form input and the current scene, determine what they wa
 
 Respond in JSON format with:
 {
-    "action": "examine|talk|take|go|wait|other",
+    "action": "examine|talk|take|use|kick|push|go|wait|other",
     "target": "name of target from available items/people/exits",
     "narrative": "A brief atmospheric description of what happens (1-2 sentences)",
     "success": true/false
@@ -336,10 +400,13 @@ RULES:
 3. If they want to take/get something, action = "take"
 4. If they want to go somewhere or through an exit, action = "go"
 5. If they want to wait or pass time, action = "wait"
-6. For anything else or if unclear, action = "other" with a narrative response
-7. Match target to the closest available hotspot name
-8. Write atmospheric noir-style narrative descriptions
-9. If they ask a question about the environment, describe what they observe"""
+6. If they want to use, press, or activate something, action = "use"
+7. If they want to kick something, action = "kick"
+8. If they want to push or shove something, action = "push"
+9. For anything else or if unclear, action = "other" with a narrative response
+10. Match target to the closest available hotspot name
+11. Write atmospheric noir-style narrative descriptions
+12. If they ask a question about the environment, describe what they observe"""
 
         user_prompt = f"""CURRENT LOCATION: {location.name}
 {location.description}
@@ -397,6 +464,22 @@ Interpret what the player wants to do and respond with JSON."""
                         self.location_manager.handle_free_movement(
                             target, location, state, config, add_character_fn
                         )
+                        return
+                elif action == "use" and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot:
+                        self._handle_use(hotspot, state, config)
+                        return
+                elif action in ("kick", "push") and target:
+                    hotspot = location.get_hotspot_by_label(target)
+                    if hotspot and hotspot.circuit:
+                        signal_map = {"kick": SignalType.KICK, "push": SignalType.PUSH}
+                        self._send_circuit_signal(
+                            hotspot, signal_map[action], 0.7, state,
+                        )
+                        if config.time_passes_on_action:
+                            state.memory.advance_time(config.time_units_per_action)
+                        self.renderer.wait_for_key()
                         return
                 elif action == "wait":
                     self._handle_wait(state, config)
