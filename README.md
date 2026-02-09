@@ -6,49 +6,59 @@
 
 ## What Is This?
 
-ShadowEngine is an **AI-driven ASCII game engine** and fully reactive, **LLM-powered game** universe where every object, creature, and environmental element functions as an interactive **behavioral circuit** with emergent properties. Built as a **procedural ASCII world** generator, it enables **natural language game interaction** and **emergent storytelling** through AI simulation.
+ShadowEngine is an AI-driven ASCII game engine where locations, dialogue, and interactions are generated dynamically by an LLM (Ollama or OpenAI). Instead of scripted stories, the engine uses natural language parsing and procedural generation to create an open-ended text adventure where the player can go anywhere and talk to anyone.
 
-Instead of scripted stories, this **text-based world simulation** engine simulates **world state**, **character psychology**, **environmental physics**, and **player creativity**—allowing **narrative emergence** and **player-driven storytelling** to unfold naturally. Every button, bug, or boulder becomes a potential story seed in a fully reactive sandbox where player creativity literally shapes the game world. Think of it as an **AI dungeon crawler** meets **prose-first game development**.
+The long-term goal is systemic emergence: behavioral circuits, NPC rumor networks, and layered memory producing stories no one pre-wrote. Right now the engine delivers LLM-driven exploration and dialogue with a three-layer memory system. See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 
 ## Key Features
 
-- **Behavioral Circuits** - Universal interaction model enabling **emergent AI gameplay**
-- **LLM-Driven Simulation** - **AI game simulation** with dynamic responses, not pre-scripted outcomes
-- **Memory & Rumor Networks** - **Psychological AI architecture** where NPCs remember, share information, evolve
-- **ASCII Art Studio** - Player-created art becomes world content through **human-AI collaboration**
-- **Sound & Vision Systems** - Audio synthesis, TTS, and atmospheric rendering *(sound propagation planned)*
-- **Threat Proximity** - STT voice input with threat response framework *(real-time reaction timing planned)*
+- **LLM-Driven Simulation** - Dynamic responses via Ollama/OpenAI, not pre-scripted outcomes
+- **Three-Layer Memory** - World truth, character beliefs, and player knowledge tracked separately
+- **Natural Language Input** - Free-form commands parsed by LLM when structured parsing fails
+- **Procedural Location Generation** - New areas generated on-the-fly as the player explores
+- **NPC Dialogue** - LLM-generated character responses shaped by archetype and game state
+- **Atmospheric Simulation** - Weather, time of day, and pressure affect the world
 - **Zoom Inspection** - Progressive detail reveal with tools
-- **Atmospheric Simulation** - Weather, time, and pressure affect everything in this **living world simulation**
+
+### Planned (code exists, not yet integrated into game loop)
+
+- **Behavioral Circuits** - Universal entity interaction model via signal processing
+- **NPC Intelligence** - Rumor propagation, social networks, subjective NPC memory
+- **ASCII Art Studio** - Player-created art editor (deferred)
+- **Audio / TTS** - Text-to-speech and ambient audio (deferred)
+- **Modding System** - Theme packs, custom scenarios, content registry (deferred)
+- **Voice Input** - Speech-to-text command recognition (deferred)
 
 ## Core Philosophy
 
-**No Pre-Programming**: Player input never follows rigid scripts. This **language-native game architecture** means even trivial actions (poke rock, kick bug) have dynamic consequences driven by **LLM-powered interpretation**.
+**No Pre-Programming**: Player input is never limited to a fixed verb list. Free-form commands are interpreted by the LLM when structured parsing fails.
 
-**Living World**: All entities exist as interactive circuits with **AI emotional continuity**, not static ASCII. Every interaction ripples through the simulation like a **semantic game engine**.
+**Memory-First**: Every event is recorded in a three-layer memory system (world truth, character beliefs, player knowledge). Nothing meaningful happens without being remembered.
 
-**Player as Creator**: Player-made ASCII art literally shapes the game world through iterative feedback loops—true **cognitive work attribution** for creative contributions.
+**Systemic Emergence** (in progress): The engine is being refocused to wire behavioral circuits, NPC intelligence, and rumor networks into the game loop so that player actions produce cascading, unscripted consequences.
 
 ---
 
 ## Status
 
-**All 10 Phases Complete** - Full engine implementation with modding support
+**Refocusing** — Subsystems are built and tested; now wiring them into the game loop.
 
-| System | Status | Tests |
-|--------|--------|-------|
-| Core Foundation | ✓ Complete | 274 |
-| Simulation Depth | ✓ Complete | 462 |
-| Polish & Content | ✓ Complete | 969 |
-| Emergent World | ✓ Complete | ~1200 |
-| ASCII Art Studio | ✓ Complete | ~1500 |
-| STT & Real-Time | ✓ Complete | 1673 |
-| NPC Intelligence | ✓ Complete | ~1800 |
-| Inspection & Zoom | ✓ Complete | ~2000 |
-| Audio & TTS | ✓ Complete | 2373 |
-| Modding System | ✓ Complete | 3325 |
+| System | Status | Integrated |
+|--------|--------|:----------:|
+| Game Loop & Commands | Working | Yes |
+| LLM Location Generation | Working | Yes |
+| LLM NPC Dialogue | Working | Yes |
+| Three-Layer Memory | Working | Partial (player only) |
+| Environment / Weather | Working | Yes |
+| Behavioral Circuits | Tested, isolated | No |
+| NPC Intelligence & Rumors | Tested, isolated | No |
+| Inspection / Zoom | Working | Yes |
+| Audio / TTS | Deferred | -- |
+| ASCII Art Studio | Deferred | -- |
+| Modding System | Deferred | -- |
+| Voice Input (STT) | Deferred | -- |
 
-See [ROADMAP.md](docs/ROADMAP.md) for development phases.
+See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 
 ---
 
@@ -63,38 +73,30 @@ See [ROADMAP.md](docs/ROADMAP.md) for development phases.
 | [Roadmap](docs/ROADMAP.md) | Phased development plan |
 | [Future TTS](docs/FUTURE_TTS.md) | Voice control & audio planning |
 
-### System Specifications
-
-| System | Description |
-|--------|-------------|
-| [Behavioral Circuits](docs/modules/08-behavioral-circuits.md) | Universal entity interaction model |
-| [Tile Grid](docs/modules/09-tile-grid.md) | World structure and affordances |
-| [Perception Systems](docs/modules/10-perception-systems.md) | Sound, vision, threat proximity |
-| [ASCII Art Studio](docs/modules/11-ascii-studio.md) | Player creativity integration |
-| [Art Creation Framework](docs/modules/12-art-creation-framework.md) | Static vs dynamic art, LLM-assisted scene generation |
-
-### Module Specifications
+### Module Documentation
 
 | Module | Description |
 |--------|-------------|
-| [01 - Narrative Spine](docs/modules/01-narrative-spine.md) | Hidden story structure |
-| [02 - Character Simulation](docs/modules/02-character-simulation.md) | NPC behavior & psychology |
-| [03 - Memory Bank](docs/modules/03-memory-bank.md) | Three-layer memory system |
-| [04 - Environment](docs/modules/04-environment-weather.md) | Weather & time mechanics |
-| [05 - ASCII Renderer](docs/modules/05-ascii-renderer.md) | Scene rendering system |
-| [06 - Interaction](docs/modules/06-interaction-engine.md) | Input parsing & affordances |
-| [07 - Moral System](docs/modules/07-moral-consequence.md) | Shade-based consequences |
+| [Narrative Spine](docs/modules/01-narrative-spine.md) | Hidden story structure |
+| [Character Simulation](docs/modules/02-character-simulation.md) | NPC behavior & psychology |
+| [Memory Bank](docs/modules/03-memory-bank.md) | Three-layer memory system |
+| [Environment](docs/modules/04-environment-weather.md) | Weather & time mechanics |
+| [ASCII Renderer](docs/modules/05-ascii-renderer.md) | Scene rendering system |
+| [Interaction Engine](docs/modules/06-interaction-engine.md) | Input parsing & affordances |
+| [Behavioral Circuits](docs/modules/08-behavioral-circuits.md) | Universal entity interaction model |
+
+Specification documents are in [docs/specs/](docs/specs/).
 
 ---
 
 ## Technical
 
-- **Language**: Python (standard library for core, **LLM API** for brain)
-- **Interface**: Terminal / CMD / Shell (STT optional for **voice-controlled gaming**)
-- **Save System**: JSON memory snapshots with **cognitive artifact storage**
-- **Deterministic**: **Procedural generation** with seeded replay capability
-- **Architecture**: **Agent orchestration framework** for NPC coordination
-- **Tests**: 3325 tests passing
+- **Language**: Python 3.10+ (standard library for core, LLM API for generation)
+- **LLM Backend**: Ollama (local, default) or OpenAI API
+- **Interface**: Terminal / CMD / Shell
+- **Save System**: JSON memory snapshots
+- **Dependencies**: Zero for core game (pytest for testing)
+- **Tests**: ~2,000 active tests (deferred modules excluded)
 
 ---
 
@@ -126,7 +128,7 @@ that wasn't part of the original installation...
 
 > *The world remembers. The world reacts. The world is yours to shape.*
 
-ShadowEngine is not about replacing writers. It's about building **AI-powered interactive fiction** and worlds that remember—where every lie persists, every storm matters, and every ending feels inevitable in hindsight. This is **emergent narrative design** at its core: where every piece of player creativity becomes part of the living world through **intent preservation** and **process legibility**.
+ShadowEngine is about building worlds that remember — where every lie persists, every storm matters, and every ending feels inevitable in hindsight.
 
 ---
 

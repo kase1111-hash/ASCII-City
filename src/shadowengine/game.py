@@ -26,7 +26,17 @@ from .narrative import NarrativeSpine
 from .interaction import CommandParser, Command, CommandType, Hotspot, HotspotType
 from .render import Scene, Location, Renderer
 from .environment import Environment, WeatherType
-from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
+# Audio deferred — see _deferred/audio/
+try:
+    from .audio import create_audio_engine, AudioEngine, EmotionalState as AudioEmotion
+    _AUDIO_AVAILABLE = True
+except ImportError:
+    _AUDIO_AVAILABLE = False
+    AudioEngine = None
+    AudioEmotion = None
+
+    def create_audio_engine(**kwargs):
+        return None
 from .llm import LLMIntegration, LocationPrompt, create_llm_client
 from .llm.validation import (
     safe_parse_json, validate_location_response, validate_free_exploration_response,
