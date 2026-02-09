@@ -3,8 +3,11 @@ Hotspot System - Interactive elements in scenes.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Any
 from enum import Enum
+
+if TYPE_CHECKING:
+    from ..circuits import BehaviorCircuit
 
 
 class HotspotType(Enum):
@@ -49,6 +52,9 @@ class Hotspot:
     # Results
     reveals_fact: Optional[str] = None      # Fact revealed on examine
     gives_item: Optional[str] = None        # Item received on take
+
+    # Behavioral circuit (optional — enables dynamic signal-based interactions)
+    circuit: Optional[Any] = field(default=None, repr=False)  # BehaviorCircuit
 
     def get_default_action(self) -> str:
         """Get the default action for this hotspot type."""

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from src.shadowengine.command_handler import CommandHandler
 from src.shadowengine.location_manager import LocationManager
 from src.shadowengine.conversation import ConversationManager
+from src.shadowengine.signal_router import SignalRouter
 from src.shadowengine.game import GameState
 from src.shadowengine.config import GameConfig, DEFAULT_CONFIG
 from src.shadowengine.interaction import CommandParser, Command, CommandType, Hotspot, HotspotType
@@ -15,6 +16,9 @@ from src.shadowengine.render import Location, Renderer
 from src.shadowengine.llm.client import MockLLMClient, LLMConfig, LLMBackend, LLMResponse
 from src.shadowengine.character import Character, Archetype
 from src.shadowengine.memory import EventType
+from src.shadowengine.circuits import (
+    BehaviorCircuit, CircuitType, SignalType, InputSignal, OutputSignal,
+)
 
 
 @pytest.fixture
@@ -582,3 +586,173 @@ class TestRecordWitnessedEvent:
             char_mem = state.memory.get_character_memory(cid)
             witness_beliefs = [b for b in char_mem.beliefs if "Gold Coin" in b.content]
             assert len(witness_beliefs) == 1, f"{cid} should have witnessed the take"
+
+
+class TestCircuitIntegration:
+    """Test that commands route through circuits when present."""
+
+    @pytest.fixture
+    def handler_with_router(self, mock_renderer, mock_llm):
+        parser = CommandParser()
+        loc_mgr = MagicMock(spec=LocationManager)
+        conv_mgr = MagicMock(spec=ConversationManager)
+        router = SignalRouter(renderer=mock_renderer)
+        return CommandHandler(
+            parser=parser,
+            renderer=mock_renderer,
+            llm_client=mock_llm,
+            location_manager=loc_mgr,
+            conversation_manager=conv_mgr,
+            signal_router=router,
+        )
+
+    def _make_circuit_hotspot(self, label="Crate", hs_type=HotspotType.OBJECT):
+        circuit = BehaviorCircuit(
+            id="test_circuit",
+            name=label,
+            circuit_type=CircuitType.MECHANICAL,
+            input_signals=[
+                SignalType.LOOK, SignalType.KICK, SignalType.PRESS,
+                SignalType.PULL, SignalType.PUSH,
+            ],
+            output_signals=[SignalType.SOUND, SignalType.COLLAPSE],
+        )
+        hs = Hotspot(
+            id="hs_test", label=label, hotspot_type=hs_type,
+            position=(10, 10), description=f"A {label.lower()}.",
+            examine_text=f"It's a {label.lower()}.",
+        )
+        hs.circuit = circuit
+        return hs
+
+    def test_examine_sends_look_signal(self, handler_with_router, state, config):
+        hs = self._make_circuit_hotspot()
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Crate", raw_input="examine crate")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # Circuit should have recorded a LOOK interaction
+        assert len(hs.circuit.history) >= 1
+        assert hs.circuit.history[-1]["signal_type"] == "look"
+
+    def test_take_sends_pull_signal(self, handler_with_router, state, config):
+        hs = self._make_circuit_hotspot(label="Key", hs_type=HotspotType.ITEM)
+        hs.gives_item = "rusty_key"
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.TAKE, target="Key", raw_input="take key")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # Circuit should have recorded a PULL interaction
+        pull_records = [h for h in hs.circuit.history if h["signal_type"] == "pull"]
+        assert len(pull_records) == 1
+
+    def test_use_sends_press_signal(self, handler_with_router, state, config):
+        hs = self._make_circuit_hotspot(label="Button")
+        hs.use_text = "You press the button."
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.USE, target="Button", raw_input="use button")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        assert len(hs.circuit.history) >= 1
+        assert hs.circuit.history[-1]["signal_type"] == "press"
+        handler_with_router.renderer.render_action_result.assert_called_with("You press the button.")
+
+    def test_use_without_circuit_shows_use_text(self, handler_with_router, state, config):
+        hs = Hotspot(
+            id="hs_lever", label="Lever", hotspot_type=HotspotType.OBJECT,
+            position=(10, 10), description="A lever.",
+            use_text="You pull the lever. Nothing happens.",
+        )
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.USE, target="Lever", raw_input="use lever")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        handler_with_router.renderer.render_action_result.assert_called_with(
+            "You pull the lever. Nothing happens."
+        )
+
+    def test_use_without_circuit_or_text_shows_error(self, handler_with_router, state, config):
+        hs = Hotspot(
+            id="hs_wall", label="Wall", hotspot_type=HotspotType.OBJECT,
+            position=(10, 10), description="A plain wall.",
+        )
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.USE, target="Wall", raw_input="use wall")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        handler_with_router.renderer.render_error.assert_called_with("You can't use that.")
+
+    def test_examine_without_circuit_works_normally(self, handler_with_router, state, config):
+        hs = Hotspot(
+            id="hs_lamp", label="Lamp", hotspot_type=HotspotType.OBJECT,
+            position=(10, 10), description="A lamp.",
+            examine_text="The lamp flickers.",
+        )
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Lamp", raw_input="examine lamp")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        handler_with_router.renderer.render_action_result.assert_called_with("The lamp flickers.")
+
+    def test_circuit_sound_output_routes_to_npc(self, handler_with_router, state, config):
+        # Create a circuit that always emits SOUND on LOOK
+        def loud_process(circuit, signal):
+            return [OutputSignal(type=SignalType.SOUND, strength=0.6, source_id=circuit.id)]
+
+        hs = self._make_circuit_hotspot()
+        hs.circuit.set_processor(loud_process)
+        state.locations["bar"].add_hotspot(hs)
+
+        # Add NPC
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+        npc_hs = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(npc_hs)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Crate", raw_input="examine crate")
+        handler_with_router.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # NPC should have witnessed the sound
+        char_mem = state.memory.get_character_memory("bartender")
+        sound_beliefs = [b for b in char_mem.beliefs if "sound" in b.content.lower()]
+        assert len(sound_beliefs) >= 1
+
+    def test_circuit_collapse_deactivates_on_kick(self, handler_with_router, state, config):
+        # Create a circuit that collapses immediately
+        def fragile_process(circuit, signal):
+            circuit.state.health = 0.0
+            circuit.state.active = False
+            return [OutputSignal(type=SignalType.COLLAPSE, strength=1.0, source_id=circuit.id)]
+
+        hs = self._make_circuit_hotspot()
+        hs.circuit.set_processor(fragile_process)
+        state.locations["bar"].add_hotspot(hs)
+
+        # Use _send_circuit_signal directly since kick isn't a standard command
+        handler_with_router._send_circuit_signal(hs, SignalType.KICK, 0.8, state)
+
+        assert not hs.active  # Collapse handler should have deactivated
+
+    def test_no_signal_router_graceful(self, handler, state, config):
+        """Handler without a signal_router still works — circuits just don't route outputs."""
+        hs = self._make_circuit_hotspot()
+        state.locations["bar"].add_hotspot(hs)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Crate", raw_input="examine crate")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # Circuit should still record the interaction
+        assert len(hs.circuit.history) >= 1
