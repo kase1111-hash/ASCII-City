@@ -205,18 +205,40 @@ class MemoryBank:
 
     @classmethod
     def load(cls, filepath: str) -> 'MemoryBank':
-        """Load memory bank from a JSON file."""
+        """Load memory bank from a JSON file with validation."""
         with open(filepath, 'r') as f:
             data = json.load(f)
 
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid save file: expected dict, got {type(data).__name__}")
+
         bank = cls()
-        bank.game_seed = data.get("game_seed")
-        bank.world = WorldMemory.from_dict(data.get("world", {}))
+
+        # Validate game_seed type
+        seed = data.get("game_seed")
+        if seed is not None and not isinstance(seed, (int, float)):
+            seed = None
+        bank.game_seed = seed
+
+        # Validate nested structures are dicts before deserializing
+        world_data = data.get("world", {})
+        if not isinstance(world_data, dict):
+            world_data = {}
+        bank.world = WorldMemory.from_dict(world_data)
+
+        characters_data = data.get("characters", {})
+        if not isinstance(characters_data, dict):
+            characters_data = {}
         bank.characters = {
-            cid: CharacterMemory.from_dict(mem_data)
-            for cid, mem_data in data.get("characters", {}).items()
+            str(cid): CharacterMemory.from_dict(mem_data)
+            for cid, mem_data in characters_data.items()
+            if isinstance(mem_data, dict)
         }
-        bank.player = PlayerMemory.from_dict(data.get("player", {}))
+
+        player_data = data.get("player", {})
+        if not isinstance(player_data, dict):
+            player_data = {}
+        bank.player = PlayerMemory.from_dict(player_data)
 
         return bank
 

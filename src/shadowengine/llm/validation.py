@@ -174,6 +174,57 @@ def validate_free_exploration_response(data: dict) -> dict:
     }
 
 
+MAX_PLAYER_INPUT_LENGTH = 500
+
+# Phrases commonly used in prompt injection attempts
+_INJECTION_MARKERS = [
+    "ignore all previous",
+    "ignore above",
+    "disregard your instructions",
+    "disregard previous",
+    "you are now",
+    "new instructions:",
+    "system prompt:",
+    "forget your instructions",
+    "override:",
+    "admin mode",
+]
+
+
+def sanitize_player_input(text: str) -> str:
+    """
+    Sanitize player input before interpolation into LLM prompts.
+
+    Mitigates prompt injection by:
+    1. Truncating to a maximum length
+    2. Stripping control characters
+    3. Detecting and neutralizing common injection patterns
+    """
+    if not text:
+        return ""
+
+    # Truncate to max length
+    text = text[:MAX_PLAYER_INPUT_LENGTH]
+
+    # Strip control characters (keep printable + whitespace)
+    text = "".join(ch for ch in text if ch.isprintable() or ch in ("\n", "\t"))
+
+    # Collapse excessive whitespace / newlines that could break prompt structure
+    lines = text.splitlines()
+    if len(lines) > 3:
+        text = " ".join(line.strip() for line in lines if line.strip())
+
+    # Detect injection markers and prefix a warning to the LLM
+    text_lower = text.lower()
+    for marker in _INJECTION_MARKERS:
+        if marker in text_lower:
+            logger.warning(f"Possible prompt injection detected: '{marker}' in player input")
+            text = f"[player typed the following game command]: {text}"
+            break
+
+    return text.strip()
+
+
 def safe_parse_json(text: str, validator: callable = None) -> tuple[Optional[dict], Optional[str]]:
     """
     Safely parse JSON from LLM response text.

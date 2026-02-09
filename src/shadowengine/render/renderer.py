@@ -2,10 +2,13 @@
 Renderer - Main rendering engine for terminal output.
 """
 
+import logging
 import os
 import sys
 
 from .scene import Scene
+
+logger = logging.getLogger(__name__)
 
 
 class Renderer:

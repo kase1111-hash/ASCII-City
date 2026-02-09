@@ -210,11 +210,15 @@ class OllamaClient(LLMClient):
                     latency_ms=latency
                 )
 
-        except Exception as e:
-            # Log the error and fall back to generate endpoint
+        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as e:
+            # Log the specific error and fall back to generate endpoint
             import logging
-            logging.warning(f"Ollama chat endpoint failed, falling back to generate: {e}")
+            logging.warning(f"Ollama chat endpoint failed ({type(e).__name__}), falling back to generate: {e}")
             return super().chat(messages)
+        except Exception as e:
+            import logging
+            logging.error(f"Unexpected error in Ollama chat: {type(e).__name__}: {e}")
+            return LLMResponse.error_response(f"Unexpected error: {e}")
 
 
 class OpenAIClient(LLMClient):
