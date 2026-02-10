@@ -379,3 +379,50 @@ class TestMemoryRecording:
         call_kwargs = conv_mgr.dialogue_handler.generate_response.call_args
         assert call_kwargs.kwargs.get("character_memory") is char_mem or \
                (len(call_kwargs.args) > 0 and call_kwargs.kwargs.get("character_memory") == char_mem)
+
+    def test_threaten_feeds_event_bridge(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        state.propagation_engine.register_npc("bartender", "bartender")
+
+        conv_mgr.handle_threaten(bartender, state)
+
+        # Event bridge should have created a WorldEvent
+        assert len(state.propagation_engine.events) == 1
+        assert state.propagation_engine.events[0].event_type == "violence"
+
+        # NPC should have an intelligence memory (separate from CharacterMemory)
+        npc_state = state.propagation_engine.get_npc_state("bartender")
+        assert len(npc_state.memory_bank.memories) >= 1
+
+    def test_accuse_feeds_event_bridge(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        state.propagation_engine.register_npc("bartender", "bartender")
+        state.spine = None
+
+        conv_mgr.handle_accuse(bartender, state)
+
+        assert len(state.propagation_engine.events) == 1
+        assert state.propagation_engine.events[0].event_type == "conversation"
+
+    def test_generate_dialogue_passes_intelligence(self, conv_mgr, state, bartender):
+        state.memory.register_character("bartender")
+        state.propagation_engine.register_npc("bartender", "bartender")
+
+        conv_mgr.generate_dialogue(bartender, "hello", state)
+
+        # Should have passed intelligence_hints to generate_response
+        call_kwargs = conv_mgr.dialogue_handler.generate_response.call_args
+        assert "intelligence_hints" in call_kwargs.kwargs
+
+    def test_no_propagation_engine_no_crash(self, conv_mgr, bartender):
+        """Without propagation_engine, dialogue still works."""
+        from src.shadowengine.game import GameState
+        bare_state = GameState()
+        bare_state.memory.register_character("bartender")
+        bare_state.characters["bartender"] = bartender
+        # Remove propagation_engine
+        del bare_state.propagation_engine
+        del bare_state.event_bridge
+
+        conv_mgr.dialogue_handler.generate_response.return_value = "Hello."
+        conv_mgr.handle_free_dialogue(bartender, "hello", bare_state)

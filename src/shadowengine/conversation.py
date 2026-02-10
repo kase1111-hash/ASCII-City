@@ -172,8 +172,28 @@ class ConversationManager:
     def generate_dialogue(
         self, character: Character, player_input: str, state: 'GameState'
     ) -> Optional[str]:
-        """Generate NPC dialogue response using LLM, enriched with character memory."""
+        """Generate NPC dialogue response using LLM, enriched with memory and intelligence."""
         char_memory = state.memory.get_character_memory(character.id)
+
+        # Pull intelligence hints from PropagationEngine (rumors, behavior)
+        intelligence_hints = None
+        if hasattr(state, 'propagation_engine') and state.propagation_engine:
+            engine = state.propagation_engine
+            hints = engine.get_npc_behavior_hints(character.id)
+
+            # Get rumors known by this NPC
+            rumors = []
+            npc_memories = []
+            npc_state = engine.get_npc_state(character.id)
+            if npc_state:
+                shareable = npc_state.memory_bank.get_shareable_memories()
+                npc_memories = [m.summary for m in shareable[:5]]
+
+                known_rumors = engine.rumor_propagation.get_rumors_known_by(character.id)
+                rumors = [r.core_claim for r in known_rumors[:5]]
+
+            if hints or rumors or npc_memories:
+                intelligence_hints = {**hints, "rumors": rumors, "memories": npc_memories}
 
         return self.dialogue_handler.generate_response(
             character=character,
@@ -183,6 +203,7 @@ class ConversationManager:
             evidence_found=list(state.memory.player.discoveries.keys()),
             current_location_id=state.current_location_id,
             character_memory=char_memory,
+            intelligence_hints=intelligence_hints,
         )
 
     def handle_threaten(self, character: Character, state: 'GameState') -> None:
@@ -227,6 +248,10 @@ class ConversationManager:
                 outcome="cracked" if cracked else "resisted",
                 trust_change=THREATEN_TRUST_PENALTY,
             )
+
+        # Feed into NPC intelligence — other NPCs may hear about this
+        if hasattr(state, 'event_bridge') and state.event_bridge:
+            state.event_bridge.on_threaten(character.id)
 
         self.renderer.wait_for_key()
 
@@ -276,5 +301,9 @@ class ConversationManager:
                 outcome="caught" if (not state.is_running) else "denied",
                 trust_change=ACCUSE_WRONG_TRUST_PENALTY if state.is_running else 0,
             )
+
+        # Feed into NPC intelligence
+        if hasattr(state, 'event_bridge') and state.event_bridge:
+            state.event_bridge.on_accuse(character.id)
 
         self.renderer.wait_for_key()
