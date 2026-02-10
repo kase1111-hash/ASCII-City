@@ -335,3 +335,121 @@ class TestCleanResponse:
     def test_strips_whitespace(self):
         result = DialogueHandler._clean_response("  Hello there.  ", "Joe")
         assert result == "Hello there."
+
+
+class TestBuildIntelligenceContext:
+    """Test _build_intelligence_context formats NPC intelligence into prompt text."""
+
+    def test_none_returns_empty(self):
+        result = DialogueHandler._build_intelligence_context(None)
+        assert result == ""
+
+    def test_empty_dict_returns_empty(self):
+        result = DialogueHandler._build_intelligence_context({})
+        assert result == ""
+
+    def test_neutral_defaults_returns_empty(self):
+        result = DialogueHandler._build_intelligence_context({
+            "tone": "neutral", "willingness": "medium", "honesty": "honest",
+        })
+        assert result == ""
+
+    def test_hostile_tone_included(self):
+        result = DialogueHandler._build_intelligence_context({
+            "tone": "hostile", "willingness": "low", "honesty": "lying",
+        })
+        assert "hostile" in result
+        assert "low" in result
+        assert "lying" in result
+
+    def test_rumors_formatted(self):
+        result = DialogueHandler._build_intelligence_context({
+            "rumors": ["Someone was murdered in the alley", "The mob is involved"],
+        })
+        assert "RUMORS YOU'VE HEARD" in result
+        assert "murdered" in result
+        assert "mob" in result
+
+    def test_memories_formatted(self):
+        result = DialogueHandler._build_intelligence_context({
+            "memories": ["Saw the detective arrive", "Heard gunshots"],
+        })
+        assert "THINGS YOU REMEMBER" in result
+        assert "detective" in result
+        assert "gunshots" in result
+
+    def test_only_first_5_rumors(self):
+        hints = {
+            "rumors": [f"Rumor {i}" for i in range(8)],
+        }
+        result = DialogueHandler._build_intelligence_context(hints)
+        assert "Rumor 0" in result
+        assert "Rumor 4" in result
+        assert "Rumor 5" not in result
+
+    def test_full_intelligence_has_all_sections(self):
+        result = DialogueHandler._build_intelligence_context({
+            "tone": "fearful",
+            "willingness": "low",
+            "honesty": "evasive",
+            "rumors": ["The mob is watching"],
+            "memories": ["Saw a body in the alley"],
+        })
+        assert "DISPOSITION" in result
+        assert "RUMORS" in result
+        assert "THINGS YOU REMEMBER" in result
+
+
+class TestIntelligenceInSystemPrompt:
+    """Test system prompt includes intelligence context."""
+
+    def test_prompt_includes_intelligence(self, bartender):
+        intel = DialogueHandler._build_intelligence_context({
+            "tone": "suspicious",
+            "willingness": "low",
+            "honesty": "evasive",
+            "rumors": ["Someone saw the detective snooping"],
+        })
+
+        prompt = DialogueHandler._build_system_prompt(
+            character=bartender,
+            relationships_str="",
+            npc_knowledge="",
+            story_context="A murder mystery.",
+            memory_context="",
+            intelligence_context=intel,
+        )
+
+        assert "RUMORS YOU'VE HEARD" in prompt
+        assert "suspicious" in prompt
+        assert "rule" not in prompt.lower() or "10" in prompt
+
+    def test_prompt_includes_rule_10(self, bartender):
+        prompt = DialogueHandler._build_system_prompt(
+            character=bartender,
+            relationships_str="",
+            npc_knowledge="",
+            story_context="",
+        )
+        assert "rumors" in prompt.lower()
+
+    def test_intelligence_passed_through_generate(self, handler, bartender):
+        handler.llm_client = MagicMock()
+        handler.llm_client.chat.return_value = LLMResponse(
+            text="I've heard things.", success=True,
+        )
+
+        result = handler.generate_response(
+            character=bartender,
+            player_input="What's happening?",
+            intelligence_hints={
+                "tone": "fearful",
+                "rumors": ["The mob is watching"],
+                "memories": [],
+            },
+        )
+
+        assert result == "I've heard things."
+        call_args = handler.llm_client.chat.call_args[0][0]
+        system_prompt = call_args[0]["content"]
+        assert "mob is watching" in system_prompt

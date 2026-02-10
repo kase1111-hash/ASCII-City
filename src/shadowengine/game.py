@@ -24,6 +24,8 @@ from .location_manager import LocationManager
 from .conversation import ConversationManager
 from .command_handler import CommandHandler
 from .signal_router import SignalRouter
+from .npc_intelligence import PropagationEngine
+from .event_bridge import GameEventBridge
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -54,6 +56,8 @@ class GameState:
         self.conversation_partner: Optional[str] = None
         self.environment: Environment = Environment()
         self.world_state: WorldState = WorldState()
+        self.propagation_engine: PropagationEngine = PropagationEngine()
+        self.event_bridge: GameEventBridge = GameEventBridge(self.propagation_engine)
 
 
 class Game:
@@ -121,10 +125,26 @@ class Game:
         if seed is not None:
             self.state.environment.set_seed(seed)
 
+    # Map Character archetypes to npc_intelligence types
+    _NPC_TYPE_MAP = {
+        Archetype.GUILTY: "mobster",
+        Archetype.INNOCENT: "civilian",
+        Archetype.OUTSIDER: "civilian",
+        Archetype.PROTECTOR: "cop",
+        Archetype.OPPORTUNIST: "informant",
+        Archetype.TRUE_BELIEVER: "civilian",
+        Archetype.SURVIVOR: "bartender",
+        Archetype.AUTHORITY: "cop",
+    }
+
     def add_character(self, character: Character) -> None:
         """Add a character to the game."""
         self.state.characters[character.id] = character
         self.state.memory.register_character(character.id)
+
+        # Register with NPC intelligence system
+        npc_type = self._NPC_TYPE_MAP.get(character.archetype, "default")
+        self.state.propagation_engine.register_npc(character.id, npc_type)
 
         if self.audio_engine:
             voice_archetype = self._get_voice_archetype(character.archetype)

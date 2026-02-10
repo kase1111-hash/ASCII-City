@@ -42,6 +42,7 @@ class DialogueHandler:
         evidence_found: Optional[list[str]] = None,
         current_location_id: str = "",
         character_memory: Optional['CharacterMemory'] = None,
+        intelligence_hints: Optional[dict] = None,
     ) -> Optional[str]:
         """
         Generate an NPC dialogue response using the LLM.
@@ -54,6 +55,7 @@ class DialogueHandler:
             evidence_found: List of evidence IDs the player has found
             current_location_id: ID of the current location
             character_memory: The NPC's subjective memory (beliefs, interactions)
+            intelligence_hints: Behavior hints from PropagationEngine (tone, willingness, rumors)
 
         Returns:
             The generated dialogue string, or None if generation failed
@@ -89,10 +91,13 @@ class DialogueHandler:
         # Build memory context from CharacterMemory
         memory_context = self._build_memory_context(character_memory)
 
+        # Build intelligence context from PropagationEngine
+        intel_context = self._build_intelligence_context(intelligence_hints)
+
         # Build the system prompt
         system_prompt = self._build_system_prompt(
             character, relationships_str, npc_knowledge,
-            story_context, memory_context,
+            story_context, memory_context, intel_context,
         )
 
         # Build the user prompt
@@ -166,15 +171,52 @@ class DialogueHandler:
         return "\n\n".join(parts)
 
     @staticmethod
+    def _build_intelligence_context(
+        intelligence_hints: Optional[dict],
+    ) -> str:
+        """Build prompt context from NPC intelligence system (rumors, behavior)."""
+        if not intelligence_hints:
+            return ""
+
+        parts = []
+
+        # Dialogue modifiers from behavior system
+        tone = intelligence_hints.get("tone", "neutral")
+        willingness = intelligence_hints.get("willingness", "medium")
+        honesty = intelligence_hints.get("honesty", "honest")
+
+        if tone != "neutral" or willingness != "medium" or honesty != "honest":
+            parts.append(
+                f"YOUR CURRENT DISPOSITION: tone={tone}, "
+                f"willingness to share={willingness}, honesty={honesty}"
+            )
+
+        # Rumors this NPC has heard
+        rumors = intelligence_hints.get("rumors", [])
+        if rumors:
+            rumor_lines = [f"- {r}" for r in rumors[:5]]
+            parts.append("RUMORS YOU'VE HEARD:\n" + "\n".join(rumor_lines))
+
+        # NPC memories of notable events
+        npc_memories = intelligence_hints.get("memories", [])
+        if npc_memories:
+            mem_lines = [f"- {m}" for m in npc_memories[:5]]
+            parts.append("THINGS YOU REMEMBER:\n" + "\n".join(mem_lines))
+
+        return "\n\n".join(parts)
+
+    @staticmethod
     def _build_system_prompt(
         character: Character,
         relationships_str: str,
         npc_knowledge: str,
         story_context: str,
         memory_context: str = "",
+        intelligence_context: str = "",
     ) -> str:
         """Build the system prompt for character dialogue generation."""
         memory_section = f"\n\n{memory_context}" if memory_context else ""
+        intel_section = f"\n\n{intelligence_context}" if intelligence_context else ""
 
         return f"""You are {character.name}, {character.description}
 
@@ -196,7 +238,7 @@ WHAT YOU KNOW ABOUT THE WORLD:
 {npc_knowledge if npc_knowledge else 'Nothing special'}
 
 STORY CONTEXT:
-{story_context}{memory_section}
+{story_context}{memory_section}{intel_section}
 
 RULES:
 1. Stay completely in character
@@ -207,7 +249,8 @@ RULES:
 6. React based on your archetype and mood
 7. If asked about something you know, hint at it without fully revealing
 8. Reference people you know or events you've heard about when relevant
-9. Reference previous interactions with the detective when relevant — show that you remember"""
+9. Reference previous interactions with the detective when relevant — show that you remember
+10. If you've heard rumors, you may reference them obliquely or use them to deflect"""
 
     @staticmethod
     def _build_user_prompt(

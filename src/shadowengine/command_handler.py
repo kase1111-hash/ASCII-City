@@ -223,6 +223,16 @@ class CommandHandler:
             player_witnessed=False,
         )
 
+        # Also feed into NPC intelligence system
+        if hasattr(state, 'event_bridge') and state.event_bridge:
+            state.event_bridge.bridge_event(
+                event_type="discovery",
+                description=description,
+                location=state.current_location_id,
+                actors=["player"],
+                witnesses=witness_ids,
+            )
+
     def _send_circuit_signal(
         self,
         hotspot: Hotspot,
@@ -510,6 +520,18 @@ Interpret what the player wants to do and respond with JSON."""
                 self.renderer.render_narration(event.description)
 
         state.memory.advance_time(config.time_units_per_action)
+
+        # Update NPC intelligence: decay memories, evolve relationships, spread rumors
+        if hasattr(state, 'propagation_engine') and state.propagation_engine:
+            state.propagation_engine.update(config.time_units_per_action)
+
+            # NPCs at the same location may gossip
+            npc_ids = self._get_npcs_at_location(state)
+            if len(npc_ids) >= 2 and hasattr(state, 'event_bridge') and state.event_bridge:
+                for i in range(len(npc_ids)):
+                    for j in range(i + 1, len(npc_ids)):
+                        state.event_bridge.trigger_gossip(npc_ids[i], npc_ids[j])
+
         self.renderer.wait_for_key()
 
     def _handle_save(self, state: 'GameState', config: GameConfig) -> None:

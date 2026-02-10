@@ -756,3 +756,69 @@ class TestCircuitIntegration:
 
         # Circuit should still record the interaction
         assert len(hs.circuit.history) >= 1
+
+
+class TestEventBridgeWiring:
+    """Test that CommandHandler feeds events into the NPC intelligence system."""
+
+    def test_witnessed_event_feeds_propagation_engine(self, handler, state, config):
+        state.propagation_engine.register_npc("bartender", "bartender")
+
+        char = Character(
+            id="bartender", name="Joe", archetype=Archetype.INNOCENT,
+            description="The bartender.",
+        )
+        state.characters["bartender"] = char
+        state.memory.register_character("bartender")
+        npc_hs = Hotspot.create_person(
+            id="hs_bartender", name="Joe", position=(30, 10),
+            character_id="bartender", description="The bartender.",
+        )
+        state.locations["bar"].add_hotspot(npc_hs)
+
+        evidence = Hotspot(
+            id="hs_note", label="Note", hotspot_type=HotspotType.EVIDENCE,
+            position=(10, 10), description="A note.",
+            examine_text="A threatening note.",
+            reveals_fact="threatening_note",
+        )
+        state.locations["bar"].add_hotspot(evidence)
+
+        cmd = Command(command_type=CommandType.EXAMINE, target="Note", raw_input="examine note")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # PropagationEngine should have received the event
+        assert len(state.propagation_engine.events) >= 1
+        npc_state = state.propagation_engine.get_npc_state("bartender")
+        assert len(npc_state.memory_bank.memories) >= 1
+
+    def test_wait_triggers_propagation_update(self, handler, state, config):
+        state.propagation_engine.register_npc("bartender", "bartender")
+
+        cmd = Command(command_type=CommandType.WAIT, target="", raw_input="wait")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # PropagationEngine should have been updated
+        assert state.propagation_engine.current_time > 0
+
+    def test_wait_triggers_gossip_between_colocated_npcs(self, handler, state, config):
+        for cid, cname in [("bartender", "Joe"), ("singer", "Mary")]:
+            char = Character(
+                id=cid, name=cname, archetype=Archetype.INNOCENT,
+                description=f"The {cid}.",
+            )
+            state.characters[cid] = char
+            state.memory.register_character(cid)
+            state.propagation_engine.register_npc(cid, "civilian")
+            npc_hs = Hotspot.create_person(
+                id=f"hs_{cid}", name=cname, position=(30, 10),
+                character_id=cid, description=f"The {cid}.",
+            )
+            state.locations["bar"].add_hotspot(npc_hs)
+
+        cmd = Command(command_type=CommandType.WAIT, target="", raw_input="wait")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        # Social network should have recorded an interaction between the two
+        relation = state.propagation_engine.social_network.get_relation("bartender", "singer")
+        assert relation is not None
