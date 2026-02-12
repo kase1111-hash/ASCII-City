@@ -66,7 +66,7 @@ Move all `SPEC_*.md` files (8 documents) to `docs/specs/`. They're design refere
 
 ## Phase 1: Break the Monolith (1-2 sessions)
 
-`game.py` is 1,125 lines handling: game loop, command routing, location generation, dialogue, movement, save/load, conversation state, LLM prompting, NPC creation, and environment queries. It has 21% test coverage.
+`game.py` was 1,125 lines. It has since been split into `game.py` (272 lines), `command_handler.py` (557 lines), `location_manager.py` (398 lines), and `conversation.py` (309 lines). The extraction described below has been completed.
 
 ### Split into focused modules
 
@@ -324,14 +324,14 @@ def test_dockside_demo_emergence():
 
 ## Phase Summary
 
-| Phase | Focus | Key Metric | Sessions |
-|-------|-------|------------|----------|
-| 0 | Triage | 116 → ~78 source files, honest README | 1 |
-| 1 | Break monolith | `game.py` 1,125 → ~150 lines, coverage 21% → 80%+ | 1-2 |
-| 2 | Wire memory | NPCs remember conversations, reference past events | 1-2 |
-| 3 | Wire circuits | Objects respond dynamically, signals ripple | 1-2 |
-| 4 | Wire NPC intelligence | Rumors propagate, NPCs react to indirect events | 1-2 |
-| 5 | Demo | One provably emergent 15-minute scenario | 1 |
+| Phase | Focus | Key Metric | Status |
+|-------|-------|------------|--------|
+| 0 | Triage | 116 → 88 active source files, honest README | **Done** |
+| 1 | Break monolith | `game.py` split into 4 focused modules | **Done** |
+| 2 | Wire memory | NPCs remember conversations, reference past events | Pending |
+| 3 | Wire circuits | Objects respond dynamically, signals ripple | Pending |
+| 4 | Wire NPC intelligence | Rumors propagate, NPCs react to indirect events | Pending |
+| 5 | Demo | One provably emergent 15-minute scenario | Pending |
 
 **Total: 6-10 sessions.**
 

@@ -70,6 +70,7 @@ See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 |----------|-------------|
 | [Design](docs/DESIGN.md) | Complete emergent world design vision |
 | [Architecture](docs/ARCHITECTURE.md) | System design and data flow |
+| [Concepts](docs/CONCEPTS.md) | Core mental model and key abstractions |
 | [Roadmap](docs/ROADMAP.md) | Phased development plan |
 | [Future TTS](docs/FUTURE_TTS.md) | Voice control & audio planning |
 
@@ -83,7 +84,12 @@ See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 | [Environment](docs/modules/04-environment-weather.md) | Weather & time mechanics |
 | [ASCII Renderer](docs/modules/05-ascii-renderer.md) | Scene rendering system |
 | [Interaction Engine](docs/modules/06-interaction-engine.md) | Input parsing & affordances |
+| [Moral & Consequence](docs/modules/07-moral-consequence.md) | Shade-based morality tracking |
 | [Behavioral Circuits](docs/modules/08-behavioral-circuits.md) | Universal entity interaction model |
+| [Tile Grid](docs/modules/09-tile-grid.md) | World structure and affordances |
+| [Perception Systems](docs/modules/10-perception-systems.md) | Sound, vision, threat proximity |
+| [ASCII Art Studio](docs/modules/11-ascii-studio.md) | Player creativity integration (deferred) |
+| [Art Creation Framework](docs/modules/12-art-creation-framework.md) | Art asset system (deferred) |
 
 Specification documents are in [docs/specs/](docs/specs/).
 
@@ -96,7 +102,51 @@ Specification documents are in [docs/specs/](docs/specs/).
 - **Interface**: Terminal / CMD / Shell
 - **Save System**: JSON memory snapshots
 - **Dependencies**: Zero for core game (pytest for testing)
-- **Tests**: ~2,000 active tests (deferred modules excluded)
+- **Tests**: ~2,100 active tests (deferred modules excluded)
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.10 or higher
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/kase1111-hash/ASCII-City.git
+cd ASCII-City
+
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate    # Linux/Mac
+# venv\Scripts\activate.bat  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Running the Game
+
+```bash
+python main.py
+```
+
+The game requires an LLM backend for dynamic generation. By default it connects to [Ollama](https://ollama.ai/) at `http://localhost:11434` using the `llama3.2` model. Without Ollama running, the game falls back to template-based responses.
+
+### Running Tests
+
+```bash
+pytest                           # All active tests (~2,100)
+pytest -v                        # Verbose output
+pytest -m unit                   # Unit tests only
+pytest -m integration            # Integration tests only
+pytest --cov=shadowengine        # With coverage report
+```
+
+On Windows, you can also use `build.bat` (setup) and `run.bat` (run game).
 
 ---
 

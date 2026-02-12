@@ -313,7 +313,7 @@ Here's how these systems work together:
 
 ### Why Separation of Concerns?
 
-The 21 modules each handle one thing:
+The active modules each handle one thing:
 - `memory/` - Just memory
 - `circuits/` - Just circuits
 - `narrative/` - Just story structure
