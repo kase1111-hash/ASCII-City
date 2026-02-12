@@ -164,9 +164,9 @@ World built on tiles with rich properties:
 | Perception Systems | Sound, vision, threat proximity | [10-perception-systems.md](modules/10-perception-systems.md) |
 | ASCII Art Studio | Player creativity integration | [11-ascii-studio.md](modules/11-ascii-studio.md) |
 | Art Creation Framework | Static/dynamic art, LLM generation | [12-art-creation-framework.md](modules/12-art-creation-framework.md) |
-| Voice/STT | Speech-to-text, real-time input | `src/shadowengine/voice/` |
-| Audio Synthesis | TTS, voice profiles, effects, ambient | `src/shadowengine/audio/` |
-| Modding System | Theme packs, archetypes, scenarios | `src/shadowengine/modding/` |
+| Voice/STT | Speech-to-text, real-time input (deferred) | `src/shadowengine/_deferred/voice/` |
+| Audio Synthesis | TTS, voice profiles, effects, ambient (deferred) | `src/shadowengine/_deferred/audio/` |
+| Modding System | Theme packs, archetypes, scenarios (deferred) | `src/shadowengine/_deferred/modding/` |
 
 ---
 

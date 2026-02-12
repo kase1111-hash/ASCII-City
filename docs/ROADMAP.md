@@ -45,7 +45,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Help system, tutorial, command history
 - [x] Full test coverage (969 tests passing)
 
-### Phase 4: Emergent World Systems ✓
+### Phase 4: Emergent World Systems ✓ (code exists, not yet integrated)
 
 **Goal**: Implement behavioral circuits and reactive world mechanics.
 
@@ -63,7 +63,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Threat proximity (dynamic radius, reaction timing)
 - [x] Multi-sense detection combining
 
-### Phase 5: ASCII Art Studio ✓
+### Phase 5: ASCII Art Studio ✓ (deferred)
 
 **Goal**: Player creativity becomes world content.
 
@@ -78,7 +78,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Dynamic entity system with animations
 - [x] Personality templates
 
-### Phase 6: STT & Real-Time Input ✓
+### Phase 6: STT & Real-Time Input ✓ (deferred)
 
 **Goal**: Voice control for fast, immersive gameplay.
 
@@ -91,7 +91,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Priority-based processing
 - [x] 173 tests for voice/STT systems
 
-### Phase 7: NPC Intelligence ✓
+### Phase 7: NPC Intelligence ✓ (code exists, not yet integrated)
 
 **Goal**: Deep NPC memory and social dynamics.
 
@@ -112,7 +112,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] LLM-generated micro-details
 - [x] Persistent zoom state per object
 
-### Phase 9: Audio & TTS ✓
+### Phase 9: Audio & TTS ✓ (deferred)
 
 **Goal**: Full audio experience.
 
@@ -140,9 +140,11 @@ Development is organized into phases. Each phase produces a playable milestone b
 
 ---
 
-## Current Phase
+## Current Phase: Integration
 
-### Phase 10: Extensibility & Modding
+> **Important**: Phases 4-10 above represent subsystems that are **built and tested in isolation** but are **not yet wired into the game loop**. The game loop currently uses: MemoryBank (player layer only), LocationGenerator, DialogueHandler, Environment, Renderer, and CommandParser. See [REFOCUS_PLAN.md](/REFOCUS_PLAN.md) for the integration roadmap.
+
+### Phase 10: Extensibility & Modding (code complete, not integrated)
 
 **Goal**: Community content creation.
 
@@ -153,8 +155,19 @@ Development is organized into phases. Each phase produces a playable milestone b
 - [x] Built-in themes: Noir, Cyberpunk, Gothic Horror
 - [x] Built-in archetypes: Femme Fatale, Corrupt Cop, Street Informant, Grieving Widow
 - [x] Validation system for mod content
-- [x] 228 tests for modding system
-- [x] 30 E2E and integration tests
+- [x] Tests for modding system (in `tests/_deferred/`)
+
+### Integration Work (in progress)
+
+The next development phase focuses on wiring existing subsystems into the game loop:
+
+- [ ] Wire CharacterMemory into NPC dialogue generation
+- [ ] Wire BehaviorCircuits into hotspot interactions
+- [ ] Wire PropagationEngine and RumorSystem into game events
+- [ ] Wire SocialNetwork into NPC relationships
+- [ ] Build integration demo scenario proving emergence
+
+See [REFOCUS_PLAN.md](/REFOCUS_PLAN.md) for the detailed plan.
 
 ---
 
@@ -184,7 +197,7 @@ Development is organized into phases. Each phase produces a playable milestone b
 1. **Playable at Each Phase** - No phase ends without working game
 2. **Memory First** - Core memory system is foundation of everything
 3. **Behavioral Circuits** - Unified model for all entity interactions
-4. **Test Continuously** - Each system testable in isolation (currently 2560 tests)
+4. **Test Continuously** - Each system testable in isolation (currently ~2,100 active tests)
 5. **Document As Built** - Keep docs current with implementation
 6. **Seed Reproducibility** - All randomness must be deterministic
 7. **LLM Fallback** - Systems work without LLM, enhanced with it
@@ -193,18 +206,20 @@ Development is organized into phases. Each phase produces a playable milestone b
 
 ## Technical Milestones
 
-| Phase | Tests | Key Feature |
-|-------|-------|-------------|
-| 1 ✓ | 274 | Core narrative loop |
-| 2 ✓ | 462 | NPC simulation |
-| 3 ✓ | 969 | Polish & replayability |
-| 4 ✓ | 1200+ | Behavioral circuits |
-| 5 ✓ | 1400+ | ASCII Art Studio |
-| 6 ✓ | 1700+ | Voice control |
-| 7 ✓ | 1900+ | NPC intelligence |
-| 8 ✓ | 2100+ | Zoom inspection |
-| 9 ✓ | 2560 | Audio system |
-| 10 | TBD | Modding support |
+| Phase | Key Feature | Status |
+|-------|-------------|--------|
+| 1 ✓ | Core narrative loop | Integrated |
+| 2 ✓ | NPC simulation | Integrated |
+| 3 ✓ | Polish & replayability | Integrated |
+| 4 ✓ | Behavioral circuits | Code exists, not integrated |
+| 5 ✓ | ASCII Art Studio | Deferred (`_deferred/`) |
+| 6 ✓ | Voice control | Deferred (`_deferred/`) |
+| 7 ✓ | NPC intelligence | Code exists, not integrated |
+| 8 ✓ | Zoom inspection | Integrated |
+| 9 ✓ | Audio system | Deferred (`_deferred/`) |
+| 10 ✓ | Modding support | Deferred (`_deferred/`) |
+
+**Active tests**: ~2,100 (deferred module tests excluded from default runs)
 
 ---
 

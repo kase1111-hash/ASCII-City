@@ -41,18 +41,18 @@ This is a codebase that spent more time writing specs than writing code. The spe
 - `memory/memory_bank.py` — Clean three-layer architecture (world truth, character beliefs, player knowledge). Well-tested. Serialization works. This is the strongest subsystem.
 - `circuits/circuit.py` — The behavioral circuit model is genuinely novel. Signal processing, state management, serialization — all solid.
 - `npc_intelligence/npc_memory.py` — Sophisticated NPC memory with decay mechanics, emotional weighting, traumatic memory handling. Production-quality code.
-- `studio/studio.py` (701 lines) — Full ASCII art editor with undo/redo, selection, clipboard, drawing tools. Well-implemented.
-- `modding/registry.py` (633 lines) — Real mod management with conflict detection, dependency tracking, lifecycle callbacks.
+- `_deferred/studio/studio.py` (701 lines) — Full ASCII art editor with undo/redo, selection, clipboard, drawing tools. Well-implemented (deferred).
+- `_deferred/modding/registry.py` (633 lines) — Real mod management with conflict detection, dependency tracking, lifecycle callbacks (deferred).
 
 **What's problematic:**
-- `game.py` (1,124 lines) — The main game engine is a monolith. Command handling, LLM prompting, location generation, dialogue, movement, and save/load are all in one class. 21% test coverage on the most critical file in the project.
+- `game.py` — Was 1,124 lines; has since been refactored into `game.py` (272 lines), `command_handler.py` (557 lines), `location_manager.py` (398 lines), and `conversation.py` (309 lines). Test coverage on these extracted modules still needs improvement.
 - `llm/validation.py` — 13% test coverage on the code responsible for sanitizing LLM output. This is a security-critical path.
 - `generation/location_generator.py` — 0% test coverage. Untested subsystem for a core feature.
 - `renderer.py` — 19% test coverage on the terminal output layer.
 
 ### The Test Count is Misleading
 
-The README claims 3,325 passing tests. The aggregate count is real, but coverage is concentrated in peripheral systems. The systems that matter most — the game loop, LLM integration, rendering, and location generation — are the least tested. The NPC memory system has 39 tests and near-complete coverage; the game engine that ties everything together has almost none.
+There are ~2,100 active tests (deferred module tests excluded). Coverage is concentrated in peripheral systems. The systems that matter most — the game loop, LLM integration, rendering, and location generation — are the least tested. The NPC memory system has 39 tests and near-complete coverage; the game engine that ties everything together has almost none.
 
 ### Tech Stack: Appropriate but Limited
 
