@@ -76,9 +76,9 @@ def heuristic(a: Position, b: Position) -> float:
     """
     Calculate heuristic distance for A* pathfinding.
 
-    Uses Euclidean distance.
+    Uses 2D Euclidean distance (z/height handled by movement cost).
     """
-    return a.distance_to(b, include_z=True)
+    return a.distance_to(b, include_z=False)
 
 
 def find_path(

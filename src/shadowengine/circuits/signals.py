@@ -91,7 +91,7 @@ class Signal:
             "strength": self.strength,
             "source_id": self.source_id,
             "timestamp": self.timestamp,
-            "data": self.data
+            "data": self.data.copy()
         }
 
     @classmethod

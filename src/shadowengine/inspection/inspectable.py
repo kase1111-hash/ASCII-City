@@ -276,6 +276,7 @@ class InspectableObject:
     @classmethod
     def from_dict(cls, data: dict) -> 'InspectableObject':
         """Deserialize from dictionary."""
+        data = dict(data)  # Don't mutate the input dictionary
         layers_data = data.pop("layers", {})
         layers = {
             ZoomLevel(int(k)): DetailLayer.from_dict(v)

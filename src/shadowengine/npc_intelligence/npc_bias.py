@@ -398,10 +398,10 @@ class BiasProcessor:
             source = MemorySource.SELF
         elif witness_type == WitnessType.INDIRECT:
             base_confidence = 0.5 * clarity
-            source = MemorySource.SELF
+            source = MemorySource.ACQUAINTANCE
         else:
             base_confidence = 0.3 * clarity
-            source = MemorySource.SELF
+            source = MemorySource.RUMOR
 
         # Apply interpretation
         summary = self.interpret_event(event, bias, witness_type)

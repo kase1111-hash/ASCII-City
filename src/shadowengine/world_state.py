@@ -315,9 +315,10 @@ class WorldState:
         )
         self.npcs[npc.id] = npc
 
-        # Update location's NPC list
+        # Update location's NPC list (avoid duplicates)
         if location_id in self.locations:
-            self.locations[location_id].npcs.append(npc.id)
+            if npc.id not in self.locations[location_id].npcs:
+                self.locations[location_id].npcs.append(npc.id)
 
     def add_npc_relationship(self, npc_id: str, other_npc_id: str, relationship: str) -> None:
         """Add a relationship between two NPCs."""

@@ -88,13 +88,13 @@ class NPCMemory:
     def get_share_probability(self) -> float:
         """
         Calculate likelihood of sharing this memory.
-        Higher = more likely to tell others.
+        Higher = more likely to tell others. Returns 0.0 to 1.0.
         """
-        return (
+        return min(1.0, (
             self.emotional_weight * 0.5 +
             self.confidence * 0.3 +
             (self.fear + self.anger) * 0.2
-        )
+        ))
 
     def has_tag(self, tag: str) -> bool:
         """Check if memory has a specific tag."""

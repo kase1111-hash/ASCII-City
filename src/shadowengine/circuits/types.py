@@ -212,13 +212,16 @@ class MechanicalCircuit(BehaviorCircuit):
 
     @classmethod
     def from_dict(cls, data: dict) -> 'MechanicalCircuit':
+        mech_data = data.get("mechanical", {})
         circuit = cls(
             id=data["id"],
             name=data["name"],
-            description=data.get("description", "")
+            description=data.get("description", ""),
+            material=mech_data.get("material", "metal"),
+            powered=mech_data.get("powered", False),
         )
         circuit.state = CircuitState.from_dict(data.get("state", {}))
-        circuit.mechanical = MechanicalProperties.from_dict(data.get("mechanical", {}))
+        circuit.mechanical = MechanicalProperties.from_dict(mech_data)
         circuit.affordances = data.get("affordances", [])
         circuit.history = data.get("history", [])
         return circuit
@@ -319,6 +322,7 @@ class BiologicalCircuit(BehaviorCircuit):
                 SignalType.SPEAK,
                 SignalType.SOUND,
                 SignalType.ALERT,
+                SignalType.COLLAPSE,
             ],
             affordances=["talkable", "observable"],
             **kwargs
@@ -336,9 +340,6 @@ class BiologicalCircuit(BehaviorCircuit):
 
         # Update emotional state
         self.biological.update_from_signal(signal.type, signal.strength)
-
-        # Get dominant drive
-        self.biological.get_dominant_drive()
 
         # React based on drive and signal
         if signal.type == SignalType.PROXIMITY:
@@ -404,13 +405,13 @@ class BiologicalCircuit(BehaviorCircuit):
                 if self.biological.aggression > self.biological.fear:
                     outputs.append(OutputSignal(
                         type=SignalType.ATTACK,
-                        strength=self.biological.aggression + 0.2,
+                        strength=min(1.0, self.biological.aggression + 0.2),
                         source_id=self.id
                     ))
                 else:
                     outputs.append(OutputSignal(
                         type=SignalType.FLEE,
-                        strength=self.biological.fear + 0.3,
+                        strength=min(1.0, self.biological.fear + 0.3),
                         source_id=self.id
                     ))
 
@@ -438,8 +439,8 @@ class BiologicalCircuit(BehaviorCircuit):
         outputs = super().update(delta_time)
 
         # Gradually calm down
-        if self.biological.fear > 0.1:
-            self.biological.fear = max(0.1, self.biological.fear - delta_time * 0.01)
+        if self.biological.fear > 0.0:
+            self.biological.fear = max(0.0, self.biological.fear - delta_time * 0.01)
         if self.biological.alert and random.random() < delta_time * 0.1:
             self.biological.alert = False
 
@@ -455,13 +456,15 @@ class BiologicalCircuit(BehaviorCircuit):
 
     @classmethod
     def from_dict(cls, data: dict) -> 'BiologicalCircuit':
+        bio_data = data.get("biological", {})
         circuit = cls(
             id=data["id"],
             name=data["name"],
-            description=data.get("description", "")
+            description=data.get("description", ""),
+            species=bio_data.get("species", "unknown"),
         )
         circuit.state = CircuitState.from_dict(data.get("state", {}))
-        circuit.biological = BiologicalProperties.from_dict(data.get("biological", {}))
+        circuit.biological = BiologicalProperties.from_dict(bio_data)
         circuit.affordances = data.get("affordances", [])
         circuit.history = data.get("history", [])
         return circuit
@@ -555,7 +558,7 @@ class EnvironmentalCircuit(BehaviorCircuit):
         if signal.type == SignalType.DAMAGE:
             # Structural damage
             damage = signal.strength * 0.2
-            self.environmental.stability -= damage
+            self.environmental.stability = max(0.0, self.environmental.stability - damage)
 
             if self.environmental.stability <= 0:
                 # Collapse
@@ -646,15 +649,15 @@ class EnvironmentalCircuit(BehaviorCircuit):
 
     @classmethod
     def from_dict(cls, data: dict) -> 'EnvironmentalCircuit':
+        env_data = data.get("environmental", {})
         circuit = cls(
             id=data["id"],
             name=data["name"],
-            description=data.get("description", "")
+            description=data.get("description", ""),
+            terrain_type=env_data.get("terrain_type", "rock"),
         )
         circuit.state = CircuitState.from_dict(data.get("state", {}))
-        circuit.environmental = EnvironmentalProperties.from_dict(
-            data.get("environmental", {})
-        )
+        circuit.environmental = EnvironmentalProperties.from_dict(env_data)
         circuit.affordances = data.get("affordances", [])
         circuit.history = data.get("history", [])
         return circuit

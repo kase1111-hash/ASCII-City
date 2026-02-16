@@ -124,10 +124,11 @@ class TestHeuristic:
 
     @pytest.mark.unit
     def test_heuristic_with_z(self):
-        """Heuristic includes z-axis."""
+        """Heuristic excludes z-axis (height handled by movement cost)."""
         a = Position(0, 0, 0)
         b = Position(0, 0, 5)
-        assert heuristic(a, b) == 5.0
+        # 2D distance only — z/height accounted for in movement cost, not heuristic
+        assert heuristic(a, b) == 0.0
 
 
 class TestFindPath:
