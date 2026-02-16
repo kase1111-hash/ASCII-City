@@ -502,8 +502,11 @@ class RumorPropagation:
         ]
 
     def decay_rumors(self, dt: float) -> None:
-        """Decay inactive rumors over time."""
+        """Decay rumors over time — confidence drops, inactive ones are removed."""
         for rumor in list(self.active_rumors.values()):
+            # Confidence decays over time
+            rumor.confidence *= max(0.0, 1.0 - 0.01 * dt)
+
             # Rumors become inactive if confidence drops too low
             if rumor.confidence < 0.1:
                 rumor.is_active = False

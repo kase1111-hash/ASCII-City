@@ -56,6 +56,7 @@ class Event:
     @classmethod
     def from_dict(cls, data: dict) -> 'Event':
         """Deserialize from dictionary."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["event_type"] = EventType(data["event_type"])
         return cls(**data)
 

@@ -242,9 +242,13 @@ class CircuitProcessor:
             List of processing results from all affected circuits
         """
         results = []
-        radius or getattr(signal, 'radius', float('inf'))
+        radius = radius or getattr(signal, 'radius', float('inf'))
 
         for circuit_id, circuit in self.circuits.items():
+            # Skip the circuit that emitted this signal (prevent self-triggering)
+            if signal.source_id and circuit_id == signal.source_id:
+                continue
+
             # Skip circuits that don't respond to this signal type
             if not circuit.responds_to(signal.type):
                 continue
@@ -345,7 +349,6 @@ class CircuitProcessor:
         parts = [f"The {circuit.name} {action}."]
 
         if outputs:
-            [o.type.value for o in outputs]
             if SignalType.SOUND in [o.type for o in outputs]:
                 parts.append("A sound echoes.")
             if SignalType.COLLAPSE in [o.type for o in outputs]:

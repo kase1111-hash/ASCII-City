@@ -123,12 +123,23 @@ class DialogueGenerator:
         """Check if response reveals secret information."""
         if not secret:
             return False
-        # Simple keyword check - could be more sophisticated
-        secret_words = set(secret.lower().split())
-        response_words = set(response.lower().split())
+        # Filter out common stop words before comparing
+        stop_words = {
+            "i", "me", "my", "the", "a", "an", "is", "was", "were", "are",
+            "be", "been", "being", "have", "has", "had", "do", "does", "did",
+            "will", "would", "could", "should", "may", "might", "shall",
+            "to", "of", "in", "for", "on", "with", "at", "by", "from",
+            "it", "its", "he", "she", "his", "her", "they", "them", "their",
+            "this", "that", "and", "but", "or", "not", "no", "so", "if",
+            "about", "up", "out", "just", "than", "very", "can", "into",
+        }
+        secret_words = set(secret.lower().split()) - stop_words
+        response_words = set(response.lower().split()) - stop_words
+        if not secret_words:
+            return False
         overlap = secret_words & response_words
-        # If more than 30% of secret words appear, consider it revealed
-        return len(overlap) / len(secret_words) > 0.3 if secret_words else False
+        # If more than 50% of meaningful secret words appear, consider it revealed
+        return len(overlap) / len(secret_words) > 0.5
 
 
 class BehaviorEvaluator:

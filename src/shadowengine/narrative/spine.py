@@ -233,8 +233,7 @@ class SpineGenerator:
 
     def __init__(self, seed: Optional[int] = None):
         self.seed = seed
-        if seed is not None:
-            random.seed(seed)
+        self._rng = random.Random(seed)
 
     def generate(
         self,
@@ -257,7 +256,7 @@ class SpineGenerator:
 
         # Choose conflict type
         if conflict_type is None:
-            conflict_type = random.choice(list(ConflictType))
+            conflict_type = self._rng.choice(list(ConflictType))
 
         # Generate based on conflict type
         if conflict_type == ConflictType.THEFT:
@@ -272,7 +271,7 @@ class SpineGenerator:
         if len(characters) < 2:
             characters = ["suspect_a", "suspect_b", "victim"]
 
-        culprit = random.choice(characters[:-1]) if len(characters) > 1 else characters[0]
+        culprit = self._rng.choice(characters[:-1]) if len(characters) > 1 else characters[0]
 
         return NarrativeSpine(
             conflict_type=ConflictType.THEFT,
@@ -313,7 +312,7 @@ class SpineGenerator:
         if len(characters) < 2:
             characters = ["suspect_a", "suspect_b", "victim"]
 
-        culprit = random.choice(characters[:-1]) if len(characters) > 1 else characters[0]
+        culprit = self._rng.choice(characters[:-1]) if len(characters) > 1 else characters[0]
 
         return NarrativeSpine(
             conflict_type=ConflictType.MURDER,
@@ -368,7 +367,7 @@ class SpineGenerator:
         if len(characters) < 2:
             characters = ["suspect_a", "suspect_b"]
 
-        culprit = random.choice(characters)
+        culprit = self._rng.choice(characters)
 
         return NarrativeSpine(
             conflict_type=conflict_type,

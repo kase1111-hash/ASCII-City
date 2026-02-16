@@ -112,7 +112,7 @@ class TileMemory:
 
     def _update_mood(self) -> None:
         """Update mood modifier based on current state."""
-        if self.death_count > 0 or self.danger_rating > 0.7:
+        if (self.death_count > 0 and self.danger_rating > 0.3) or self.danger_rating > 0.7:
             self.mood_modifier = "ominous"
         elif self.danger_rating > 0.4 or self.crime_rating > 0.5:
             self.mood_modifier = "tense"
@@ -187,6 +187,7 @@ class TileMemory:
     @classmethod
     def from_dict(cls, data: dict) -> 'TileMemory':
         """Deserialize tile memory."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["location"] = tuple(data["location"])
         data["event_tags"] = set(data.get("event_tags", []))
         return cls(**data)

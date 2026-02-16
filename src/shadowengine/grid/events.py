@@ -147,7 +147,9 @@ class TileEventManager:
         if event_type:
             events = [e for e in events if e.event_type == event_type]
 
-        return events[-limit:][::-1]
+        if limit > 0:
+            return events[-limit:][::-1]
+        return []
 
     def clear_history(self) -> None:
         """Clear event history."""

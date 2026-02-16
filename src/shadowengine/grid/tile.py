@@ -327,7 +327,7 @@ class Tile:
 
     def has_modifier(self, modifier_type: str) -> bool:
         """Check if tile has a specific modifier."""
-        return any(m.type for m in self.modifiers if m.type == modifier_type)
+        return any(m.type == modifier_type for m in self.modifiers)
 
     def get_movement_cost(self, from_tile: Optional["Tile"] = None, entity: Optional[Entity] = None) -> float:
         """

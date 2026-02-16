@@ -70,16 +70,17 @@ class MemoryBank:
             details=details
         )
 
-        # Update character memories for witnesses
-        for witness_id in witnesses:
-            if witness_id in self.characters:
-                char_memory = self.characters[witness_id]
-                # Characters who witness form beliefs
+        # Update character memories for witnesses and actors
+        involved = set(witnesses) | set(actors)
+        for char_id in involved:
+            if char_id in self.characters:
+                char_memory = self.characters[char_id]
+                source = "acted" if char_id in actors else "witnessed"
                 char_memory.add_belief(
                     subject=event.id,
                     content=description,
                     confidence=BeliefConfidence.CERTAIN,
-                    source="witnessed",
+                    source=source,
                     timestamp=event.timestamp,
                     is_true=True
                 )
@@ -116,7 +117,7 @@ class MemoryBank:
         self.world.record(
             event_type=EventType.DIALOGUE,
             description=f"{character_id} told player: {information}",
-            location=self.player.visited_locations.__iter__().__next__() if self.player.visited_locations else "unknown",
+            location="conversation",
             actors=[character_id, "player"],
             witnesses=[character_id, "player"],
             details={"topic": topic, "is_true": is_true}

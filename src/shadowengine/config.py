@@ -59,7 +59,18 @@ def get_terminal_size() -> tuple[int, int]:
         return 120, 40
 
 
-# Get terminal size at module load time
+# Lazy terminal size — re-evaluated on each access
+def terminal_width() -> int:
+    """Get current terminal width."""
+    return get_terminal_size()[0]
+
+
+def terminal_height() -> int:
+    """Get current terminal height."""
+    return get_terminal_size()[1]
+
+
+# Kept for backwards compatibility
 _TERMINAL_WIDTH, _TERMINAL_HEIGHT = get_terminal_size()
 
 

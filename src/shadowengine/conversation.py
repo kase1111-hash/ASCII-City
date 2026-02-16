@@ -223,20 +223,28 @@ class ConversationManager:
             weight=THREATEN_MORAL_WEIGHT,
         )
 
+        response_text: str
         if cracked:
             self.renderer.render_narration(
                 f"{character.name} breaks down under your pressure!"
             )
-            self.show_dialogue(
-                character,
-                f"Stop! I'll tell you everything! {character.secret_truth}",
-                "desperately",
-            )
+            response_text = f"Stop! I'll tell you everything! {character.secret_truth}"
+            self.show_dialogue(character, response_text, "desperately")
         else:
             mood_mod = character.get_response_mood_modifier()
-            self.show_dialogue(character, "You don't scare me... much.", mood_mod)
+            response_text = "You don't scare me... much."
+            self.show_dialogue(character, response_text, mood_mod)
 
         character.modify_trust(THREATEN_TRUST_PENALTY)
+
+        # Record in generation memory so LLM knows about the threat
+        state.world_state.generation_memory.record_dialogue(
+            npc_id=character.id,
+            player_said="[threatened]",
+            npc_response=response_text,
+            location_id=state.current_location_id,
+            timestamp=state.memory.current_time,
+        )
 
         # Record threat in character memory
         char_memory = state.memory.get_character_memory(character.id)
@@ -251,7 +259,9 @@ class ConversationManager:
 
         # Feed into NPC intelligence — other NPCs may hear about this
         if hasattr(state, 'event_bridge') and state.event_bridge:
-            state.event_bridge.on_threaten(character.id)
+            state.event_bridge.on_threaten(
+                character.id, location=state.current_location_id
+            )
 
         self.renderer.wait_for_key()
 
@@ -283,6 +293,8 @@ class ConversationManager:
                     "defensively",
                 )
                 self.renderer.render_narration(explanation)
+                # Accusing the right person without evidence still costs trust
+                character.modify_trust(ACCUSE_WRONG_TRUST_PENALTY // 2)
         else:
             self.show_dialogue(
                 character,
@@ -290,6 +302,15 @@ class ConversationManager:
                 "angrily",
             )
             character.modify_trust(ACCUSE_WRONG_TRUST_PENALTY)
+
+        # Record in generation memory so LLM knows about the accusation
+        state.world_state.generation_memory.record_dialogue(
+            npc_id=character.id,
+            player_said="[accused]",
+            npc_response="denied" if state.is_running else "confessed",
+            location_id=state.current_location_id,
+            timestamp=state.memory.current_time,
+        )
 
         # Record accusation in character memory
         char_memory = state.memory.get_character_memory(character.id)
@@ -304,6 +325,8 @@ class ConversationManager:
 
         # Feed into NPC intelligence
         if hasattr(state, 'event_bridge') and state.event_bridge:
-            state.event_bridge.on_accuse(character.id)
+            state.event_bridge.on_accuse(
+                character.id, location=state.current_location_id
+            )
 
         self.renderer.wait_for_key()

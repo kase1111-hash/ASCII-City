@@ -240,7 +240,6 @@ class PropagationEngine:
     ) -> NPCMemory:
         """Convert a received rumor into a memory."""
         target_state = self.npc_states.get(target_npc)
-        self.npc_states.get(source_npc)
 
         # Determine source type based on relationship
         relation = self.social_network.get_relation(target_npc, source_npc)

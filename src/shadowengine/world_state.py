@@ -315,9 +315,10 @@ class WorldState:
         )
         self.npcs[npc.id] = npc
 
-        # Update location's NPC list
+        # Update location's NPC list (avoid duplicates)
         if location_id in self.locations:
-            self.locations[location_id].npcs.append(npc.id)
+            if npc.id not in self.locations[location_id].npcs:
+                self.locations[location_id].npcs.append(npc.id)
 
     def add_npc_relationship(self, npc_id: str, other_npc_id: str, relationship: str) -> None:
         """Add a relationship between two NPCs."""
@@ -609,20 +610,21 @@ class WorldState:
         }
 
         # If player is far from starting area, weaken main mystery connection
-        if distance_from_start > NARRATIVE_WEAK_CONNECTION_DISTANCE:
-            adaptation["connection_strength"] = "weak"
-            adaptation["narrative_guidance"] = (
-                "The player has wandered far from the main mystery. "
-                "New content can hint at the main story but should also "
-                "introduce new mysteries or adventures that stand alone."
-            )
-        elif distance_from_start > NARRATIVE_NO_CONNECTION_DISTANCE:
+        # Check the larger threshold first so it isn't shadowed by the smaller one
+        if distance_from_start > NARRATIVE_NO_CONNECTION_DISTANCE:
             adaptation["should_connect_to_main"] = False
             adaptation["connection_strength"] = "none"
             adaptation["narrative_guidance"] = (
                 "The player is exploring freely. Create self-contained "
                 "adventures. The main mystery can be a distant rumor "
                 "or completely absent. Let the player discover new stories."
+            )
+        elif distance_from_start > NARRATIVE_WEAK_CONNECTION_DISTANCE:
+            adaptation["connection_strength"] = "weak"
+            adaptation["narrative_guidance"] = (
+                "The player has wandered far from the main mystery. "
+                "New content can hint at the main story but should also "
+                "introduce new mysteries or adventures that stand alone."
             )
 
         # Check if location type suggests different narrative

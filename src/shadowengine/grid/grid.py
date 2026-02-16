@@ -359,9 +359,13 @@ class TileGrid:
             self._emit_event(TileEventType.EXITED, from_tile, entity)
 
         # Add to new tile
-        to_tile.add_entity(entity)
-        self._emit_event(TileEventType.ENTERED, to_tile, entity)
+        if not to_tile.add_entity(entity):
+            # Placement failed — restore entity to old tile
+            if from_tile:
+                from_tile.add_entity(entity)
+            return False
 
+        self._emit_event(TileEventType.ENTERED, to_tile, entity)
         return True
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:

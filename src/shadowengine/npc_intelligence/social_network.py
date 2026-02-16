@@ -67,7 +67,10 @@ class SocialRelation:
     def __post_init__(self):
         if not self.relation_id:
             self.relation_id = f"rel_{uuid.uuid4().hex[:12]}"
-        self._update_type()
+        # Only auto-derive type for new STRANGER relations; preserve
+        # explicitly set types (ALLY, ROMANTIC, INFORMANT, etc.)
+        if self.relation_type == RelationType.STRANGER:
+            self._update_type()
 
     def _update_type(self) -> None:
         """Update relationship type based on metrics."""
@@ -115,7 +118,7 @@ class SocialRelation:
         """Add a shared secret."""
         if secret not in self.shared_secrets:
             self.shared_secrets.append(secret)
-            self.trust += 5  # Sharing secrets increases trust
+            self.modify_trust(5)  # Sharing secrets increases trust
 
     def add_shared_memory(self, memory_id: str) -> None:
         """Record a shared memory."""
@@ -178,6 +181,7 @@ class SocialRelation:
     @classmethod
     def from_dict(cls, data: dict) -> 'SocialRelation':
         """Deserialize relationship."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["relation_type"] = RelationType(data["relation_type"])
         return cls(**data)
 
@@ -216,7 +220,17 @@ class RelationshipDynamics:
         "competed": {"tension": 10},
         "cooperated": {"trust": 5, "affinity": 5},
         "shared_rumor": {"trust": 5, "affinity": 3},
-        "witnessed_crime": {"fear": 10, "tension": 15}
+        "witnessed_crime": {"fear": 10, "tension": 15},
+        # Reverse effects for bidirectional interactions
+        "was_helped": {"affinity": 15, "trust": 10},
+        "was_saved": {"affinity": 30, "trust": 25, "respect": 20},
+        "was_betrayed": {"affinity": -40, "trust": -50, "tension": 30},
+        "was_lied_to": {"trust": -20, "tension": 10},
+        "was_confided_in": {"trust": 15, "affinity": 10},
+        "was_threatened": {"fear": 25, "affinity": -20, "tension": 20},
+        "was_insulted": {"affinity": -15, "respect": -10, "tension": 15},
+        "was_praised": {"affinity": 10, "respect": 5},
+        "was_ignored": {"affinity": -5, "respect": -5},
     }
 
     def apply_event(
@@ -254,7 +268,7 @@ class RelationshipDynamics:
         """Check if enemies might reconcile."""
         return (relation.relation_type == RelationType.ENEMY and
                 relation.tension < 20 and
-                relation.affinity > -50)
+                relation.affinity > -70)
 
 
 class SocialNetwork:

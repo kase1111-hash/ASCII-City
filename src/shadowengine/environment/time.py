@@ -72,7 +72,7 @@ class TimeEvent:
         """Check if event should trigger at this time."""
         if self.triggered and not self.repeating:
             return False
-        return hour == self.trigger_hour and minute >= self.trigger_minute
+        return hour == self.trigger_hour and minute == self.trigger_minute
 
     def trigger(self) -> Optional[Any]:
         """Trigger the event."""

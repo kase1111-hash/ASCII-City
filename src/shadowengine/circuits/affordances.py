@@ -67,6 +67,7 @@ class AffordanceSet:
     def add(self, affordance: str, details: Optional[Affordance] = None) -> None:
         """Add an affordance."""
         self._affordances.add(affordance)
+        self._blocked.discard(affordance)
         if details:
             self._details[affordance] = details
 

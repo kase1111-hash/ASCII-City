@@ -62,7 +62,9 @@ class Relationship:
             RelationType.LOVER,
             RelationType.SUBORDINATE,
             RelationType.SUPERIOR,
-            RelationType.CONSPIRATOR
+            RelationType.CONSPIRATOR,
+            RelationType.ALLY,
+            RelationType.COLLEAGUE,
         ):
             return
 
@@ -228,6 +230,7 @@ class RelationshipManager:
             self.set_relationship(char1_id, char2_id, RelationType.STRANGER)
             rel1 = self.get_relationship(char1_id, char2_id)
         if not rel2:
+            self.set_relationship(char2_id, char1_id, RelationType.STRANGER, bidirectional=False)
             rel2 = self.get_relationship(char2_id, char1_id)
 
         # Determine interaction type based on relationship
@@ -258,25 +261,31 @@ class RelationshipManager:
         context: dict
     ) -> str:
         """Determine what kind of interaction will occur."""
-        # Check for high tension
-        if rel1 and rel1.tension > 70:
+        # Check for high tension from either side
+        if (rel1 and rel1.tension > 70) or (rel2 and rel2.tension > 70):
             return "confrontation"
 
-        # Check relationship types
-        if rel1 and rel1.relation_type == RelationType.ENEMY:
+        # Check relationship types from either side
+        if (rel1 and rel1.relation_type == RelationType.ENEMY) or \
+           (rel2 and rel2.relation_type == RelationType.ENEMY):
             return "hostile_exchange"
 
-        if rel1 and rel1.relation_type == RelationType.CONSPIRATOR:
+        if (rel1 and rel1.relation_type == RelationType.CONSPIRATOR) or \
+           (rel2 and rel2.relation_type == RelationType.CONSPIRATOR):
             return "secret_meeting"
 
-        if rel1 and rel1.relation_type in (
+        if (rel1 and rel1.relation_type in (
             RelationType.FRIEND, RelationType.CLOSE_FRIEND, RelationType.LOVER
-        ):
+        )) or (rel2 and rel2.relation_type in (
+            RelationType.FRIEND, RelationType.CLOSE_FRIEND, RelationType.LOVER
+        )):
             return "friendly_chat"
 
-        if rel1 and rel1.relation_type in (
+        if (rel1 and rel1.relation_type in (
             RelationType.SUBORDINATE, RelationType.SUPERIOR
-        ):
+        )) or (rel2 and rel2.relation_type in (
+            RelationType.SUBORDINATE, RelationType.SUPERIOR
+        )):
             return "work_discussion"
 
         # Default to casual

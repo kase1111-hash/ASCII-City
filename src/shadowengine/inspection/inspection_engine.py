@@ -354,7 +354,7 @@ class InspectionEngine:
         # List inspectable objects at current location
         objects_here = [
             obj for obj in self.objects.values()
-            if obj.location_id == self.current_location or obj.location_id is None
+            if obj.location_id == self.current_location
         ]
 
         if not objects_here:
@@ -366,7 +366,10 @@ class InspectionEngine:
 
         descriptions = ["You look around and notice:"]
         for obj in objects_here:
-            descriptions.append(f"- {obj.name}: {obj.base_description[:50]}...")
+            desc = obj.base_description
+            if len(desc) > 50:
+                desc = desc[:50] + "..."
+            descriptions.append(f"- {obj.name}: {desc}")
 
         return InspectionResult(
             success=True,

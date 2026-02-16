@@ -88,13 +88,13 @@ class NPCMemory:
     def get_share_probability(self) -> float:
         """
         Calculate likelihood of sharing this memory.
-        Higher = more likely to tell others.
+        Higher = more likely to tell others. Returns 0.0 to 1.0.
         """
-        return (
+        return min(1.0, (
             self.emotional_weight * 0.5 +
             self.confidence * 0.3 +
             (self.fear + self.anger) * 0.2
-        )
+        ))
 
     def has_tag(self, tag: str) -> bool:
         """Check if memory has a specific tag."""
@@ -136,6 +136,7 @@ class NPCMemory:
     @classmethod
     def from_dict(cls, data: dict) -> 'NPCMemory':
         """Deserialize memory from dictionary."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["source"] = MemorySource(data["source"])
         if data.get("location_coords"):
             data["location_coords"] = tuple(data["location_coords"])

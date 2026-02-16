@@ -253,18 +253,25 @@ class LocationGenerator:
                     location.add_hotspot(hotspot)
 
             # Create NPCs and add their hotspots
-            for npc_data in data.get("npcs", []):
+            existing_hs_ids = {hs.id for hs in location.hotspots}
+            for idx, npc_data in enumerate(data.get("npcs", [])):
                 npc = self._create_npc(npc_data, location.id)
                 if npc:
-                    # Note: The game should register the NPC via add_character()
-                    # Here we just create the hotspot
+                    hs_id = f"hs_{npc['id']}"
+                    # Skip if already added via hotspots list (avoid duplicates)
+                    if hs_id in existing_hs_ids:
+                        continue
+                    # Distribute NPC positions across the scene
+                    npc_x = 20 + (idx * 15) % 40
+                    npc_y = 8 + (idx * 5) % 10
                     location.add_hotspot(Hotspot.create_person(
-                        id=f"hs_{npc['id']}",
+                        id=hs_id,
                         name=npc['name'],
-                        position=(30, 10),
+                        position=(npc_x, npc_y),
                         character_id=npc['id'],
                         description=npc['description']
                     ))
+                    existing_hs_ids.add(hs_id)
 
             # Add back exit if we came from somewhere
             if current_location:
