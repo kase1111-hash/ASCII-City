@@ -8,6 +8,7 @@ different NPCs, will be remembered differently based on their biases.
 
 from dataclasses import dataclass, field
 from typing import Optional
+import copy
 import random
 
 from .npc_memory import NPCMemory, MemorySource
@@ -111,22 +112,21 @@ class NPCBias:
     @classmethod
     def random(cls, seed: Optional[int] = None) -> 'NPCBias':
         """Generate random bias values."""
-        if seed is not None:
-            random.seed(seed)
+        rng = random.Random(seed)
         return cls(
-            fearful=random.random(),
-            paranoid=random.random(),
-            loyal=random.random(),
-            talkative=random.random(),
-            greedy=random.random(),
-            self_preserving=random.random(),
-            curious=random.random(),
-            dramatic=random.random(),
-            cynical=random.random(),
-            trusting=random.random(),
-            suspicious=random.random(),
-            forgetful=random.random(),
-            obsessive=random.random()
+            fearful=rng.random(),
+            paranoid=rng.random(),
+            loyal=rng.random(),
+            talkative=rng.random(),
+            greedy=rng.random(),
+            self_preserving=rng.random(),
+            curious=rng.random(),
+            dramatic=rng.random(),
+            cynical=rng.random(),
+            trusting=rng.random(),
+            suspicious=rng.random(),
+            forgetful=rng.random(),
+            obsessive=rng.random()
         )
 
     @classmethod
@@ -444,8 +444,10 @@ class BiasProcessor:
         """
         Apply bias when an NPC retells a memory.
 
-        The memory may be modified for the retelling.
+        Returns a modified copy — the original memory is not mutated.
         """
+        memory = copy.deepcopy(memory)
+
         # Dramatic NPCs exaggerate
         if bias.dramatic > 0.6:
             memory.summary = self._dramatize(memory.summary)

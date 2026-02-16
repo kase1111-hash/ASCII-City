@@ -609,20 +609,21 @@ class WorldState:
         }
 
         # If player is far from starting area, weaken main mystery connection
-        if distance_from_start > NARRATIVE_WEAK_CONNECTION_DISTANCE:
-            adaptation["connection_strength"] = "weak"
-            adaptation["narrative_guidance"] = (
-                "The player has wandered far from the main mystery. "
-                "New content can hint at the main story but should also "
-                "introduce new mysteries or adventures that stand alone."
-            )
-        elif distance_from_start > NARRATIVE_NO_CONNECTION_DISTANCE:
+        # Check the larger threshold first so it isn't shadowed by the smaller one
+        if distance_from_start > NARRATIVE_NO_CONNECTION_DISTANCE:
             adaptation["should_connect_to_main"] = False
             adaptation["connection_strength"] = "none"
             adaptation["narrative_guidance"] = (
                 "The player is exploring freely. Create self-contained "
                 "adventures. The main mystery can be a distant rumor "
                 "or completely absent. Let the player discover new stories."
+            )
+        elif distance_from_start > NARRATIVE_WEAK_CONNECTION_DISTANCE:
+            adaptation["connection_strength"] = "weak"
+            adaptation["narrative_guidance"] = (
+                "The player has wandered far from the main mystery. "
+                "New content can hint at the main story but should also "
+                "introduce new mysteries or adventures that stand alone."
             )
 
         # Check if location type suggests different narrative

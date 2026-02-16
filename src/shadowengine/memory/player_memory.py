@@ -143,7 +143,7 @@ class PlayerMemory:
     def update_relationship(self, character_id: str, change: int) -> None:
         """Update relationship with a character."""
         current = self.relationships.get(character_id, 0)
-        self.relationships[character_id] = current + change
+        self.relationships[character_id] = max(-100, min(100, current + change))
 
     def get_relationship(self, character_id: str) -> int:
         """Get relationship level with a character."""
@@ -181,6 +181,10 @@ class PlayerMemory:
 
     def _normalize_shades(self) -> None:
         """Normalize shade scores to sum to 1.0."""
+        # Clamp negative values to 0 before normalizing
+        for shade in self.shade_scores:
+            if self.shade_scores[shade] < 0:
+                self.shade_scores[shade] = 0.0
         total = sum(self.shade_scores.values())
         if total > 0:
             for shade in self.shade_scores:

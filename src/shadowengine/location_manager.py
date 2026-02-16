@@ -128,7 +128,7 @@ class LocationManager:
 
         # Check existing locations for a match
         for loc_id, location in state.locations.items():
-            if dest_id in loc_id or destination.lower() in location.name.lower():
+            if dest_id == loc_id or destination.lower() == location.name.lower():
                 state.current_location_id = loc_id
                 state.memory.world.record(
                     event_type=EventType.MOVEMENT,

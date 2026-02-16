@@ -45,6 +45,7 @@ class Belief:
     @classmethod
     def from_dict(cls, data: dict) -> 'Belief':
         """Deserialize belief."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["confidence"] = BeliefConfidence(data["confidence"])
         return cls(**data)
 

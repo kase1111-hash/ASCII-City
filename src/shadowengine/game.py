@@ -125,6 +125,28 @@ class Game:
         if seed is not None:
             self.state.environment.set_seed(seed)
 
+        # Update delegates that hold references to world_state
+        self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)
+        self.location_manager = LocationManager(
+            llm_client=self.llm_client,
+            world_state=self.state.world_state,
+            renderer=self.renderer,
+        )
+        self.conversation_manager = ConversationManager(
+            renderer=self.renderer,
+            dialogue_handler=self.dialogue_handler,
+            audio_engine=self.audio_engine,
+            speech_enabled=self.config.enable_speech,
+        )
+        self.command_handler = CommandHandler(
+            parser=self.parser,
+            renderer=self.renderer,
+            llm_client=self.llm_client,
+            location_manager=self.location_manager,
+            conversation_manager=self.conversation_manager,
+            signal_router=self.signal_router,
+        )
+
     # Map Character archetypes to npc_intelligence types
     _NPC_TYPE_MAP = {
         Archetype.GUILTY: "mobster",

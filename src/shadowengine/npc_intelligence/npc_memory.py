@@ -136,6 +136,7 @@ class NPCMemory:
     @classmethod
     def from_dict(cls, data: dict) -> 'NPCMemory':
         """Deserialize memory from dictionary."""
+        data = dict(data)  # Don't mutate the input dictionary
         data["source"] = MemorySource(data["source"])
         if data.get("location_coords"):
             data["location_coords"] = tuple(data["location_coords"])

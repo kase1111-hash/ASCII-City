@@ -61,13 +61,6 @@ class DialogueTopic:
     ) -> DialogueResponse:
         """Get appropriate response based on character state."""
 
-        if will_refuse:
-            return DialogueResponse(
-                text=self.refuse_response,
-                response_type=ResponseType.REFUSE,
-                pressure_applied=self.pressure_amount
-            )
-
         if is_cracked and self.cracked_response:
             return DialogueResponse(
                 text=self.cracked_response,
@@ -75,6 +68,13 @@ class DialogueTopic:
                 reveals_fact=self.reveals_on_cracked,
                 is_evidence=True,
                 pressure_applied=0
+            )
+
+        if will_refuse:
+            return DialogueResponse(
+                text=self.refuse_response,
+                response_type=ResponseType.REFUSE,
+                pressure_applied=self.pressure_amount
             )
 
         if will_lie and self.lie_response:

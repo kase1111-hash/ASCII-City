@@ -82,23 +82,23 @@ class GameEventBridge:
 
         self.engine.process_event(world_event)
 
-    def on_threaten(self, npc_id: str, by: str = "player") -> None:
+    def on_threaten(self, npc_id: str, by: str = "player", location: str = "") -> None:
         """Record that a player threatened an NPC — high notability."""
         self.bridge_event(
             event_type="violence",
             description=f"{by} threatened {npc_id}",
-            location="",
+            location=location,
             actors=[by, npc_id],
             witnesses=[npc_id],
             notability=0.8,
         )
 
-    def on_accuse(self, npc_id: str, by: str = "player") -> None:
+    def on_accuse(self, npc_id: str, by: str = "player", location: str = "") -> None:
         """Record that a player accused an NPC."""
         self.bridge_event(
             event_type="conversation",
             description=f"{by} accused {npc_id}",
-            location="",
+            location=location,
             actors=[by, npc_id],
             witnesses=[npc_id],
             details={"topic": "accusation", "tone": "aggressive"},

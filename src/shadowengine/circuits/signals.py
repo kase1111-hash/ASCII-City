@@ -112,6 +112,18 @@ class InputSignal(Signal):
     direction: Optional[tuple[float, float]] = None  # Source direction (x, y)
     distance: float = 0.0  # Distance from source
 
+    def attenuate(self, factor: float) -> 'InputSignal':
+        """Create a new InputSignal with reduced strength."""
+        return InputSignal(
+            type=self.type,
+            strength=self.strength * factor,
+            source_id=self.source_id,
+            timestamp=self.timestamp,
+            data=self.data.copy(),
+            direction=self.direction,
+            distance=self.distance,
+        )
+
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
         result = super().to_dict()
@@ -139,6 +151,19 @@ class OutputSignal(Signal):
     radius: float = 1.0            # How far the signal reaches
     propagates: bool = True        # Whether it propagates to adjacent tiles
     target_id: Optional[str] = None  # Specific target (if any)
+
+    def attenuate(self, factor: float) -> 'OutputSignal':
+        """Create a new OutputSignal with reduced strength."""
+        return OutputSignal(
+            type=self.type,
+            strength=self.strength * factor,
+            source_id=self.source_id,
+            timestamp=self.timestamp,
+            data=self.data.copy(),
+            radius=self.radius,
+            propagates=self.propagates,
+            target_id=self.target_id,
+        )
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""

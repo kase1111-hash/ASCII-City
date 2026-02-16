@@ -171,7 +171,16 @@ class SignalRouter:
                     strength=output.strength,
                     source_id=hotspot.id,
                 )
-                hs.circuit.receive_signal(activation)
+                cascaded_outputs = hs.circuit.receive_signal(activation)
+                # Route cascaded outputs so chain reactions propagate
+                if cascaded_outputs:
+                    cascaded_result = ProcessingResult(
+                        circuit_id=hs.circuit.id,
+                        input_signal=activation,
+                        output_signals=cascaded_outputs,
+                        success=True,
+                    )
+                    self.route_outputs(cascaded_result, hs, state, location)
                 break
 
     def _handle_alert(

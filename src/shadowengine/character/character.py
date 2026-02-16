@@ -92,6 +92,7 @@ class CharacterState:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'CharacterState':
+        data = dict(data)  # Don't mutate the input dictionary
         data["mood"] = Mood(data["mood"])
         return cls(**data)
 
@@ -157,6 +158,10 @@ class Character:
             self.state.mood = Mood.SCARED
             return True
 
+        # Don't downgrade mood once cracked
+        if self.state.is_cracked:
+            return False
+
         # Update mood based on pressure
         if self.state.pressure_accumulated > self.trust_threshold * 0.7:
             self.state.mood = Mood.DEFENSIVE
@@ -167,7 +172,11 @@ class Character:
 
     def modify_trust(self, amount: int) -> None:
         """Modify the character's trust toward the player."""
-        self.current_trust += amount
+        self.current_trust = max(-100, min(100, self.current_trust + amount))
+
+        # Don't change mood if character is cracked (preserve SCARED state)
+        if self.state.is_cracked:
+            return
 
         # Trust affects mood
         if self.current_trust > 20:

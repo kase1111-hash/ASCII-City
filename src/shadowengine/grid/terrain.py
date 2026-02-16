@@ -171,7 +171,7 @@ class TerrainModifier:
         if not 0.0 <= self.intensity <= 1.0:
             raise ValueError(f"Intensity must be between 0.0 and 1.0, got {self.intensity}")
 
-        valid_types = {"wet", "frozen", "cracked", "overgrown", "scorched", "rusty", "mossy"}
+        valid_types = {"wet", "frozen", "cracked", "overgrown", "scorched", "rusty", "mossy", "collapsed"}
         if self.type not in valid_types:
             raise ValueError(f"Invalid modifier type: {self.type}. Must be one of {valid_types}")
 

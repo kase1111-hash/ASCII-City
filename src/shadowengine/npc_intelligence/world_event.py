@@ -37,6 +37,7 @@ class Witness:
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Witness':
+        data = dict(data)  # Don't mutate the input dictionary
         data["witness_type"] = WitnessType(data["witness_type"])
         return cls(**data)
 
@@ -138,6 +139,7 @@ class WorldEvent:
     @classmethod
     def from_dict(cls, data: dict) -> 'WorldEvent':
         """Deserialize from dictionary."""
+        data = dict(data)  # Don't mutate the input dictionary
         witnesses = [Witness.from_dict(w) for w in data.pop("witnesses", [])]
         data["location"] = tuple(data.get("location", [0, 0]))
         event = cls(**{k: v for k, v in data.items() if k != "witnesses"})
