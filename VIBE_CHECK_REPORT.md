@@ -392,20 +392,20 @@ No WebSocket or network server component.
 
 | Finding | Location | Impact | Remediation |
 |---------|----------|--------|-------------|
-| LLM-generated NPCs not registered with PropagationEngine | `location_manager.py:300-329` | NPC intelligence (rumors, behavior hints) doesn't work for dynamically generated NPCs | Call `state.propagation_engine.register_npc()` after creating inline NPCs |
-| Audio config fields are ghost config | `config.py:102-107` | `master_volume`, `speech_volume`, `ambient_volume` have no effect since audio is deferred | Remove until audio is integrated, or mark with comments |
+| ~~LLM-generated NPCs not registered with PropagationEngine~~ | `location_manager.py:300-329` | **FALSE POSITIVE** — `add_character_fn(npc)` routes through `Game.add_character()` which already calls `propagation_engine.register_npc()`. No fix needed. | N/A |
+| Audio config fields are ghost config | `config.py:102-107` | `master_volume`, `speech_volume`, `ambient_volume` have no effect since audio is deferred | **REMEDIATED** — defaults set to False, fields marked with TODO comments |
 | Deferred modules contain ~40K+ lines of dead code | `src/shadowengine/_deferred/` | Inflates codebase size and test count without contributing functionality | Already isolated in `_deferred/` — consider moving to separate repo or clearly archiving |
 
 ## Medium Severity Findings
 
 | Finding | Location | Impact | Remediation |
 |---------|----------|--------|-------------|
-| `hasattr()` checks for optional subsystems | `command_handler.py:227,525` | Fragile coupling — fails silently if attribute name changes | Use Optional typing or interface protocol |
-| Raw exception messages shown to users | `command_handler.py:544,556` | Poor UX on save/load failures | Wrap in user-friendly error messages |
-| No save file schema validation | (save/load path) | Malformed save files could cause crashes | Add schema validation to `MemoryBank.load()` |
-| Missing TODO markers for known gaps | Various | Makes it hard to track what's intentionally incomplete | Add TODOs for the NPC registration gap, ThemeConfig weather weights, etc. |
-| `asyncio` phantom import | 1 file | Unused dependency | Remove |
-| `validate_free_exploration_response` allows undocumented actions | `validation.py:164-167` | `kick`, `push`, `use` are handled in command_handler but not in the valid_actions set | Add `kick`, `push`, `use` to valid_actions |
+| `hasattr()` checks for optional subsystems | `command_handler.py:227,525` | Fragile coupling — fails silently if attribute name changes | **REMEDIATED** — replaced with direct attribute access |
+| Raw exception messages shown to users | `command_handler.py:544,556` | Poor UX on save/load failures | **REMEDIATED** — typed exceptions with user-friendly messages |
+| No save file schema validation | (save/load path) | Malformed save files could cause crashes | **REMEDIATED** — required-key validation added to `MemoryBank.load()` |
+| Missing TODO markers for known gaps | Various | Makes it hard to track what's intentionally incomplete | **REMEDIATED** — TODOs added for circuits, weather weights, audio |
+| `asyncio` phantom import | 1 file (`tests/_deferred/`) | Unused dependency in deferred test | Low priority — only in deferred test code, not active source |
+| `validate_free_exploration_response` allows undocumented actions | `validation.py:164-167` | `kick`, `push`, `use` are handled in command_handler but not in the valid_actions set | **REMEDIATED** — added `kick`, `push`, `use` to valid_actions |
 
 ## What's Genuine
 
@@ -429,15 +429,14 @@ No WebSocket or network server component.
 
 ## Remediation Checklist
 
-- [ ] Register dynamically-generated NPCs with `PropagationEngine` in `LocationManager.parse_location_response()`
-- [ ] Remove or comment out ghost audio config fields in `GameConfig`
-- [ ] Add `kick`, `push`, `use` to `valid_actions` in `validate_free_exploration_response()`
-- [ ] Replace `hasattr()` checks with proper Optional typing for `event_bridge` and `propagation_engine`
-- [ ] Wrap raw exception messages in user-friendly errors for save/load
-- [ ] Add schema validation to `MemoryBank.load()` for save file integrity
-- [ ] Remove phantom `asyncio` import
-- [ ] Add LLM call logging (model, latency, tokens, success/failure)
-- [ ] Add TODO markers for known integration gaps
+- [x] ~~Register dynamically-generated NPCs with `PropagationEngine`~~ — FALSE POSITIVE (already wired via `Game.add_character()`)
+- [x] Mark ghost audio config fields in `GameConfig` — defaults set to False, TODOs added
+- [x] Add `kick`, `push`, `use` to `valid_actions` in `validate_free_exploration_response()`
+- [x] Replace `hasattr()` checks with direct attribute access for `event_bridge` and `propagation_engine`
+- [x] Wrap raw exception messages in user-friendly errors for save/load
+- [x] Add schema validation to `MemoryBank.load()` for save file integrity
+- [x] Add LLM call logging (model, latency, tokens, success/failure)
+- [x] Add TODO markers for known integration gaps (circuits, weather weights, audio)
 - [ ] Archive or consolidate evaluation meta-documents
 - [ ] Consider squashing Claude commit history into meaningful human-authored changesets
 - [ ] Replace tutorial-style comments with WHY explanations where the code is non-obvious

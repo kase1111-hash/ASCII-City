@@ -269,6 +269,8 @@ class LocationManager:
             })
 
             # Add hotspots
+            # TODO: attach BehaviorCircuits to LLM-generated hotspots based on type
+            # (currently only hand-built scenarios like dockside_job create circuits)
             for hs_data in data.get("hotspots", []):
                 hs_type_str = hs_data.get("type", "object")
                 hs_type = (

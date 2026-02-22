@@ -99,12 +99,12 @@ class GameConfig:
     npc_trust_threshold_modifier: float = 1.0  # Higher = harder to crack NPCs
     evidence_decay_rate: float = 0.1  # How fast outdoor evidence degrades
 
-    # Audio settings
-    enable_audio: bool = True  # Enable audio engine
-    enable_speech: bool = True  # Enable TTS for dialogue
-    master_volume: float = 0.8
-    speech_volume: float = 1.0
-    ambient_volume: float = 0.5
+    # Audio settings (deferred — audio engine not yet integrated into game loop)
+    enable_audio: bool = False  # Disabled until audio module is integrated
+    enable_speech: bool = False  # Disabled until TTS module is integrated
+    master_volume: float = 0.8  # TODO: wire to audio engine when integrated
+    speech_volume: float = 1.0  # TODO: wire to audio engine when integrated
+    ambient_volume: float = 0.5  # TODO: wire to audio engine when integrated
 
     def save(self, path: str) -> None:
         """Save config to JSON file."""
@@ -144,7 +144,7 @@ class ThemeConfig:
     name: str = "default"
     description: str = "Default theme"
 
-    # Atmosphere
+    # Atmosphere — TODO: wire weather_weights to WeatherSystem for theme-driven weather
     weather_weights: dict = field(default_factory=lambda: {
         "clear": 0.4,
         "rain": 0.25,

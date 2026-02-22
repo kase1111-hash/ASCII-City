@@ -162,7 +162,7 @@ def validate_free_exploration_response(data: dict) -> dict:
 
     # Normalize action
     action = str(data.get("action", "other")).lower()
-    valid_actions = {"examine", "talk", "take", "go", "wait", "other"}
+    valid_actions = {"examine", "talk", "take", "use", "kick", "push", "go", "wait", "other"}
     if action not in valid_actions:
         action = "other"
 
