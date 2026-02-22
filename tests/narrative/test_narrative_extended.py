@@ -225,7 +225,7 @@ class TestTwistInteractions:
         """Twists can depend on other twists being triggered."""
         manager = TwistManager()
 
-        # First twist
+        # Base twist with no dependencies
         twist1 = Twist(
             id="first",
             twist_type=TwistType.HIDDEN_IDENTITY,
@@ -255,7 +255,7 @@ class TestTwistInteractions:
         manager.check_triggers({"progress": 0.4})
         manager.reveal_twist("first")
 
-        # Now second can trigger
+        # Second unlocks because first revealed "identity_known"
         manager.check_triggers({"discoveries": ["identity_known"]})
 
         assert len(manager.get_triggered_twists()) == 2
@@ -305,11 +305,11 @@ class TestSpineRevelations:
         assert spine.check_revelation("base")
         spine.make_revelation("base")
 
-        # Now can make derived
+        # "base" unlocks "derived" through prerequisite chain
         assert spine.check_revelation("derived")
         spine.make_revelation("derived")
 
-        # Now can make final
+        # "derived" unlocks "final" — full chain validated
         assert spine.check_revelation("final")
 
     def test_solution_partial_evidence(self):

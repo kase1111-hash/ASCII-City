@@ -144,7 +144,7 @@ class ThemeConfig:
     name: str = "default"
     description: str = "Default theme"
 
-    # Atmosphere — TODO: wire weather_weights to WeatherSystem for theme-driven weather
+    # Atmosphere — applied via WeatherSystem.apply_theme_weights() in Game.new_game()
     weather_weights: dict = field(default_factory=lambda: {
         "clear": 0.4,
         "rain": 0.25,

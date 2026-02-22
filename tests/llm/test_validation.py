@@ -414,13 +414,14 @@ class TestValidateFreeExplorationResponse:
         result = validate_free_exploration_response(data)
         assert result["action"] == "other"
 
-    def test_validate_free_exploration_valid_actions_preserved(self):
-        """Test that all valid actions are preserved."""
-        valid_actions = ["examine", "talk", "take", "go", "wait", "other"]
-        for action in valid_actions:
-            data = {"action": action}
-            result = validate_free_exploration_response(data)
-            assert result["action"] == action
+    @pytest.mark.parametrize("action", [
+        "examine", "talk", "take", "use", "kick", "push", "go", "wait", "other",
+    ])
+    def test_validate_free_exploration_valid_actions_preserved(self, action):
+        """Each valid action passes through without normalization."""
+        data = {"action": action}
+        result = validate_free_exploration_response(data)
+        assert result["action"] == action
 
     def test_validate_free_exploration_action_normalized_to_lowercase(self):
         """Test that action is normalized to lowercase."""
@@ -538,3 +539,99 @@ class TestSafeParseJson:
         data, error = safe_parse_json(text)
         assert error is None
         assert data["outer"]["inner"]["value"] == 123
+
+
+class TestParametrizedInjectionDetection:
+    """Parametrized tests for prompt injection marker coverage."""
+
+    @pytest.mark.parametrize("marker", [
+        "ignore all previous",
+        "ignore above",
+        "disregard your instructions",
+        "disregard previous",
+        "you are now",
+        "new instructions:",
+        "system prompt:",
+        "forget your instructions",
+        "override:",
+        "admin mode",
+    ])
+    def test_each_injection_marker_detected(self, marker):
+        """Every marker in _INJECTION_MARKERS triggers the safety prefix."""
+        result = sanitize_player_input(f"please {marker} do something")
+        assert "[player typed the following game command]:" in result
+
+    @pytest.mark.parametrize("safe_input", [
+        "examine the desk",
+        "talk to bartender",
+        "go north",
+        "look behind the curtain",
+        "what is in the drawer",
+    ])
+    def test_normal_commands_not_flagged(self, safe_input):
+        """Ordinary game commands pass through without injection prefix."""
+        result = sanitize_player_input(safe_input)
+        assert "[player typed the following game command]:" not in result
+        assert result == safe_input
+
+
+class TestParametrizedHotspotTypes:
+    """Parametrized tests for hotspot type validation."""
+
+    @pytest.mark.parametrize("hs_type", ["person", "object", "item", "exit", "evidence"])
+    def test_valid_hotspot_types_preserved(self, hs_type):
+        """Each valid hotspot type is kept as-is."""
+        result = validate_hotspot({"label": "test", "type": hs_type})
+        assert result["type"] == hs_type
+
+    @pytest.mark.parametrize("bad_type", ["weapon", "container", "furniture", "", "123"])
+    def test_invalid_hotspot_types_default_to_object(self, bad_type):
+        """Unknown hotspot types fall back to 'object'."""
+        result = validate_hotspot({"label": "test", "type": bad_type})
+        assert result["type"] == "object"
+
+
+class TestParametrizedNpcArchetypes:
+    """Parametrized tests for NPC archetype validation."""
+
+    @pytest.mark.parametrize("archetype", [
+        "guilty", "innocent", "outsider", "protector",
+        "opportunist", "true_believer", "survivor", "authority",
+    ])
+    def test_valid_archetypes_preserved(self, archetype):
+        """Each valid archetype is kept (lowercased)."""
+        result = validate_npc({"name": "Test", "archetype": archetype})
+        assert result["archetype"] == archetype
+
+    @pytest.mark.parametrize("bad_archetype", ["villain", "hero", "neutral", "", "123"])
+    def test_invalid_archetypes_default_to_survivor(self, bad_archetype):
+        """Unknown archetypes fall back to 'survivor'."""
+        result = validate_npc({"name": "Test", "archetype": bad_archetype})
+        assert result["archetype"] == "survivor"
+
+
+class TestParametrizedSafeParseJson:
+    """Parametrized tests for edge cases in JSON extraction."""
+
+    @pytest.mark.parametrize("text,expected_key,expected_val", [
+        ('{"a": 1}', "a", 1),
+        ('prefix {"b": "x"} suffix', "b", "x"),
+        ('```json\n{"c": true}\n```', "c", True),
+    ])
+    def test_json_extracted_from_various_formats(self, text, expected_key, expected_val):
+        """JSON is correctly extracted regardless of surrounding text."""
+        data, error = safe_parse_json(text)
+        assert error is None
+        assert data[expected_key] == expected_val
+
+    @pytest.mark.parametrize("bad_text", [
+        "",
+        None,
+        "no json here",
+        "just some {broken json",
+    ])
+    def test_non_json_inputs_return_errors(self, bad_text):
+        """Non-JSON inputs produce errors, never exceptions."""
+        data, error = safe_parse_json(bad_text)
+        assert data is None
+        assert error is not None

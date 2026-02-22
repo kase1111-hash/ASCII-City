@@ -10,7 +10,7 @@ Thin coordinator that delegates to:
 from typing import Optional
 import logging
 
-from .config import GameConfig, DEFAULT_CONFIG
+from .config import GameConfig, DEFAULT_CONFIG, ThemeConfig, DEFAULT_THEME
 from .memory import MemoryBank
 from .character import Character, Archetype, DialogueManager
 from .narrative import NarrativeSpine
@@ -69,8 +69,9 @@ class Game:
     logic is delegated to focused modules.
     """
 
-    def __init__(self, config: GameConfig = None):
+    def __init__(self, config: GameConfig = None, theme: 'ThemeConfig' = None):
         self.config = config or DEFAULT_CONFIG
+        self.theme = theme or DEFAULT_THEME
         self.state = GameState()
         self.parser = CommandParser()
         self.renderer = Renderer(
@@ -124,6 +125,9 @@ class Game:
         self.state.memory.game_seed = seed
         if seed is not None:
             self.state.environment.set_seed(seed)
+
+        # Apply theme-driven weather bias so genre packs affect atmosphere
+        self.state.environment.weather.apply_theme_weights(self.theme.weather_weights)
 
         # Update delegates that hold references to world_state
         self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)

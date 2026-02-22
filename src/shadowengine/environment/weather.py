@@ -9,7 +9,7 @@ Provides atmospheric conditions that affect gameplay:
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional
+from typing import ClassVar, Optional
 import random
 
 
@@ -331,6 +331,45 @@ class WeatherSystem:
                     self.current_state.duration_remaining = self._rng.randint(30, 120)
 
         return None
+
+    # Map ThemeConfig weather_weights keys to WeatherType values
+    _THEME_KEY_MAP: ClassVar[dict[str, list]] = {
+        "clear": [WeatherType.CLEAR],
+        "rain": [WeatherType.LIGHT_RAIN, WeatherType.HEAVY_RAIN],
+        "fog": [WeatherType.FOG, WeatherType.MIST],
+        "storm": [WeatherType.STORM],
+        "heat": [WeatherType.CLEAR],  # no dedicated type — bias clear
+        "cold": [WeatherType.SNOW, WeatherType.OVERCAST],
+    }
+
+    def apply_theme_weights(self, theme_weights: dict[str, float]) -> None:
+        """Bias transition probabilities toward the theme's preferred weather.
+
+        ``theme_weights`` comes from ``ThemeConfig.weather_weights`` and maps
+        category names (e.g. "rain", "fog") to desired prevalence (0-1).
+        We scale existing transition probabilities so that weather types
+        belonging to more-prevalent categories become more likely targets.
+        """
+        # Build per-WeatherType multiplier from the theme weights
+        type_multiplier: dict[WeatherType, float] = {}
+        for category, weight in theme_weights.items():
+            for wt in self._THEME_KEY_MAP.get(category, []):
+                type_multiplier[wt] = type_multiplier.get(wt, 0.0) + weight
+
+        if not type_multiplier:
+            return
+
+        # Scale each transition row so theme-preferred targets are boosted
+        for source, targets in self._transition_weights.items():
+            for target in targets:
+                if target in type_multiplier:
+                    targets[target] *= 1.0 + type_multiplier[target]
+
+            # Re-normalize so row sums to ~1
+            total = sum(targets.values())
+            if total > 0:
+                for target in targets:
+                    targets[target] /= total
 
     def _select_next_weather(self) -> WeatherType:
         """Select next weather based on transition probabilities."""

@@ -437,8 +437,8 @@ No WebSocket or network server component.
 - [x] Add schema validation to `MemoryBank.load()` for save file integrity
 - [x] Add LLM call logging (model, latency, tokens, success/failure)
 - [x] Add TODO markers for known integration gaps (circuits, weather weights, audio)
-- [ ] Archive or consolidate evaluation meta-documents
+- [x] Archive evaluation meta-documents — moved to `docs/archive/`
 - [ ] Consider squashing Claude commit history into meaningful human-authored changesets
-- [ ] Replace tutorial-style comments with WHY explanations where the code is non-obvious
-- [ ] Add parametrized tests for core validation functions (currently only 9 across entire suite)
-- [ ] Wire `ThemeConfig.weather_weights` to `WeatherSystem` or remove the field
+- [x] Replace tutorial-style comments with WHY explanations in test files
+- [x] Add parametrized tests for core validation — injection markers, hotspot types, archetypes, JSON parsing (+53 new tests)
+- [x] Wire `ThemeConfig.weather_weights` to `WeatherSystem` via `apply_theme_weights()` in `Game.new_game()`
