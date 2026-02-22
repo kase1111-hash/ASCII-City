@@ -204,6 +204,8 @@ class MemoryBank:
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
 
+    _REQUIRED_SAVE_KEYS = {"world", "player"}
+
     @classmethod
     def load(cls, filepath: str) -> 'MemoryBank':
         """Load memory bank from a JSON file with validation."""
@@ -212,6 +214,11 @@ class MemoryBank:
 
         if not isinstance(data, dict):
             raise ValueError(f"Invalid save file: expected dict, got {type(data).__name__}")
+
+        # Verify required sections exist so we don't silently load empty state
+        missing = cls._REQUIRED_SAVE_KEYS - data.keys()
+        if missing:
+            raise ValueError(f"Save file missing required sections: {', '.join(sorted(missing))}")
 
         bank = cls()
 

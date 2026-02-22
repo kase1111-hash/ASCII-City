@@ -5,6 +5,7 @@ Provides unified interface for language model backends.
 """
 
 import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from enum import Enum
 from typing import Optional
 import urllib.request
 import urllib.error
+
+logger = logging.getLogger(__name__)
 
 
 class LLMBackend(Enum):
@@ -154,22 +157,31 @@ class OllamaClient(LLMClient):
             with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
                 result = json.loads(response.read().decode())
                 latency = (time.time() - start) * 1000
+                tokens = result.get("eval_count", 0)
 
+                logger.info(
+                    "LLM generate OK model=%s tokens=%d latency=%.0fms",
+                    result.get("model", self.config.model), tokens, latency,
+                )
                 return LLMResponse(
                     text=result.get("response", ""),
                     success=True,
                     model=result.get("model", self.config.model),
-                    tokens_used=result.get("eval_count", 0),
+                    tokens_used=tokens,
                     latency_ms=latency
                 )
 
         except urllib.error.URLError as e:
+            logger.warning("LLM generate FAIL (URLError): %s", e)
             return LLMResponse.error_response(f"Connection error: {e}")
         except urllib.error.HTTPError as e:
+            logger.warning("LLM generate FAIL (HTTP %d): %s", e.code, e.reason)
             return LLMResponse.error_response(f"HTTP error {e.code}: {e.reason}")
         except json.JSONDecodeError as e:
+            logger.warning("LLM generate FAIL (bad JSON): %s", e)
             return LLMResponse.error_response(f"Invalid JSON response: {e}")
         except Exception as e:
+            logger.error("LLM generate FAIL (unexpected): %s: %s", type(e).__name__, e)
             return LLMResponse.error_response(f"Unexpected error: {e}")
 
     def chat(self, messages: list[dict]) -> LLMResponse:
@@ -200,24 +212,26 @@ class OllamaClient(LLMClient):
             with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
                 result = json.loads(response.read().decode())
                 latency = (time.time() - start) * 1000
+                tokens = result.get("eval_count", 0)
 
+                logger.info(
+                    "LLM chat OK model=%s tokens=%d latency=%.0fms",
+                    result.get("model", self.config.model), tokens, latency,
+                )
                 message = result.get("message", {})
                 return LLMResponse(
                     text=message.get("content", ""),
                     success=True,
                     model=result.get("model", self.config.model),
-                    tokens_used=result.get("eval_count", 0),
+                    tokens_used=tokens,
                     latency_ms=latency
                 )
 
         except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as e:
-            # Log the specific error and fall back to generate endpoint
-            import logging
-            logging.warning(f"Ollama chat endpoint failed ({type(e).__name__}), falling back to generate: {e}")
+            logger.warning("Ollama chat endpoint failed (%s), falling back to generate: %s", type(e).__name__, e)
             return super().chat(messages)
         except Exception as e:
-            import logging
-            logging.error(f"Unexpected error in Ollama chat: {type(e).__name__}: {e}")
+            logger.error("Unexpected error in Ollama chat: %s: %s", type(e).__name__, e)
             return LLMResponse.error_response(f"Unexpected error: {e}")
 
 

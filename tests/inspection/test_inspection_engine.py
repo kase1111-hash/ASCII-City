@@ -285,7 +285,7 @@ class TestInspectionEngine:
         engine.zoom_in_on(obj.id)
         engine.zoom_in_on(obj.id)
 
-        # Now zoom in with tool to FINE
+        # Tool unlocks FINE zoom beyond the unaided CLOSE maximum
         result = engine.zoom_in_on(obj.id, tool=tool)
         assert result.success is True
         assert result.zoom_level == ZoomLevel.FINE
@@ -303,7 +303,7 @@ class TestInspectionEngine:
         engine.zoom_in_on(obj.id)  # MEDIUM
         engine.zoom_in_on(obj.id)  # CLOSE
 
-        # Now zoom out
+        # Zoom out drops one level at a time
         result = engine.zoom_out_from(obj.id)
         assert result.success is True
         assert result.zoom_level == ZoomLevel.MEDIUM
@@ -353,7 +353,7 @@ class TestInspectionEngine:
         )
         engine.register_object(obj)
 
-        # First inspect to establish current object
+        # Must inspect before zoom commands work on this object
         engine.inspect_object(obj.id)
 
         result = engine.process_command("look closer", target_override=obj.id)
@@ -476,16 +476,16 @@ class TestInspectionIntegration:
         )
         engine.add_player_tool(magnifier)
 
-        # Step 1: Initial look
+        # Broad inspection at default zoom
         result = engine.inspect_object(obj.id)
         assert result.success
 
-        # Step 2: Zoom in
+        # Zooming in raises detail level
         result = engine.zoom_in_on(obj.id)
         assert result.success
         assert result.zoom_level == ZoomLevel.MEDIUM
 
-        # Step 3: Use magnifying glass for fine detail
+        # Tool-assisted FINE zoom reveals maximum detail
         result = engine.inspect_object(obj.id, zoom_level=ZoomLevel.FINE, tool=magnifier)
         assert result.success
 

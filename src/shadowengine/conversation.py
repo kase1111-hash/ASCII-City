@@ -177,7 +177,7 @@ class ConversationManager:
 
         # Pull intelligence hints from PropagationEngine (rumors, behavior)
         intelligence_hints = None
-        if hasattr(state, 'propagation_engine') and state.propagation_engine:
+        if getattr(state, 'propagation_engine', None):
             engine = state.propagation_engine
             hints = engine.get_npc_behavior_hints(character.id)
 
@@ -258,8 +258,9 @@ class ConversationManager:
             )
 
         # Feed into NPC intelligence — other NPCs may hear about this
-        if hasattr(state, 'event_bridge') and state.event_bridge:
-            state.event_bridge.on_threaten(
+        bridge = getattr(state, 'event_bridge', None)
+        if bridge:
+            bridge.on_threaten(
                 character.id, location=state.current_location_id
             )
 
@@ -324,8 +325,9 @@ class ConversationManager:
             )
 
         # Feed into NPC intelligence
-        if hasattr(state, 'event_bridge') and state.event_bridge:
-            state.event_bridge.on_accuse(
+        bridge = getattr(state, 'event_bridge', None)
+        if bridge:
+            bridge.on_accuse(
                 character.id, location=state.current_location_id
             )
 

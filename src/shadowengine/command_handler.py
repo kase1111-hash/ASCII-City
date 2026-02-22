@@ -6,6 +6,7 @@ interaction, and LLM-based free exploration into a testable module.
 """
 
 from typing import Optional
+import json
 import logging
 import os
 import re
@@ -223,9 +224,10 @@ class CommandHandler:
             player_witnessed=False,
         )
 
-        # Also feed into NPC intelligence system
-        if hasattr(state, 'event_bridge') and state.event_bridge:
-            state.event_bridge.bridge_event(
+        # Feed into NPC intelligence so witnesses form subjective memories
+        bridge = getattr(state, 'event_bridge', None)
+        if bridge:
+            bridge.bridge_event(
                 event_type="discovery",
                 description=description,
                 location=state.current_location_id,
@@ -522,15 +524,17 @@ Interpret what the player wants to do and respond with JSON."""
         state.memory.advance_time(config.time_units_per_action)
 
         # Update NPC intelligence: decay memories, evolve relationships, spread rumors
-        if hasattr(state, 'propagation_engine') and state.propagation_engine:
-            state.propagation_engine.update(config.time_units_per_action)
+        prop_engine = getattr(state, 'propagation_engine', None)
+        if prop_engine:
+            prop_engine.update(config.time_units_per_action)
 
             # NPCs at the same location may gossip
             npc_ids = self._get_npcs_at_location(state)
-            if len(npc_ids) >= 2 and hasattr(state, 'event_bridge') and state.event_bridge:
+            bridge = getattr(state, 'event_bridge', None)
+            if len(npc_ids) >= 2 and bridge:
                 for i in range(len(npc_ids)):
                     for j in range(i + 1, len(npc_ids)):
-                        state.event_bridge.trigger_gossip(npc_ids[i], npc_ids[j])
+                        bridge.trigger_gossip(npc_ids[i], npc_ids[j])
 
         self.renderer.wait_for_key()
 
@@ -540,8 +544,13 @@ Interpret what the player wants to do and respond with JSON."""
         try:
             state.memory.save(save_path)
             self.renderer.render_text(f"Game saved to {save_path}")
+        except PermissionError:
+            self.renderer.render_error("Cannot save — permission denied. Check your save directory.")
+        except OSError:
+            self.renderer.render_error("Cannot save — disk may be full or path is invalid.")
         except Exception as e:
-            self.renderer.render_error(f"Failed to save: {e}")
+            logger.error(f"Save failed: {type(e).__name__}: {e}")
+            self.renderer.render_error("Save failed due to an unexpected error. Check the logs.")
         self.renderer.wait_for_key()
 
     def _handle_load(self, state: 'GameState', config: GameConfig) -> None:
@@ -552,6 +561,9 @@ Interpret what the player wants to do and respond with JSON."""
             self.renderer.render_text("Game loaded!")
         except FileNotFoundError:
             self.renderer.render_error("No save file found.")
+        except (json.JSONDecodeError, ValueError):
+            self.renderer.render_error("Save file is corrupted. Starting fresh may be necessary.")
         except Exception as e:
-            self.renderer.render_error(f"Failed to load: {e}")
+            logger.error(f"Load failed: {type(e).__name__}: {e}")
+            self.renderer.render_error("Load failed due to an unexpected error. Check the logs.")
         self.renderer.wait_for_key()
