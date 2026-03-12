@@ -221,6 +221,11 @@ class TestSystemCommands:
         ("wait", CommandType.WAIT),
         ("save", CommandType.SAVE),
         ("load", CommandType.LOAD),
+        ("settings", CommandType.SETTINGS),
+        ("options", CommandType.SETTINGS),
+        ("config", CommandType.SETTINGS),
+        ("prefs", CommandType.SETTINGS),
+        ("preferences", CommandType.SETTINGS),
         ("quit", CommandType.QUIT),
         ("q", CommandType.QUIT),
     ])

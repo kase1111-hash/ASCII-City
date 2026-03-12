@@ -166,6 +166,38 @@ class Renderer:
         print()
         print("=" * self.width)
 
+    def render_settings_menu(self, settings: list[dict]) -> str:
+        """
+        Render a settings menu and return the player's choice.
+
+        Each item in settings is a dict with:
+            key: str          - internal key
+            label: str        - display name
+            value: str        - current value to display
+            toggleable: bool  - whether this can be toggled
+        """
+        self.clear_screen()
+        print()
+        print("=" * self.width)
+        print(" SETTINGS ".center(self.width))
+        print("=" * self.width)
+        print()
+
+        for i, item in enumerate(settings, 1):
+            label = item["label"]
+            value = item["value"]
+            print(f"  [{i}] {label:<30s} {value}")
+
+        print()
+        print("-" * self.width)
+        print("  Enter a number to toggle, or 'back' to return.")
+        print()
+
+        try:
+            return input("settings> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return "back"
+
     def render_separator(self) -> None:
         """Render a visual separator."""
         print("-" * self.width)
