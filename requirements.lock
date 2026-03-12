@@ -1,0 +1,9 @@
+# Pinned dependency versions for reproducible installs.
+# Generated from requirements.txt — update by running:
+#   pip install -r requirements.txt && pip freeze | grep -iE "pytest|coverage|iniconfig|packaging|pluggy" > requirements.lock
+coverage==7.13.4
+iniconfig==2.3.0
+packaging==24.0
+pluggy==1.6.0
+pytest==9.0.2
+pytest-cov==7.0.0

@@ -22,6 +22,7 @@ class CommandType(Enum):
     HELP = "help"
     SAVE = "save"
     LOAD = "load"
+    SETTINGS = "settings"
     QUIT = "quit"
     HOTSPOT = "hotspot"         # Numeric hotspot selection
     UNKNOWN = "unknown"
@@ -87,6 +88,7 @@ class CommandParser:
             ],
             CommandType.SAVE: ["save"],
             CommandType.LOAD: ["load"],
+            CommandType.SETTINGS: ["settings", "options", "config", "prefs", "preferences"],
             CommandType.QUIT: ["quit", "exit", "q"],
 
             # Dialogue commands
@@ -306,6 +308,7 @@ Available Commands:
   wait              - Pass time
   help              - Show this help
   save              - Save your game
+  settings          - Open settings menu
   quit              - Exit the game
 
 During Conversation:

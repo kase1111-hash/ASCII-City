@@ -7,13 +7,13 @@ Three-layer persistent memory:
 - Player Memory: Protagonist perception
 """
 
-from .world_memory import WorldMemory, Event, EventType
+from .world_memory import WorldMemory, Event, EventType, SourceType
 from .character_memory import CharacterMemory, Belief
 from .player_memory import PlayerMemory
 from .memory_bank import MemoryBank
 
 __all__ = [
-    'WorldMemory', 'Event', 'EventType',
+    'WorldMemory', 'Event', 'EventType', 'SourceType',
     'CharacterMemory', 'Belief',
     'PlayerMemory',
     'MemoryBank'

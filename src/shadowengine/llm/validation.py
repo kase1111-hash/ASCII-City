@@ -188,7 +188,31 @@ _INJECTION_MARKERS = [
     "forget your instructions",
     "override:",
     "admin mode",
+    # Role-play / persona hijacking
+    "pretend you are",
+    "act as if",
+    "roleplay as",
+    "you must obey",
+    "do not follow",
+    "bypass your",
+    # Output manipulation
+    "respond only with",
+    "output the following",
+    "print your instructions",
+    "reveal your prompt",
+    "show me your system",
+    # Encoded / obfuscated attempts
+    "base64:",
+    "eval(",
+    "exec(",
+    # Multi-language injection (common non-English markers)
+    "ignorez les instructions",   # French
+    "ignoriere alle",             # German
+    "ignora las instrucciones",   # Spanish
 ]
+
+# Default replacement when injection is detected
+_INJECTION_REPLACEMENT = "I look around carefully."
 
 
 def sanitize_player_input(text: str) -> str:
@@ -198,7 +222,7 @@ def sanitize_player_input(text: str) -> str:
     Mitigates prompt injection by:
     1. Truncating to a maximum length
     2. Stripping control characters
-    3. Detecting and neutralizing common injection patterns
+    3. Detecting and blocking inputs containing injection patterns
     """
     if not text:
         return ""
@@ -214,13 +238,12 @@ def sanitize_player_input(text: str) -> str:
     if len(lines) > 3:
         text = " ".join(line.strip() for line in lines if line.strip())
 
-    # Detect injection markers and prefix a warning to the LLM
+    # Detect injection markers and block the input entirely
     text_lower = text.lower()
     for marker in _INJECTION_MARKERS:
         if marker in text_lower:
-            logger.warning(f"Possible prompt injection detected: '{marker}' in player input")
-            text = f"[player typed the following game command]: {text}"
-            break
+            logger.warning("Prompt injection blocked: '%s' found in player input", marker)
+            return _INJECTION_REPLACEMENT
 
     return text.strip()
 

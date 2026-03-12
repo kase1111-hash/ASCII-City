@@ -347,3 +347,52 @@ class TestAtmosphereAnimations:
         # Should have some flickers but not all
         if atmosphere.config.flicker_rate > 0:
             assert any(flickers) or True  # Might not flicker due to randomness
+
+
+class TestRendererSettingsMenu:
+    """Tests for the settings menu renderer."""
+
+    def test_settings_menu_returns_back(self):
+        """render_settings_menu returns user input."""
+        from src.shadowengine.render.renderer import Renderer
+        from unittest.mock import patch
+
+        r = Renderer(width=80, height=24)
+        r.use_clear = False
+
+        items = [
+            {"key": "debug_mode", "label": "Debug Mode", "value": "OFF", "toggleable": True},
+        ]
+
+        with patch("builtins.input", return_value="back"):
+            result = r.render_settings_menu(items)
+        assert result == "back"
+
+    def test_settings_menu_returns_number(self):
+        """render_settings_menu returns numeric choice."""
+        from src.shadowengine.render.renderer import Renderer
+        from unittest.mock import patch
+
+        r = Renderer(width=80, height=24)
+        r.use_clear = False
+
+        items = [
+            {"key": "debug_mode", "label": "Debug Mode", "value": "OFF", "toggleable": True},
+            {"key": "auto_save", "label": "Auto-Save", "value": "ON", "toggleable": True},
+        ]
+
+        with patch("builtins.input", return_value="2"):
+            result = r.render_settings_menu(items)
+        assert result == "2"
+
+    def test_settings_menu_handles_eof(self):
+        """render_settings_menu handles EOFError gracefully."""
+        from src.shadowengine.render.renderer import Renderer
+        from unittest.mock import patch
+
+        r = Renderer(width=80, height=24)
+        r.use_clear = False
+
+        with patch("builtins.input", side_effect=EOFError):
+            result = r.render_settings_menu([])
+        assert result == "back"

@@ -822,3 +822,81 @@ class TestEventBridgeWiring:
         # Social network should have recorded an interaction between the two
         relation = state.propagation_engine.social_network.get_relation("bartender", "singer")
         assert relation is not None
+
+
+class TestSettings:
+    """Test settings command handler."""
+
+    def test_settings_command_routed(self, handler, state, config):
+        """Settings command calls render_settings_menu."""
+        handler.renderer.render_settings_menu = MagicMock(return_value="back")
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+        handler.renderer.render_settings_menu.assert_called_once()
+
+    def test_settings_toggle_debug(self, handler, state):
+        """Toggling debug_mode flips it on and off."""
+        cfg = GameConfig(debug_mode=False)
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["1", "back"])
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, cfg, lambda c: None)
+        assert cfg.debug_mode is True
+
+    def test_settings_toggle_show_world_memory(self, handler, state):
+        """Toggling show_world_memory flips it."""
+        cfg = GameConfig(show_world_memory=False)
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["2", "back"])
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, cfg, lambda c: None)
+        assert cfg.show_world_memory is True
+
+    def test_settings_toggle_time_passes(self, handler, state):
+        """Toggling time_passes_on_action flips it."""
+        cfg = GameConfig(time_passes_on_action=True)
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["3", "back"])
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, cfg, lambda c: None)
+        assert cfg.time_passes_on_action is False
+
+    def test_settings_toggle_auto_save(self, handler, state):
+        """Toggling auto_save flips it."""
+        cfg = GameConfig(auto_save=True)
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["4", "back"])
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, cfg, lambda c: None)
+        assert cfg.auto_save is False
+
+    def test_settings_numeric_npc_trust(self, handler, state):
+        """Numeric setting for NPC trust difficulty."""
+        cfg = GameConfig(npc_trust_threshold_modifier=1.0)
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["5", "back"])
+        with patch("builtins.input", return_value="1.5"):
+            cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+            handler.handle_command(cmd, {}, state, cfg, lambda c: None)
+        assert cfg.npc_trust_threshold_modifier == 1.5
+
+    def test_settings_back_exits(self, handler, state, config):
+        """'back' exits the settings loop immediately."""
+        handler.renderer.render_settings_menu = MagicMock(return_value="back")
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+        assert handler.renderer.render_settings_menu.call_count == 1
+
+    def test_settings_invalid_input_ignored(self, handler, state, config):
+        """Non-numeric, non-back input is ignored and loop continues."""
+        handler.renderer.render_settings_menu = MagicMock(side_effect=["abc", "99", "back"])
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+        assert handler.renderer.render_settings_menu.call_count == 3
+
+    def test_settings_menu_items_populated(self, handler, state, config):
+        """Menu items list is populated with correct labels and values."""
+        handler.renderer.render_settings_menu = MagicMock(return_value="back")
+        cmd = Command(command_type=CommandType.SETTINGS, raw_input="settings")
+        handler.handle_command(cmd, {}, state, config, lambda c: None)
+
+        menu_items = handler.renderer.render_settings_menu.call_args[0][0]
+        labels = [item["label"] for item in menu_items]
+        assert "Debug Mode" in labels
+        assert "Auto-Save" in labels
+        assert len(menu_items) == 6

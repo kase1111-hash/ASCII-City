@@ -65,6 +65,7 @@ class CommandHandler:
             CommandType.WAIT: lambda: self._handle_wait(state, config),
             CommandType.SAVE: lambda: self._handle_save(state, config),
             CommandType.LOAD: lambda: self._handle_load(state, config),
+            CommandType.SETTINGS: lambda: self._handle_settings(state, config),
         }
 
         if command.command_type in simple_handlers:
@@ -567,3 +568,57 @@ Interpret what the player wants to do and respond with JSON."""
             logger.error(f"Load failed: {type(e).__name__}: {e}")
             self.renderer.render_error("Load failed due to an unexpected error. Check the logs.")
         self.renderer.wait_for_key()
+
+    # Defines the menu items shown in the settings screen.
+    # Each tuple: (config_attr, label, is_toggle)
+    _SETTINGS_ITEMS = [
+        ("debug_mode",              "Debug Mode",              True),
+        ("show_world_memory",       "Show World Memory",       True),
+        ("time_passes_on_action",   "Time Passes on Action",   True),
+        ("auto_save",               "Auto-Save",               True),
+        ("npc_trust_threshold_modifier", "NPC Trust Difficulty (0.5-2.0)", False),
+        ("evidence_decay_rate",     "Evidence Decay Rate (0-1.0)",        False),
+    ]
+
+    def _handle_settings(self, state: 'GameState', config: GameConfig) -> None:
+        """Interactive settings menu loop."""
+        while True:
+            menu_items = []
+            for attr, label, is_toggle in self._SETTINGS_ITEMS:
+                raw_value = getattr(config, attr)
+                if isinstance(raw_value, bool):
+                    display = "ON" if raw_value else "OFF"
+                else:
+                    display = str(raw_value)
+                menu_items.append({
+                    "key": attr,
+                    "label": label,
+                    "value": display,
+                    "toggleable": is_toggle,
+                })
+
+            choice = self.renderer.render_settings_menu(menu_items)
+
+            if not choice or choice.lower() in ("back", "b", "quit", "q", "exit"):
+                break
+
+            if not choice.isdigit():
+                continue
+
+            idx = int(choice) - 1
+            if idx < 0 or idx >= len(self._SETTINGS_ITEMS):
+                continue
+
+            attr, label, is_toggle = self._SETTINGS_ITEMS[idx]
+            current = getattr(config, attr)
+
+            if is_toggle:
+                setattr(config, attr, not current)
+            else:
+                # Numeric setting — prompt for new value
+                try:
+                    raw = input(f"  Enter new value for {label} (current: {current}): ").strip()
+                    if raw:
+                        setattr(config, attr, type(current)(raw))
+                except (ValueError, EOFError, KeyboardInterrupt):
+                    pass
