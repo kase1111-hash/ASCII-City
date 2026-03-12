@@ -5,10 +5,15 @@ Coordinates all three memory layers and provides save/load functionality.
 """
 
 from typing import Optional
+import hashlib
+import hmac
 import json
 import os
 
-from .world_memory import WorldMemory, Event, EventType
+from .world_memory import WorldMemory, Event, EventType, SourceType
+
+# Key derived from a fixed seed — not secret, just tamper-detection
+_SAVE_INTEGRITY_KEY = b"shadowengine-save-integrity-v1"
 from .character_memory import CharacterMemory, BeliefConfidence
 from .player_memory import PlayerMemory
 
@@ -186,8 +191,14 @@ class MemoryBank:
         """Get current game time."""
         return self.world.current_time
 
+    @staticmethod
+    def _compute_checksum(data: dict) -> str:
+        """Compute HMAC-SHA256 checksum for save data integrity verification."""
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hmac.new(_SAVE_INTEGRITY_KEY, payload, hashlib.sha256).hexdigest()
+
     def save(self, filepath: str) -> None:
-        """Save the entire memory bank to a JSON file."""
+        """Save the entire memory bank to a JSON file with integrity checksum."""
         data = {
             "game_seed": self.game_seed,
             "world": self.world.to_dict(),
@@ -198,22 +209,48 @@ class MemoryBank:
             "player": self.player.to_dict()
         }
 
+        # Wrap with integrity checksum
+        envelope = {
+            "version": 2,
+            "checksum": self._compute_checksum(data),
+            "data": data
+        }
+
         # Ensure directory exists
         os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else ".", exist_ok=True)
 
         with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(envelope, f, indent=2)
 
     _REQUIRED_SAVE_KEYS = {"world", "player"}
 
     @classmethod
     def load(cls, filepath: str) -> 'MemoryBank':
-        """Load memory bank from a JSON file with validation."""
+        """Load memory bank from a JSON file with validation and integrity check."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         with open(filepath, 'r') as f:
-            data = json.load(f)
+            raw = json.load(f)
+
+        if not isinstance(raw, dict):
+            raise ValueError(f"Invalid save file: expected dict, got {type(raw).__name__}")
+
+        # Support v2 envelope format with integrity checksum
+        if "version" in raw and raw.get("version") >= 2 and "data" in raw:
+            data = raw["data"]
+            expected = raw.get("checksum", "")
+            actual = cls._compute_checksum(data)
+            if not hmac.compare_digest(expected, actual):
+                logger.warning("Save file checksum mismatch — file may have been tampered with")
+                raise ValueError("Save file integrity check failed: checksum mismatch")
+        else:
+            # Legacy v1 format (no envelope) — accept but warn
+            data = raw
+            logger.info("Loading legacy save file without integrity checksum")
 
         if not isinstance(data, dict):
-            raise ValueError(f"Invalid save file: expected dict, got {type(data).__name__}")
+            raise ValueError(f"Invalid save data: expected dict, got {type(data).__name__}")
 
         # Verify required sections exist so we don't silently load empty state
         missing = cls._REQUIRED_SAVE_KEYS - data.keys()
