@@ -129,6 +129,58 @@ class Renderer:
                 print(f"  - {item}")
         print()
 
+    def render_case_file(self, lines: list) -> None:
+        """Render the detective's case file."""
+        width = min(self.width - 2, 72)
+        print()
+        print("  " + "=" * width)
+        print("  " + "CASE FILE".center(width))
+        print("  " + "=" * width)
+        for line in lines:
+            if not line:
+                print()
+                continue
+            # Preserve leading indentation through the word wrap
+            indent = len(line) - len(line.lstrip())
+            prefix = " " * indent
+            for wrapped in self._word_wrap(line.strip(), width - indent - 2):
+                print(f"  {prefix}{wrapped}")
+                prefix = " " * (indent + 2)
+        print("  " + "=" * width)
+        print()
+
+    def render_zoom_view(
+        self,
+        target_name: str,
+        zoom_level,
+        text: str,
+        hooks: list = None,
+        hint: str = None,
+    ) -> None:
+        """Render a progressive-detail inspection view.
+
+        zoom_level is a ZoomLevel enum (value 1-4); rendered as a filled
+        meter so the player always knows how deep they are.
+        """
+        value = getattr(zoom_level, "value", 1)
+        name = getattr(zoom_level, "description", str(zoom_level))
+        meter = "#" * value + "-" * (4 - value)
+        header = f"[Zoom {value} {meter}] {name.upper()} -- {target_name}"
+
+        print()
+        print(f"  {header}")
+        print(f"  {'~' * min(len(header), self.width - 4)}")
+        lines = self._word_wrap(text, self.width - 6)
+        for line in lines:
+            print(f"    {line}")
+        if hooks:
+            print()
+            print(f"    You could focus on: {', '.join(hooks)}")
+        if hint:
+            print()
+            print(f"    ({hint})")
+        print()
+
     def render_discovery(self, text: str) -> None:
         """Render a discovery notification."""
         print()

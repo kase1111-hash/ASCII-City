@@ -22,6 +22,16 @@ THREATEN_PRESSURE_AMOUNT = 20
 THREATEN_TRUST_PENALTY = -10
 ACCUSE_PRESSURE_AMOUNT = 30
 ACCUSE_WRONG_TRUST_PENALTY = -20
+SHOW_EVIDENCE_PRESSURE_AMOUNT = 15       # Showing hard evidence rattles people
+SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT = 25  # Evidence that proves the case hits harder
+
+# Evidence tampering: if evidence is found in front of witnesses and left
+# uncollected this many time units, the culprit gets to it first
+EVIDENCE_TAMPER_DELAY_UNITS = 6
+
+# Spine advancement: evidence discoveries at a revelation's location
+# needed to piece that lead together
+SPINE_EVIDENCE_THRESHOLD = 2
 
 # Moral action weights
 THREATEN_MORAL_WEIGHT = 0.8

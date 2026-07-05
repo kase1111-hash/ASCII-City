@@ -8,7 +8,7 @@
 
 ShadowEngine is an AI-driven ASCII game engine where locations, dialogue, and interactions are generated dynamically by an LLM (Ollama or OpenAI). Instead of scripted stories, the engine uses natural language parsing and procedural generation to create an open-ended text adventure where the player can go anywhere and talk to anyone.
 
-The long-term goal is systemic emergence: behavioral circuits, NPC rumor networks, and layered memory producing stories no one pre-wrote. Right now the engine delivers LLM-driven exploration and dialogue with a three-layer memory system. See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
+The long-term goal is systemic emergence: behavioral circuits, NPC rumor networks, and layered memory producing stories no one pre-wrote. The engine now delivers LLM-driven exploration and dialogue backed by a three-layer memory system, signal-driven behavioral circuits, and NPC rumor propagation. See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 
 ## Key Features
 
@@ -18,12 +18,17 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Procedural Location Generation** - New areas generated on-the-fly as the player explores
 - **NPC Dialogue** - LLM-generated character responses shaped by archetype and game state
 - **Atmospheric Simulation** - Weather, time of day, and pressure affect the world
-- **Zoom Inspection** - Progressive detail reveal with tools
+- **Behavioral Circuits** - Objects respond to signals (kick, push, press) with cascading physical effects
+- **NPC Intelligence** - Rumor propagation, gossip between NPCs, and subjective NPC memory
+- **Look Closer** - Progressive zoom on anything: four depth levels of LLM-generated detail, tool-gated magnification, hidden discoveries, and darkness that actually matters
+- **Discoveries Become the World** - A find at high zoom can materialize as a new object in the scene, itself inspectable and collectible
+- **Evidence-Driven Interrogation** - A case file tracks every lead and clue; 'show \<evidence\>' puts a discovery on the table mid-conversation and applies real pressure
+- **The World Fights Back** - Find evidence in front of witnesses and leave it behind, and the culprit gets to it first. The absence becomes a clue of its own
+- **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
+- **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
 
 ### Planned (code exists, not yet integrated into game loop)
 
-- **Behavioral Circuits** - Universal entity interaction model via signal processing
-- **NPC Intelligence** - Rumor propagation, social networks, subjective NPC memory
 - **ASCII Art Studio** - Player-created art editor (deferred)
 - **Audio / TTS** - Text-to-speech and ambient audio (deferred)
 - **Modding System** - Theme packs, custom scenarios, content registry (deferred)
@@ -35,23 +40,23 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 
 **Memory-First**: Every event is recorded in a three-layer memory system (world truth, character beliefs, player knowledge). Nothing meaningful happens without being remembered.
 
-**Systemic Emergence** (in progress): The engine is being refocused to wire behavioral circuits, NPC intelligence, and rumor networks into the game loop so that player actions produce cascading, unscripted consequences.
+**Systemic Emergence**: Behavioral circuits, NPC intelligence, and rumor networks are wired into the game loop — NPCs witness player actions, form subjective memories, and spread rumors, while interactive objects react to signals with cascading physical effects.
 
 ---
 
 ## Status
 
-**Refocusing** — Subsystems are built and tested; now wiring them into the game loop.
+**Refocusing** — Core subsystems are wired into the game loop; remaining modules are tested but isolated.
 
 | System | Status | Integrated |
 |--------|--------|:----------:|
 | Game Loop & Commands | Working | Yes |
 | LLM Location Generation | Working | Yes |
 | LLM NPC Dialogue | Working | Yes |
-| Three-Layer Memory | Working | Partial (player only) |
+| Three-Layer Memory | Working | Yes |
 | Environment / Weather | Working | Yes |
-| Behavioral Circuits | Tested, isolated | No |
-| NPC Intelligence & Rumors | Tested, isolated | No |
+| Behavioral Circuits | Working | Yes (used in Dockside Job scenario) |
+| NPC Intelligence & Rumors | Working | Yes |
 | Inspection / Zoom | Working | Yes |
 | Audio / TTS | Deferred | -- |
 | ASCII Art Studio | Deferred | -- |
@@ -102,7 +107,7 @@ Specification documents are in [docs/specs/](docs/specs/).
 - **Interface**: Terminal / CMD / Shell
 - **Save System**: JSON memory snapshots
 - **Dependencies**: Zero for core game (pytest for testing)
-- **Tests**: ~2,100 active tests (deferred modules excluded)
+- **Tests**: ~2,200 active tests (deferred modules excluded)
 
 ---
 
@@ -139,7 +144,7 @@ The game requires an LLM backend for dynamic generation. By default it connects 
 ### Running Tests
 
 ```bash
-pytest                           # All active tests (~2,100)
+pytest                           # All active tests (~2,200)
 pytest -v                        # Verbose output
 pytest -m unit                   # Unit tests only
 pytest -m integration            # Integration tests only
@@ -153,24 +158,103 @@ On Windows, you can also use `build.bat` (setup) and `run.bat` (run game).
 ## Quick Example
 
 ```
-> kick the rusty button
+> examine the desk
 
-The button sparks briefly, then sticks halfway. A grinding sound
-echoes through the shaft. The elevator shudders but doesn't move.
+A folder sits on top: 'WEBB, Marcus - Deceased'. Body found in
+the alley behind O'Malley's Bar. No witnesses... yet.
 
-A rat in the corner freezes, ears perked toward the noise.
+  (Something about your desk might reward a closer look. Try 'look closer'.)
 
-> look closer at the button
+> look closer at the desk
 
-[Zoom 1] The button housing is corroded, green patina spreading
-across the brass. Wires peek through a crack in the casing.
+  [Zoom 2 ##--] DETAILED VIEW -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    The desktop is scarred with overlapping ring stains and a fan
+    of paper cuts in the leather blotter. The brass drawer pull
+    hangs slightly loose.
 
-> use screwdriver on button
+    You could focus on: the loose drawer pull, the leather blotter
 
-You pry open the casing. The wiring inside is a mess of splices
-and exposed copper. One wire leads to a suspicious black box
-that wasn't part of the original installation...
+    (You could look closer still.)
+
+> look closer
+
+  [Zoom 3 ###-] CLOSE INSPECTION -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Up close, the wood grain around the lock plate is scored with
+    fresh scratches - bright, unweathered wood shows through the
+    varnish.
+
+    (Finer detail would take a magnifying glass.)
+
+  DISCOVERED: Fresh pry marks around the desk lock -
+  someone searched this desk recently.
+
+> use magnifying glass on the desk
+
+  [Zoom 4 ####] MAGNIFIED VIEW -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Under the lens, gray fibers are caught in the lock plate
+    screws - wool, expensive weave. Whoever pried at this drawer
+    wore fine gloves.
 ```
+
+Every object in the world supports this: detail layers are generated
+by the LLM on first look and then remembered, so the world stays
+consistent. Depth is tool-gated (a magnifying glass unlocks the finest
+level), darkness blocks close inspection without a light, and NPCs who
+watch you scrutinize something will remember it — and talk.
+
+Discoveries feed the whole detective loop. A find at high zoom can
+materialize as a new hotspot in the scene (that wire recorder behind
+the baseboard is now an object you can take). Everything you've
+gathered lives in the case file:
+
+```
+> case
+
+  ============================ CASE FILE ============================
+  THE CASE:
+    A body was found in the alley behind O'Malley's Bar...
+
+  LEADS (1/4 uncovered):
+    [X] Someone saw the victim with another person
+    [ ] ??? — Examine the alley carefully
+
+  EVIDENCE (2):
+    - Fresh pry marks around the desk lock [close inspection; office]
+    - A wire recorder, still warm [close inspection of Your Desk; office]
+  ===================================================================
+
+> talk to the councilman
+> show wire recorder
+
+  You lay it out for Councilman Vincent Harrow: a wire recorder,
+  still warm...
+
+Councilman Harrow says nervously:
+  "You... where did you get that? I've never seen it before in my life."
+```
+
+Showing hard evidence applies interrogation pressure — enough of it
+and suspects crack.
+
+And the city pushes back. Find something incriminating while someone's
+watching, then leave it uncollected? Word travels. Come back and it's
+gone — but the theft itself is evidence, recorded in world memory as
+truth whether or not you ever pin it on them:
+
+```
+> (returning to your office)
+
+  Something's off. The Black Box is gone — someone got here
+  before you. They knew you'd found it.
+
+  DISCOVERED: The Black Box was taken. Someone is covering
+  their tracks.
+```
+
+Collect evidence fast, or investigate when no one is watching.
 
 ---
 

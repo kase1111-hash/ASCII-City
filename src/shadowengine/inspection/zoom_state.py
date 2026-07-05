@@ -298,7 +298,7 @@ class ZoomStateManager:
         recent = [
             (obj_id, state.last_inspected)
             for obj_id, state in self.states.items()
-            if state.last_inspected and state.last_inspected > threshold
+            if state.last_inspected is not None and state.last_inspected >= threshold
         ]
         recent.sort(key=lambda x: x[1], reverse=True)
         return [obj_id for obj_id, _ in recent[:limit]]

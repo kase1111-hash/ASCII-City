@@ -13,7 +13,8 @@ from .tool import (
     ToolType,
     ToolAffordance,
     INSPECTION_TOOLS,
-    get_tool
+    get_tool,
+    get_best_tool_for_inspection
 )
 from .inspectable import (
     DetailLayer,
@@ -53,6 +54,7 @@ __all__ = [
     "ToolAffordance",
     "INSPECTION_TOOLS",
     "get_tool",
+    "get_best_tool_for_inspection",
     # Inspectable Objects
     "DetailLayer",
     "InspectableObject",

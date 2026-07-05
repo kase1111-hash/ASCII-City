@@ -191,7 +191,8 @@ def create_study_escape(seed: int = None) -> Game:
                 description="Evidence at the crime scene",
                 importance=3,
                 prerequisites=["witness_account"],
-                source="Examine the alley carefully"
+                source="Examine the alley carefully",
+                location_id="alley"
             ),
             Revelation(
                 id="motive_revealed",
@@ -302,6 +303,16 @@ def create_study_escape(seed: int = None) -> Game:
                     "Body found in the alley behind O'Malley's Bar. No witnesses... yet."
     ))
 
+    office.add_hotspot(Hotspot.create_item(
+        id="hs_magnifier",
+        label="Magnifying Glass",
+        position=(20, 12),
+        description="Your trusty brass magnifying glass, worn smooth by years of use.",
+        item_id="magnifying glass",
+        take_text="You pocket the magnifying glass. In this business, "
+                  "the truth lives in the details.",
+    ))
+
     office.add_hotspot(Hotspot(
         id="hs_window",
         label="Window",
@@ -309,6 +320,15 @@ def create_study_escape(seed: int = None) -> Game:
         position=(55, 5),
         description="Looking out at the rain-slicked streets.",
         examine_text="The city sprawls below. Somewhere out there, a killer thinks they got away with it."
+    ))
+
+    office.add_hotspot(Hotspot.create_person(
+        id="hs_politician",
+        name="Councilman Harrow",
+        position=(40, 12),
+        character_id="politician",
+        description="The councilman himself, waiting in your office. Men like "
+                    "him don't come to men like you unless they're worried.",
     ))
 
     office.add_hotspot(Hotspot(
@@ -452,6 +472,16 @@ def create_study_escape(seed: int = None) -> Game:
         description="Overflowing with garbage.",
         examine_text="Under the trash... a torn piece of fabric. Expensive material. "
                     "Someone wealthy was here."
+    ))
+
+    alley.add_hotspot(Hotspot.create_item(
+        id="hs_uv_lamp",
+        label="UV Lamp",
+        position=(48, 9),
+        description="A portable ultraviolet lamp on a tripod, left behind by the forensics team.",
+        item_id="uv lamp",
+        take_text="You pocket the UV lamp. The forensics boys won't miss it — "
+                  "they never look twice anyway.",
     ))
 
     alley.add_hotspot(Hotspot(
@@ -605,8 +635,9 @@ def run_study_escape():
     print("A body in the alley. A city full of secrets.")
     print("Everyone's got something to hide. Find the truth.")
     print()
-    print("Commands: examine [object], talk [person], go [place]")
-    print("          threaten, accuse, inventory, wait, help")
+    print("Commands: examine [object], look closer, talk [person], go [place]")
+    print("          case, show [evidence], use magnifying glass on [object]")
+    print("          threaten, accuse, help")
     print()
     print("The LLM generates NPC dialogue and narrative dynamically.")
     print("Every playthrough tells a different story.")
