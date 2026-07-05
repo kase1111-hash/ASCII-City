@@ -41,6 +41,7 @@ class CommandHandler:
         conversation_manager: ConversationManager,
         signal_router=None,
         inspection_manager=None,
+        save_system=None,
     ):
         self.parser = parser
         self.renderer = renderer
@@ -49,6 +50,7 @@ class CommandHandler:
         self.conversation_manager = conversation_manager
         self.signal_router = signal_router
         self.inspection_manager = inspection_manager
+        self.save_system = save_system
 
     def handle_command(
         self,
@@ -623,10 +625,13 @@ Interpret what the player wants to do and respond with JSON."""
         self.renderer.wait_for_key()
 
     def _handle_save(self, state: 'GameState', config: GameConfig) -> None:
-        """Save the game."""
+        """Save the game (full world snapshot when the save system is wired)."""
         save_path = os.path.join(config.save_dir, "savegame.json")
         try:
-            state.memory.save(save_path)
+            if self.save_system:
+                self.save_system.save(save_path)
+            else:
+                state.memory.save(save_path)
             self.renderer.render_text(f"Game saved to {save_path}")
         except PermissionError:
             self.renderer.render_error("Cannot save — permission denied. Check your save directory.")
@@ -638,10 +643,13 @@ Interpret what the player wants to do and respond with JSON."""
         self.renderer.wait_for_key()
 
     def _handle_load(self, state: 'GameState', config: GameConfig) -> None:
-        """Load a saved game."""
+        """Load a saved game (full world snapshot when the save system is wired)."""
         save_path = os.path.join(config.save_dir, "savegame.json")
         try:
-            state.memory = MemoryBank.load(save_path)
+            if self.save_system:
+                self.save_system.load(save_path)
+            else:
+                state.memory = MemoryBank.load(save_path)
             self.renderer.render_text("Game loaded!")
         except FileNotFoundError:
             self.renderer.render_error("No save file found.")

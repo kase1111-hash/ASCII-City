@@ -197,9 +197,9 @@ class MemoryBank:
         payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hmac.new(_SAVE_INTEGRITY_KEY, payload, hashlib.sha256).hexdigest()
 
-    def save(self, filepath: str) -> None:
-        """Save the entire memory bank to a JSON file with integrity checksum."""
-        data = {
+    def to_dict(self) -> dict:
+        """Serialize the entire memory bank."""
+        return {
             "game_seed": self.game_seed,
             "world": self.world.to_dict(),
             "characters": {
@@ -208,6 +208,10 @@ class MemoryBank:
             },
             "player": self.player.to_dict()
         }
+
+    def save(self, filepath: str) -> None:
+        """Save the entire memory bank to a JSON file with integrity checksum."""
+        data = self.to_dict()
 
         # Wrap with integrity checksum
         envelope = {
@@ -249,6 +253,11 @@ class MemoryBank:
             data = raw
             logger.info("Loading legacy save file without integrity checksum")
 
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MemoryBank':
+        """Deserialize a memory bank with validation."""
         if not isinstance(data, dict):
             raise ValueError(f"Invalid save data: expected dict, got {type(data).__name__}")
 

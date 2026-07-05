@@ -57,6 +57,26 @@ class NPCAgency:
         if seed is not None:
             self.rng = random.Random(seed)
 
+    def to_dict(self) -> dict:
+        return {
+            "flee_deadline": self.flee_deadline,
+            "flee_warned": self.flee_warned,
+            "culprit_fled": self.culprit_fled,
+            "last_relocate_time": self._last_relocate_time,
+            "defended": sorted(self._defended),
+        }
+
+    def restore(self, data: Optional[dict]) -> None:
+        if not data:
+            return
+        self.flee_deadline = data.get("flee_deadline")
+        self.flee_warned = data.get("flee_warned", False)
+        self.culprit_fled = data.get("culprit_fled", False)
+        self._last_relocate_time = data.get(
+            "last_relocate_time", -CULPRIT_RELOCATE_COOLDOWN_UNITS
+        )
+        self._defended = set(data.get("defended", []))
+
     def update(self, state, renderer: 'Renderer') -> None:
         if not state.spine or not state.is_running:
             return

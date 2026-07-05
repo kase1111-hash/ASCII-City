@@ -277,3 +277,38 @@ class EvidenceWatch:
             t for t in self.threats
             if t.location_id == location_id and not t.destroyed
         ]
+
+    def to_dict(self) -> dict:
+        """Serialize watch state (rng state is not preserved)."""
+        return {
+            "threats": [
+                {
+                    "hotspot_id": t.hotspot_id,
+                    "location_id": t.location_id,
+                    "label": t.label,
+                    "fact_id": t.fact_id,
+                    "witnesses": t.witnesses,
+                    "created_time": t.created_time,
+                    "destroyed": t.destroyed,
+                    "planted_label": t.planted_label,
+                }
+                for t in self.threats
+            ],
+        }
+
+    def restore(self, data: Optional[dict]) -> None:
+        """Restore watch state from a snapshot."""
+        self.threats = []
+        if not data:
+            return
+        for entry in data.get("threats", []):
+            self.threats.append(EvidenceThreat(
+                hotspot_id=entry["hotspot_id"],
+                location_id=entry["location_id"],
+                label=entry["label"],
+                fact_id=entry["fact_id"],
+                witnesses=list(entry.get("witnesses", [])),
+                created_time=entry.get("created_time", 0),
+                destroyed=entry.get("destroyed", False),
+                planted_label=entry.get("planted_label"),
+            ))
