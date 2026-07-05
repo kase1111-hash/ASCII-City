@@ -53,6 +53,12 @@ class Hotspot:
     reveals_fact: Optional[str] = None      # Fact revealed on examine
     gives_item: Optional[str] = None        # Item received on take
 
+    # Planted evidence (world truth, hidden from the player):
+    # who staged this object here, and who it's meant to implicate.
+    # Close inspection can expose the staging.
+    planted_by: Optional[str] = None
+    frames: Optional[str] = None
+
     # Behavioral circuit (optional — enables dynamic signal-based interactions)
     circuit: Optional[Any] = field(default=None, repr=False)  # BehaviorCircuit
 
@@ -135,7 +141,9 @@ class Hotspot:
             "requires_item": self.requires_item,
             "requires_discovery": self.requires_discovery,
             "reveals_fact": self.reveals_fact,
-            "gives_item": self.gives_item
+            "gives_item": self.gives_item,
+            "planted_by": self.planted_by,
+            "frames": self.frames
         }
 
     @classmethod

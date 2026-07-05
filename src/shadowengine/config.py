@@ -29,6 +29,10 @@ SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT = 25  # Evidence that proves the case hits h
 # uncollected this many time units, the culprit gets to it first
 EVIDENCE_TAMPER_DELAY_UNITS = 6
 
+# Chance that a tampering culprit also plants false evidence framing
+# another suspect (close inspection of the plant can expose the staging)
+EVIDENCE_PLANT_CHANCE = 0.5
+
 # Spine advancement: evidence discoveries at a revelation's location
 # needed to piece that lead together
 SPINE_EVIDENCE_THRESHOLD = 2

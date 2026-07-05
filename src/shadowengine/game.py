@@ -28,6 +28,7 @@ from .npc_intelligence import PropagationEngine
 from .event_bridge import GameEventBridge
 from .inspection_manager import InspectionManager
 from .evidence_watch import EvidenceWatch
+from .street_talk import StreetTalk
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -116,6 +117,8 @@ class Game:
             seed=self.config.seed,
         )
 
+        self.street_talk = StreetTalk(self.llm_client)
+
         self.command_handler = CommandHandler(
             parser=self.parser,
             renderer=self.renderer,
@@ -136,6 +139,7 @@ class Game:
         self.state.memory.game_seed = seed
         if seed is not None:
             self.state.environment.set_seed(seed)
+            self.state.evidence_watch.seed(seed)
 
         # Apply theme-driven weather bias so genre packs affect atmosphere
         self.state.environment.weather.apply_theme_weights(self.theme.weather_weights)
@@ -159,6 +163,7 @@ class Game:
             renderer=self.renderer,
             seed=seed if seed is not None else self.config.seed,
         )
+        self.street_talk = StreetTalk(self.llm_client)
         self.command_handler = CommandHandler(
             parser=self.parser,
             renderer=self.renderer,
@@ -265,6 +270,9 @@ class Game:
 
         # The world's counter-moves: tampered evidence, missing objects
         self.state.evidence_watch.update(self.state, self.renderer)
+
+        # The street talks: NPCs voice what the rumor network knows
+        self.street_talk.update(self.state, self.renderer)
 
         scene = Scene(location=location, width=self.config.screen_width)
         self.renderer.render_scene(scene)

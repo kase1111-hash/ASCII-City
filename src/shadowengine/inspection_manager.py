@@ -521,6 +521,37 @@ class InspectionManager:
             obj.allow_generated_details = False  # material templates fit objects, not people
         obj.add_layer(DetailLayer(zoom_level=ZoomLevel.COARSE, description=base))
 
+        # Planted evidence carries a tell: under magnification the staging
+        # shows. Looking closer is the counter to a frame-up.
+        if hotspot.planted_by:
+            framed = state.characters.get(hotspot.frames)
+            framed_name = framed.name if framed else "someone else"
+            staged_fact = f"staged_{hotspot.id}"[:64]
+            obj.add_layer(DetailLayer(
+                zoom_level=ZoomLevel.FINE,
+                description=(
+                    "Under magnification the story falls apart. The wear is "
+                    "wrong — edges too clean, no dust in the creases, resting "
+                    "ON the grime instead of in it. This wasn't dropped. "
+                    "It was placed."
+                ),
+                reveals_facts=[staged_fact],
+                first_time_text=(
+                    "Under the lens, the story falls apart: edges too clean, "
+                    "no dust in the creases, sitting ON the grime rather than "
+                    "in it. This wasn't dropped here. It was placed — recently, "
+                    "and carefully."
+                ),
+            ))
+            self._fact_details[staged_fact] = {
+                "description": (
+                    f"The {hotspot.label} was planted. Someone staged it to "
+                    f"point you at {framed_name} — which means someone else "
+                    "has something to hide."
+                ),
+                "is_evidence": True,
+            }
+
         self.engine.register_object(obj)
         self._object_by_hotspot[hotspot.id] = obj.id
         self._hotspot_by_object[obj.id] = hotspot.id
@@ -595,6 +626,12 @@ class InspectionManager:
 
     @staticmethod
     def _clue_hint(hotspot: 'Hotspot') -> Optional[str]:
+        if hotspot.planted_by:
+            return (
+                "this object was planted here recently to mislead the "
+                "detective — physical details should feel subtly wrong "
+                "(too clean, wear inconsistent with its supposed history)"
+            )
         if hotspot.reveals_fact:
             return hotspot.examine_text or hotspot.description or None
         return None
@@ -808,11 +845,12 @@ class InspectionManager:
         label = revealed["label"]
 
         # Never duplicate: the same discovery only spawns once, and don't
-        # shadow an existing hotspot with the same name
+        # shadow any existing hotspot with the same name — including ones
+        # that were destroyed or hidden (a removed object must stay removed)
         spawn_id = f"{source_hotspot.id}_found_{fact_id[-24:]}"
         if any(hs.id == spawn_id for hs in location.hotspots):
             return
-        if location.get_hotspot_by_label(label):
+        if any(hs.label.lower() == label.lower() for hs in location.hotspots):
             return
 
         hotspot_type = self._SPAWN_TYPE_MAP.get(

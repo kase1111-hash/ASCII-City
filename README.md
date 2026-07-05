@@ -24,6 +24,8 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Discoveries Become the World** - A find at high zoom can materialize as a new object in the scene, itself inspectable and collectible
 - **Evidence-Driven Interrogation** - A case file tracks every lead and clue; 'show \<evidence\>' puts a discovery on the table mid-conversation and applies real pressure
 - **The World Fights Back** - Find evidence in front of witnesses and leave it behind, and the culprit gets to it first. The absence becomes a clue of its own
+- **Frame-Ups** - A cornered culprit may plant false evidence pointing at someone else. The counter is your own craft: under magnification, staged objects give themselves away
+- **The Street Talks** - NPCs voice what the rumor network knows. Scrutinize a crime scene in front of the wrong person and someone across town will needle you about it
 - **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
 - **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
 
@@ -255,6 +257,36 @@ truth whether or not you ever pin it on them:
 ```
 
 Collect evidence fast, or investigate when no one is watching.
+
+Sometimes the culprit goes further than cleaning up:
+
+```
+  And something else catches your eye: a monogrammed handkerchief
+  that wasn't here before.
+
+> examine handkerchief
+
+  A fine handkerchief, initials stitched in the corner — the kind
+  Eddie the Barfly carries.
+
+> use magnifying glass on the handkerchief
+
+  [Zoom 4 ####] MAGNIFIED VIEW -- Monogrammed Handkerchief
+    Under the lens, the story falls apart: edges too clean, no dust
+    in the creases, sitting ON the grime rather than in it. This
+    wasn't dropped here. It was placed — recently, and carefully.
+
+  DISCOVERED: The handkerchief was planted. Someone staged it to
+  point you at Eddie the Barfly — which means someone else has
+  something to hide.
+```
+
+Every move in this contest is recorded in the three-layer memory:
+the world knows the truth, each character believes their version,
+and you know only what you've seen. Covering tracks makes the
+culprit nervous — and the street notices everything. Word of your
+investigation spreads through the rumor network, and sooner or
+later somebody says so to your face.
 
 ---
 
