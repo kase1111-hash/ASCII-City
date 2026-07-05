@@ -14,14 +14,39 @@ watching.
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 import logging
+import random
 
-from .config import EVIDENCE_TAMPER_DELAY_UNITS
+from .config import EVIDENCE_TAMPER_DELAY_UNITS, EVIDENCE_PLANT_CHANCE
+from .character import Mood
+from .interaction import Hotspot, HotspotType
 from .memory import EventType
 
 if TYPE_CHECKING:
     from .render import Renderer
 
 logger = logging.getLogger(__name__)
+
+# Objects a culprit might stage to point suspicion elsewhere.
+# {name} is the framed suspect's name.
+PLANT_TEMPLATES = [
+    (
+        "Monogrammed Handkerchief",
+        "A fine handkerchief, initials stitched in the corner — the kind "
+        "{name} carries.",
+    ),
+    (
+        "Distinctive Cigarette Stub",
+        "A half-smoked cigarette of an expensive brand. {name} smokes these.",
+    ),
+    (
+        "Engraved Money Clip",
+        "A silver money clip, engraved. It would belong to {name}.",
+    ),
+    (
+        "Torn Note",
+        "A scrap of paper in handwriting that looks a lot like {name}'s.",
+    ),
+]
 
 
 @dataclass
@@ -34,6 +59,7 @@ class EvidenceThreat:
     witnesses: list[str] = field(default_factory=list)
     created_time: int = 0
     destroyed: bool = False     # Tampered with; player hasn't seen it yet
+    planted_label: Optional[str] = None  # False evidence left in its place
 
     @property
     def destroy_time(self) -> int:
@@ -43,8 +69,14 @@ class EvidenceThreat:
 class EvidenceWatch:
     """Tracks witnessed evidence and lets the culprit clean up after you."""
 
-    def __init__(self):
+    def __init__(self, rng: Optional[random.Random] = None):
         self.threats: list[EvidenceThreat] = []
+        self.rng = rng or random.Random()
+
+    def seed(self, seed: Optional[int]) -> None:
+        """Reseed for deterministic playthroughs."""
+        if seed is not None:
+            self.rng = random.Random(seed)
 
     def register(
         self,
@@ -135,6 +167,18 @@ class EvidenceWatch:
                         witnesses=[culprit_id],
                     )
                 logger.info("Evidence tampered: %s at %s", threat.label, threat.location_id)
+
+                # Sometimes the culprit goes further: leave something
+                # behind that points at somebody else
+                if self.rng.random() < EVIDENCE_PLANT_CHANCE:
+                    self._plant_false_evidence(
+                        threat, hotspot, culprit_id, location, state,
+                    )
+
+                # Covering your tracks takes a toll
+                culprit = state.characters.get(culprit_id)
+                if culprit:
+                    culprit.state.mood = Mood.NERVOUS
                 continue
 
             # Player returns to find the evidence gone
@@ -143,6 +187,12 @@ class EvidenceWatch:
                     f"Something's off. The {threat.label} is gone — someone "
                     "got here before you. They knew you'd found it."
                 )
+                if threat.planted_label:
+                    renderer.render_narration(
+                        f"And something else catches your eye: "
+                        f"a {threat.planted_label.lower()} that wasn't "
+                        "here before."
+                    )
                 state.memory.player_discovers(
                     fact_id=f"tampered_{threat.fact_id}"[:64],
                     description=(
@@ -162,6 +212,64 @@ class EvidenceWatch:
                 # Tampering is evidence too — it can crack a lead
                 from .inspection_manager import check_location_leads
                 check_location_leads(state, renderer)
+
+    def _plant_false_evidence(
+        self,
+        threat: EvidenceThreat,
+        removed_hotspot,
+        culprit_id: str,
+        location,
+        state,
+    ) -> None:
+        """The culprit stages an object implicating another suspect."""
+        others = sorted(
+            cid for cid in state.characters
+            if cid != culprit_id and cid != "player"
+        )
+        if not others:
+            return
+
+        framed_id = self.rng.choice(others)
+        framed_name = state.characters[framed_id].name
+        label, description_fmt = self.rng.choice(PLANT_TEMPLATES)
+        description = description_fmt.format(name=framed_name)
+
+        if location.get_hotspot_by_label(label):
+            return
+
+        x, y = removed_hotspot.position
+        planted = Hotspot(
+            id=f"planted_{threat.hotspot_id}"[:48],
+            label=label,
+            hotspot_type=HotspotType.EVIDENCE,
+            position=(x + 1, y + 1),
+            description=description,
+            examine_text=description,
+            reveals_fact=f"frame_{framed_id}_{threat.fact_id}"[:64],
+            gives_item=label.lower(),
+            take_text=f"You bag the {label.lower()}. Something about it nags at you.",
+            planted_by=culprit_id,
+            frames=framed_id,
+        )
+        location.add_hotspot(planted)
+        threat.planted_label = label
+
+        # World truth again: the frame-up is real history
+        state.memory.record_witnessed_event(
+            event_type=EventType.DISCOVERY,
+            description=(
+                f"{culprit_id} planted the {label} at {threat.location_id} "
+                f"to implicate {framed_id}"
+            ),
+            location=threat.location_id,
+            actors=[culprit_id],
+            witnesses=[culprit_id],
+            player_witnessed=False,
+        )
+        logger.info(
+            "False evidence planted: %s frames %s at %s",
+            label, framed_id, threat.location_id,
+        )
 
     def pending_at(self, location_id: str) -> list[EvidenceThreat]:
         """Active (not yet destroyed) threats at a location."""

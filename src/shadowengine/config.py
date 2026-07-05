@@ -29,9 +29,27 @@ SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT = 25  # Evidence that proves the case hits h
 # uncollected this many time units, the culprit gets to it first
 EVIDENCE_TAMPER_DELAY_UNITS = 6
 
+# Chance that a tampering culprit also plants false evidence framing
+# another suspect (close inspection of the plant can expose the staging)
+EVIDENCE_PLANT_CHANCE = 0.5
+
 # Spine advancement: evidence discoveries at a revelation's location
 # needed to piece that lead together
 SPINE_EVIDENCE_THRESHOLD = 2
+
+# Culprit self-preservation: heat is interrogation pressure (plus a bonus
+# while nervous) measured against their crack threshold. Past the relocate
+# fraction they start avoiding you; past the flee fraction they try to
+# leave town — and if they make it, the case goes cold.
+CULPRIT_NERVOUS_HEAT_FRACTION = 0.25     # Nervousness adds this much heat
+CULPRIT_RELOCATE_HEAT_FRACTION = 0.4
+CULPRIT_FLEE_HEAT_FRACTION = 0.7
+CULPRIT_FLEE_COUNTDOWN_UNITS = 15
+CULPRIT_RELOCATE_COOLDOWN_UNITS = 8
+
+# How long before a framed NPC hears they're being set up and comes to
+# the detective with their side of it
+FRAMED_DEFENSE_DELAY_UNITS = 3
 
 # Moral action weights
 THREATEN_MORAL_WEIGHT = 0.8
