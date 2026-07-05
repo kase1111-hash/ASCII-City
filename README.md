@@ -26,6 +26,8 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **The World Fights Back** - Find evidence in front of witnesses and leave it behind, and the culprit gets to it first. The absence becomes a clue of its own
 - **Frame-Ups** - A cornered culprit may plant false evidence pointing at someone else. The counter is your own craft: under magnification, staged objects give themselves away
 - **The Street Talks** - NPCs voice what the rumor network knows. Scrutinize a crime scene in front of the wrong person and someone across town will needle you about it
+- **A Culprit Who Runs** - Push a suspect near their breaking point and they change haunts to avoid you; push harder and they try to skip town on a countdown. Let them make it and the case goes cold
+- **The Framed Fight Back** - Expose a plant and word reaches the person it framed; they come to you, scared, with an alibi — and the fact of the setup becomes evidence of its own
 - **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
 - **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
 
@@ -287,6 +289,26 @@ and you know only what you've seen. Covering tracks makes the
 culprit nervous — and the street notices everything. Word of your
 investigation spreads through the rumor network, and sooner or
 later somebody says so to your face.
+
+The endgame has a clock. A culprit close to breaking starts moving:
+
+```
+  Word hits the street like a dropped glass: Mickey O'Malley is
+  making moves to leave town. If they slip away, the case goes
+  with them.
+```
+
+Crack them with evidence, or corner them with an accusation — before
+the countdown runs out. And the innocent don't wait to be cleared:
+
+```
+  Eddie the Barfly crosses the room to you, voice low and urgent.
+  "That handkerchief isn't mine, I swear it. Check my whereabouts
+  that night — someone's setting me up."
+
+  DISCOVERED: Eddie has an alibi — and somebody wanted you to
+  think he didn't.
+```
 
 ---
 

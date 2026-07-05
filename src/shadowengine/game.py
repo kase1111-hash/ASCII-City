@@ -29,6 +29,7 @@ from .event_bridge import GameEventBridge
 from .inspection_manager import InspectionManager
 from .evidence_watch import EvidenceWatch
 from .street_talk import StreetTalk
+from .npc_agency import NPCAgency
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -118,6 +119,7 @@ class Game:
         )
 
         self.street_talk = StreetTalk(self.llm_client)
+        self.npc_agency = NPCAgency(self.llm_client)
 
         self.command_handler = CommandHandler(
             parser=self.parser,
@@ -164,6 +166,8 @@ class Game:
             seed=seed if seed is not None else self.config.seed,
         )
         self.street_talk = StreetTalk(self.llm_client)
+        self.npc_agency = NPCAgency(self.llm_client)
+        self.npc_agency.seed(seed if seed is not None else self.config.seed)
         self.command_handler = CommandHandler(
             parser=self.parser,
             renderer=self.renderer,
@@ -273,6 +277,11 @@ class Game:
 
         # The street talks: NPCs voice what the rumor network knows
         self.street_talk.update(self.state, self.renderer)
+
+        # NPCs act on their own behalf: the culprit runs, the framed defend
+        self.npc_agency.update(self.state, self.renderer)
+        if not self.state.is_running:
+            return
 
         scene = Scene(location=location, width=self.config.screen_width)
         self.renderer.render_scene(scene)

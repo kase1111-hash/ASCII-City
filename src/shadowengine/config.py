@@ -37,6 +37,20 @@ EVIDENCE_PLANT_CHANCE = 0.5
 # needed to piece that lead together
 SPINE_EVIDENCE_THRESHOLD = 2
 
+# Culprit self-preservation: heat is interrogation pressure (plus a bonus
+# while nervous) measured against their crack threshold. Past the relocate
+# fraction they start avoiding you; past the flee fraction they try to
+# leave town — and if they make it, the case goes cold.
+CULPRIT_NERVOUS_HEAT_FRACTION = 0.25     # Nervousness adds this much heat
+CULPRIT_RELOCATE_HEAT_FRACTION = 0.4
+CULPRIT_FLEE_HEAT_FRACTION = 0.7
+CULPRIT_FLEE_COUNTDOWN_UNITS = 15
+CULPRIT_RELOCATE_COOLDOWN_UNITS = 8
+
+# How long before a framed NPC hears they're being set up and comes to
+# the detective with their side of it
+FRAMED_DEFENSE_DELAY_UNITS = 3
+
 # Moral action weights
 THREATEN_MORAL_WEIGHT = 0.8
 THREATEN_RUTHLESS_EFFECT = 0.3
