@@ -13,6 +13,7 @@ from .config import (
     ACCUSE_PRESSURE_AMOUNT, ACCUSE_WRONG_TRUST_PENALTY,
     THREATEN_MORAL_WEIGHT, THREATEN_RUTHLESS_EFFECT,
     THREATEN_COMPASSIONATE_EFFECT, THREATEN_IDEALISTIC_EFFECT,
+    SHOW_EVIDENCE_PRESSURE_AMOUNT, SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT,
 )
 from .character import Character
 from .render import Renderer
@@ -105,6 +106,10 @@ class ConversationManager:
             self.handle_accuse(character, state)
             return
 
+        if input_lower.startswith("show "):
+            self.handle_show_evidence(character, raw_input[5:].strip(), state)
+            return
+
         # Free-form dialogue via LLM
         self.handle_free_dialogue(character, raw_input, state)
         self.renderer.wait_for_key()
@@ -195,16 +200,125 @@ class ConversationManager:
             if hints or rumors or npc_memories:
                 intelligence_hints = {**hints, "rumors": rumors, "memories": npc_memories}
 
+        # Recent discoveries as readable descriptions — raw fact ids are
+        # meaningless to the LLM
+        recent_evidence = [
+            d.description
+            for d in list(state.memory.player.discoveries.values())[-10:]
+        ]
+
         return self.dialogue_handler.generate_response(
             character=character,
             player_input=player_input,
             spine=state.spine,
             mystery=getattr(state, 'mystery', None),
-            evidence_found=list(state.memory.player.discoveries.keys()),
+            evidence_found=recent_evidence,
             current_location_id=state.current_location_id,
             character_memory=char_memory,
             intelligence_hints=intelligence_hints,
         )
+
+    @staticmethod
+    def _find_discovery(query: str, state: 'GameState'):
+        """Match player wording against discovered facts (evidence first)."""
+        query = query.lower().strip()
+        if not query:
+            return None
+        discoveries = list(state.memory.player.discoveries.values())
+        ranked = sorted(discoveries, key=lambda d: not d.is_evidence)
+        for discovery in ranked:
+            haystack = f"{discovery.description} {discovery.fact_id}".lower()
+            if all(word in haystack for word in query.split()):
+                return discovery
+        return None
+
+    def handle_show_evidence(
+        self, character: Character, query: str, state: 'GameState'
+    ) -> None:
+        """
+        Present a discovered fact (or carried item) to an NPC.
+
+        Hard evidence applies interrogation pressure — more if the fact is
+        part of the chain that actually proves the case. This is the payoff
+        loop for close inspection: what you find, you can use.
+        """
+        discovery = self._find_discovery(query, state)
+
+        # Fall back to showing a carried item as free dialogue
+        if discovery is None:
+            query_lower = query.lower()
+            item = next(
+                (i for i in state.inventory if query_lower in str(i).lower()),
+                None,
+            )
+            if item is None:
+                self.renderer.render_error(
+                    f"You have nothing like '{query}' to show. "
+                    "Check 'case' for what you've gathered."
+                )
+                self.renderer.wait_for_key()
+                return
+            self.handle_free_dialogue(
+                character,
+                f"[The detective shows you: {item}]",
+                state,
+            )
+            self.renderer.wait_for_key()
+            return
+
+        self.renderer.render_narration(
+            f"You lay it out for {character.name}: {discovery.description}"
+        )
+
+        # Pressure: hard evidence rattles; case-proving evidence rattles more
+        pressure = 0
+        if discovery.is_evidence:
+            pressure = SHOW_EVIDENCE_PRESSURE_AMOUNT
+            if (
+                state.spine
+                and discovery.fact_id in state.spine.true_resolution.evidence_chain
+            ):
+                pressure = SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT
+
+        cracked = character.apply_pressure(pressure) if pressure else False
+
+        if cracked and character.secret_truth:
+            self.renderer.render_narration(
+                f"{character.name} stares at the evidence. Something behind "
+                "their eyes gives way."
+            )
+            self.show_dialogue(
+                character,
+                f"Where did you... Fine. FINE. {character.secret_truth}",
+                "desperately",
+            )
+        else:
+            self.handle_free_dialogue(
+                character,
+                f"[The detective shows you evidence: {discovery.description}]",
+                state,
+            )
+
+        # Record the confrontation in memories and the world
+        char_memory = state.memory.get_character_memory(character.id)
+        if char_memory:
+            char_memory.record_player_interaction(
+                timestamp=state.memory.current_time,
+                interaction_type="shown_evidence",
+                player_tone="pressing",
+                outcome="cracked" if cracked else "held_firm",
+                trust_change=0,
+                topic=discovery.description[:50],
+            )
+        state.world_state.generation_memory.record_dialogue(
+            npc_id=character.id,
+            player_said=f"[showed evidence: {discovery.description[:80]}]",
+            npc_response="confessed" if cracked else "reacted",
+            location_id=state.current_location_id,
+            timestamp=state.memory.current_time,
+        )
+
+        self.renderer.wait_for_key()
 
     def handle_threaten(self, character: Character, state: 'GameState') -> None:
         """Handle threatening a character."""

@@ -140,7 +140,12 @@ Respond with JSON only:
     "discovery": {{
         "fact_id": "short_snake_case_id",
         "description": "the specific thing found",
-        "is_evidence": true/false
+        "is_evidence": true/false,
+        "reveals_object": {{
+            "label": "Torn Matchbook",
+            "type": "item|evidence|object|container",
+            "description": "what this new object looks like"
+        }} or null
     }} or null
 }}
 
@@ -149,7 +154,11 @@ RULES:
 2. detail_hooks are physical features on the object (e.g. "the scratched hinge"),
    each 2-4 words, lowercase.
 3. Every layer must reveal something NEW that the earlier layers did not mention.
-4. Stay consistent with everything already established about the object."""
+4. Stay consistent with everything already established about the object.
+5. If the discovery is a DISTINCT PHYSICAL THING that could be picked up or
+   examined on its own (a hidden note, a black box wired in, a dropped
+   cufflink), set discovery.reveals_object so it enters the scene.
+   If the discovery is just a trace or observation, set reveals_object null."""
 
     def _build_user_prompt(
         self,

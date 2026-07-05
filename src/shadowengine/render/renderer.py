@@ -129,6 +129,26 @@ class Renderer:
                 print(f"  - {item}")
         print()
 
+    def render_case_file(self, lines: list) -> None:
+        """Render the detective's case file."""
+        width = min(self.width - 2, 72)
+        print()
+        print("  " + "=" * width)
+        print("  " + "CASE FILE".center(width))
+        print("  " + "=" * width)
+        for line in lines:
+            if not line:
+                print()
+                continue
+            # Preserve leading indentation through the word wrap
+            indent = len(line) - len(line.lstrip())
+            prefix = " " * indent
+            for wrapped in self._word_wrap(line.strip(), width - indent - 2):
+                print(f"  {prefix}{wrapped}")
+                prefix = " " * (indent + 2)
+        print("  " + "=" * width)
+        print()
+
     def render_zoom_view(
         self,
         target_name: str,

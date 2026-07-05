@@ -225,9 +225,34 @@ def validate_detail_layer_response(data: dict) -> dict:
                 "fact_id": fact_id or f"detail_{abs(hash(disc_desc)) % 10**8}",
                 "description": disc_desc[:MAX_DETAIL_DESCRIPTION_LENGTH],
                 "is_evidence": bool(discovery.get("is_evidence", False)),
+                "reveals_object": _validate_revealed_object(
+                    discovery.get("reveals_object")
+                ),
             }
 
     return normalized
+
+
+_REVEALED_OBJECT_TYPES = {"item", "evidence", "object", "container"}
+
+
+def _validate_revealed_object(data) -> Optional[dict]:
+    """Validate a physical object revealed by a discovery (or None)."""
+    if not isinstance(data, dict):
+        return None
+    label = str(data.get("label", "")).strip()
+    if not label:
+        return None
+
+    obj_type = str(data.get("type", "evidence")).lower()
+    if obj_type not in _REVEALED_OBJECT_TYPES:
+        obj_type = "evidence"
+
+    return {
+        "label": label[:40],
+        "type": obj_type,
+        "description": str(data.get("description", "")).strip()[:300],
+    }
 
 
 MAX_PLAYER_INPUT_LENGTH = 500

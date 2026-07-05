@@ -64,6 +64,7 @@ class CommandHandler:
             CommandType.QUIT: lambda: self._handle_quit(state),
             CommandType.HELP: lambda: self._show_text(self.parser.get_help_text()),
             CommandType.INVENTORY: lambda: self._show_inventory(state),
+            CommandType.CASE: lambda: self._handle_case(state),
             CommandType.WAIT: lambda: self._handle_wait(state, config),
             CommandType.SAVE: lambda: self._handle_save(state, config),
             CommandType.LOAD: lambda: self._handle_load(state, config),
@@ -170,6 +171,57 @@ class CommandHandler:
     def _show_inventory(self, state: 'GameState') -> None:
         """Show inventory and wait for key."""
         self.renderer.render_inventory(state.inventory)
+        self.renderer.wait_for_key()
+
+    def _handle_case(self, state: 'GameState') -> None:
+        """Show the case file: the case, leads, evidence, and notes."""
+        lines = []
+
+        if state.spine:
+            lines.append("THE CASE:")
+            lines.append(f"  {state.spine.conflict_description}")
+            lines.append("")
+
+            revealed = state.spine.revealed_facts
+            total = len(state.spine.revelations)
+            lines.append(f"LEADS ({len(revealed)}/{total} uncovered):")
+            for revelation in state.spine.revelations:
+                if revelation.id in revealed:
+                    lines.append(f"  [X] {revelation.description}")
+                else:
+                    lines.append(f"  [ ] ??? — {revelation.source}")
+            lines.append("")
+
+        discoveries = list(state.memory.player.discoveries.values())
+        evidence = [d for d in discoveries if d.is_evidence]
+        notes = [d for d in discoveries if not d.is_evidence]
+
+        lines.append(f"EVIDENCE ({len(evidence)}):")
+        if evidence:
+            for d in evidence:
+                lines.append(f"  - {d.description} [{d.source}; {d.location}]")
+        else:
+            lines.append("  (Nothing solid yet. Examine things. Look closer.)")
+
+        if notes:
+            lines.append("")
+            lines.append("NOTES:")
+            for d in notes[-10:]:
+                lines.append(f"  - {d.description}")
+
+        talked_to = state.memory.player.talked_to
+        if talked_to:
+            lines.append("")
+            names = [
+                state.characters[cid].name if cid in state.characters else cid
+                for cid in talked_to
+            ]
+            lines.append(f"PEOPLE INTERVIEWED: {', '.join(sorted(names))}")
+
+        lines.append("")
+        lines.append("(In conversation, 'show <evidence>' puts it on the table.)")
+
+        self.renderer.render_case_file(lines)
         self.renderer.wait_for_key()
 
     def _show_error(self, message: str) -> None:

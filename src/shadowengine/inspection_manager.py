@@ -21,7 +21,7 @@ from .inspection import (
     InspectableObject, DetailLayer, ZoomLevel, ZoomConstraints,
     get_tool, get_best_tool_for_inspection,
 )
-from .interaction import HotspotType
+from .interaction import Hotspot, HotspotType
 from .memory import EventType
 from .generation.detail_handler import LLMDetailHandler
 
@@ -626,6 +626,13 @@ class InspectionManager:
             if state.spine:
                 state.spine.make_revelation(fact_id)
 
+            # A find that is a distinct physical thing enters the scene
+            # as its own hotspot — inspectable and takeable in turn
+            if detail and detail.get("reveals_object"):
+                self._spawn_hotspot(
+                    detail["reveals_object"], fact_id, hotspot, location,
+                )
+
         # Grant found items
         for item in result.new_items:
             key = (hotspot.id, item)
@@ -650,6 +657,58 @@ class InspectionManager:
         if config.time_passes_on_action:
             state.memory.advance_time(config.time_units_per_action)
             self.engine.advance_time(float(config.time_units_per_action))
+
+    _SPAWN_TYPE_MAP = {
+        "item": HotspotType.ITEM,
+        "evidence": HotspotType.EVIDENCE,
+        "object": HotspotType.OBJECT,
+        "container": HotspotType.CONTAINER,
+    }
+
+    def _spawn_hotspot(
+        self,
+        revealed: dict,
+        fact_id: str,
+        source_hotspot: 'Hotspot',
+        location: 'Location',
+    ) -> None:
+        """Materialize a discovered object as a new hotspot in the scene."""
+        label = revealed["label"]
+
+        # Never duplicate: the same discovery only spawns once, and don't
+        # shadow an existing hotspot with the same name
+        spawn_id = f"{source_hotspot.id}_found_{fact_id[-24:]}"
+        if any(hs.id == spawn_id for hs in location.hotspots):
+            return
+        if location.get_hotspot_by_label(label):
+            return
+
+        hotspot_type = self._SPAWN_TYPE_MAP.get(
+            revealed.get("type", "evidence"), HotspotType.EVIDENCE
+        )
+        description = (
+            revealed.get("description")
+            or f"Found while inspecting {definite_label(source_hotspot.label)}."
+        )
+
+        x, y = source_hotspot.position
+        new_hotspot = Hotspot(
+            id=spawn_id,
+            label=label,
+            hotspot_type=hotspot_type,
+            position=(x + 2, y + 1),
+            description=description,
+            examine_text=description,
+        )
+        if hotspot_type in (HotspotType.ITEM, HotspotType.EVIDENCE):
+            new_hotspot.gives_item = label.lower()
+            new_hotspot.take_text = f"You carefully collect {definite_label(label)}."
+
+        location.add_hotspot(new_hotspot)
+        self.renderer.render_narration(
+            f"New point of interest: {label}. "
+            f"({definite_label(label)} can now be examined on its own.)"
+        )
 
     def _record_witnessed(
         self, hotspot: 'Hotspot', state, location: 'Location'

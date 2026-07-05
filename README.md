@@ -21,6 +21,8 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Behavioral Circuits** - Objects respond to signals (kick, push, press) with cascading physical effects
 - **NPC Intelligence** - Rumor propagation, gossip between NPCs, and subjective NPC memory
 - **Look Closer** - Progressive zoom on anything: four depth levels of LLM-generated detail, tool-gated magnification, hidden discoveries, and darkness that actually matters
+- **Discoveries Become the World** - A find at high zoom can materialize as a new object in the scene, itself inspectable and collectible
+- **Evidence-Driven Interrogation** - A case file tracks every lead and clue; 'show \<evidence\>' puts a discovery on the table mid-conversation and applies real pressure
 
 ### Planned (code exists, not yet integrated into game loop)
 
@@ -199,6 +201,40 @@ by the LLM on first look and then remembered, so the world stays
 consistent. Depth is tool-gated (a magnifying glass unlocks the finest
 level), darkness blocks close inspection without a light, and NPCs who
 watch you scrutinize something will remember it — and talk.
+
+Discoveries feed the whole detective loop. A find at high zoom can
+materialize as a new hotspot in the scene (that wire recorder behind
+the baseboard is now an object you can take). Everything you've
+gathered lives in the case file:
+
+```
+> case
+
+  ============================ CASE FILE ============================
+  THE CASE:
+    A body was found in the alley behind O'Malley's Bar...
+
+  LEADS (1/4 uncovered):
+    [X] Someone saw the victim with another person
+    [ ] ??? — Examine the alley carefully
+
+  EVIDENCE (2):
+    - Fresh pry marks around the desk lock [close inspection; office]
+    - A wire recorder, still warm [close inspection of Your Desk; office]
+  ===================================================================
+
+> talk to the councilman
+> show wire recorder
+
+  You lay it out for Councilman Vincent Harrow: a wire recorder,
+  still warm...
+
+Councilman Harrow says nervously:
+  "You... where did you get that? I've never seen it before in my life."
+```
+
+Showing hard evidence applies interrogation pressure — enough of it
+and suspects crack.
 
 ---
 

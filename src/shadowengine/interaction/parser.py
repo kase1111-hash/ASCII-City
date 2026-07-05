@@ -18,6 +18,7 @@ class CommandType(Enum):
     USE = "use"
     GO = "go"
     INVENTORY = "inventory"
+    CASE = "case"
     WAIT = "wait"
     HELP = "help"
     SAVE = "save"
@@ -79,6 +80,9 @@ class CommandParser:
             ],
             CommandType.INVENTORY: [
                 "inventory", "inv", "items", "i"
+            ],
+            CommandType.CASE: [
+                "case", "casebook", "notes", "journal", "clues", "evidence"
             ],
             CommandType.WAIT: [
                 "wait", "rest", "pass", "z"
@@ -310,6 +314,7 @@ Available Commands:
   use [item] on [thing] - Use an item on something
   go [direction]    - Move to another location
   inventory         - Check your items
+  case              - Review your case file: leads, evidence, notes
   wait              - Pass time
   help              - Show this help
   save              - Save your game
