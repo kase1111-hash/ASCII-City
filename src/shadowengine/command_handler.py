@@ -40,6 +40,7 @@ class CommandHandler:
         location_manager: LocationManager,
         conversation_manager: ConversationManager,
         signal_router=None,
+        inspection_manager=None,
     ):
         self.parser = parser
         self.renderer = renderer
@@ -47,6 +48,7 @@ class CommandHandler:
         self.location_manager = location_manager
         self.conversation_manager = conversation_manager
         self.signal_router = signal_router
+        self.inspection_manager = inspection_manager
 
     def handle_command(
         self,
@@ -71,6 +73,17 @@ class CommandHandler:
         if command.command_type in simple_handlers:
             simple_handlers[command.command_type]()
             return
+
+        # Close-inspection commands (look closer, zoom, step back, look
+        # under X, focus on X, use magnifying glass on X) route to the
+        # inspection system before anything else sees them.
+        if (
+            self.inspection_manager
+            and command.raw_input
+            and self.inspection_manager.wants_inspection(command.raw_input)
+        ):
+            if self.inspection_manager.handle(command.raw_input, state, config):
+                return
 
         current_location = state.locations.get(state.current_location_id)
 
@@ -288,11 +301,29 @@ class CommandHandler:
 
         self.renderer.wait_for_key()
 
+    _INSPECTABLE_TYPES = {
+        HotspotType.OBJECT, HotspotType.EVIDENCE,
+        HotspotType.ITEM, HotspotType.CONTAINER,
+    }
+
     def _handle_examine(self, hotspot: Hotspot, state: 'GameState', config: GameConfig) -> None:
         """Handle examining something."""
+        first_look = not hotspot.discovered
         hotspot.mark_discovered()
 
         self.renderer.render_action_result(hotspot.examine_text or hotspot.description)
+
+        # First examine of a physical object: teach the zoom mechanic
+        if (
+            first_look
+            and self.inspection_manager
+            and hotspot.hotspot_type in self._INSPECTABLE_TYPES
+        ):
+            from .inspection_manager import definite_label
+            self.renderer.render_text(
+                f"(Something about {definite_label(hotspot.label)} might "
+                "reward a closer look. Try 'look closer'.)"
+            )
 
         # If hotspot has a circuit, send a LOOK signal for dynamic response
         if hotspot.circuit:

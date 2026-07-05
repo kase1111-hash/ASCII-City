@@ -84,9 +84,10 @@ class InspectionParser:
             "study", "observe", "watch", "regard", "scrutinize"
         }
 
-        # Zoom in phrases
+        # Zoom in phrases (matched as whole words — bare "in" is excluded
+        # because it appears inside ordinary commands like "look in the drawer")
         self.zoom_in_phrases = {
-            "closer", "closely", "more closely", "in", "nearer",
+            "closer", "closely", "more closely", "nearer",
             "zoom in", "zoom", "magnify", "enlarge", "enhance"
         }
 
@@ -218,21 +219,29 @@ class InspectionParser:
 
         return None
 
+    @staticmethod
+    def _has_phrase(phrase: str, text: str) -> bool:
+        """Whole-word phrase match (substring matching falsely fires on
+        e.g. 'in' inside 'examine' or 'out' inside 'about')."""
+        return re.search(rf"\b{re.escape(phrase)}\b", text) is not None
+
     def _check_zoom_command(self, text: str) -> Optional[Tuple[InspectionIntent, Optional[str]]]:
         """Check for zoom in/out command."""
-        # Check zoom out first (more specific)
-        for phrase in self.zoom_out_phrases:
-            if phrase in text:
+        # Check zoom out first (more specific); longest phrases first so
+        # "zoom out" wins over bare "out"
+        for phrase in sorted(self.zoom_out_phrases, key=len, reverse=True):
+            if self._has_phrase(phrase, text):
                 return (InspectionIntent.ZOOM_OUT, None)
 
         # Check zoom in
-        for phrase in self.zoom_in_phrases:
-            if phrase in text:
+        for phrase in sorted(self.zoom_in_phrases, key=len, reverse=True):
+            if self._has_phrase(phrase, text):
                 # Try to extract target
                 target = None
                 patterns = [
-                    rf"(?:look|zoom|examine)\s+{phrase}\s+(?:at|on)?\s*(.+)",
-                    rf"(?:look|zoom|examine)\s+(?:at|on)?\s*(.+?)\s+{phrase}",
+                    rf"(?:look|zoom|examine|peer)\s+{re.escape(phrase)}\s+(?:at|on)?\s*(.+)",
+                    rf"^{re.escape(phrase)}\s+(?:at|on)?\s*(.+)",
+                    rf"(?:look|zoom|examine)\s+(?:at|on)?\s*(.+?)\s+{re.escape(phrase)}",
                 ]
                 for pattern in patterns:
                     match = re.search(pattern, text)
@@ -316,7 +325,7 @@ class InspectionParser:
 
         # Check for zoom words
         for phrase in self.zoom_in_phrases | self.zoom_out_phrases:
-            if phrase in text:
+            if self._has_phrase(phrase, text):
                 return True
 
         # Check for tool names

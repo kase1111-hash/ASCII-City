@@ -20,10 +20,10 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Atmospheric Simulation** - Weather, time of day, and pressure affect the world
 - **Behavioral Circuits** - Objects respond to signals (kick, push, press) with cascading physical effects
 - **NPC Intelligence** - Rumor propagation, gossip between NPCs, and subjective NPC memory
+- **Look Closer** - Progressive zoom on anything: four depth levels of LLM-generated detail, tool-gated magnification, hidden discoveries, and darkness that actually matters
 
 ### Planned (code exists, not yet integrated into game loop)
 
-- **Zoom Inspection** - Progressive detail reveal with tools
 - **ASCII Art Studio** - Player-created art editor (deferred)
 - **Audio / TTS** - Text-to-speech and ambient audio (deferred)
 - **Modding System** - Theme packs, custom scenarios, content registry (deferred)
@@ -52,7 +52,7 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 | Environment / Weather | Working | Yes |
 | Behavioral Circuits | Working | Yes (used in Dockside Job scenario) |
 | NPC Intelligence & Rumors | Working | Yes |
-| Inspection / Zoom | Tested, isolated | No |
+| Inspection / Zoom | Working | Yes |
 | Audio / TTS | Deferred | -- |
 | ASCII Art Studio | Deferred | -- |
 | Modding System | Deferred | -- |
@@ -153,24 +153,52 @@ On Windows, you can also use `build.bat` (setup) and `run.bat` (run game).
 ## Quick Example
 
 ```
-> kick the rusty button
+> examine the desk
 
-The button sparks briefly, then sticks halfway. A grinding sound
-echoes through the shaft. The elevator shudders but doesn't move.
+A folder sits on top: 'WEBB, Marcus - Deceased'. Body found in
+the alley behind O'Malley's Bar. No witnesses... yet.
 
-A rat in the corner freezes, ears perked toward the noise.
+  (Something about your desk might reward a closer look. Try 'look closer'.)
 
-> examine the button
+> look closer at the desk
 
-The button housing is corroded, green patina spreading
-across the brass. Wires peek through a crack in the casing.
+  [Zoom 2 ##--] DETAILED VIEW -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    The desktop is scarred with overlapping ring stains and a fan
+    of paper cuts in the leather blotter. The brass drawer pull
+    hangs slightly loose.
 
-> use screwdriver on button
+    You could focus on: the loose drawer pull, the leather blotter
 
-You pry open the casing. The wiring inside is a mess of splices
-and exposed copper. One wire leads to a suspicious black box
-that wasn't part of the original installation...
+    (You could look closer still.)
+
+> look closer
+
+  [Zoom 3 ###-] CLOSE INSPECTION -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Up close, the wood grain around the lock plate is scored with
+    fresh scratches - bright, unweathered wood shows through the
+    varnish.
+
+    (Finer detail would take a magnifying glass.)
+
+  DISCOVERED: Fresh pry marks around the desk lock -
+  someone searched this desk recently.
+
+> use magnifying glass on the desk
+
+  [Zoom 4 ####] MAGNIFIED VIEW -- Your Desk
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Under the lens, gray fibers are caught in the lock plate
+    screws - wool, expensive weave. Whoever pried at this drawer
+    wore fine gloves.
 ```
+
+Every object in the world supports this: detail layers are generated
+by the LLM on first look and then remembered, so the world stays
+consistent. Depth is tool-gated (a magnifying glass unlocks the finest
+level), darkness blocks close inspection without a light, and NPCs who
+watch you scrutinize something will remember it — and talk.
 
 ---
 

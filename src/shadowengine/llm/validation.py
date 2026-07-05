@@ -174,6 +174,62 @@ def validate_free_exploration_response(data: dict) -> dict:
     }
 
 
+MAX_DETAIL_DESCRIPTION_LENGTH = 800
+MAX_DETAIL_HOOKS = 3
+
+
+def validate_detail_layer_response(data: dict) -> dict:
+    """
+    Validate and normalize an inspection detail layer response.
+
+    Expected schema:
+    {
+        "description": str (required) - sensory detail visible at this zoom,
+        "detail_hooks": list[str] (optional) - features worth focusing on,
+        "discovery": {                        (optional) - a hidden find
+            "fact_id": str,
+            "description": str,
+            "is_evidence": bool
+        }
+    }
+    """
+    if not isinstance(data, dict):
+        raise ValidationError(f"Expected dict, got {type(data).__name__}")
+
+    description = data.get("description", "")
+    if not description or not isinstance(description, str):
+        raise ValidationError("Missing required field: description")
+
+    normalized = {
+        "description": description.strip()[:MAX_DETAIL_DESCRIPTION_LENGTH],
+        "detail_hooks": [],
+        "discovery": None,
+    }
+
+    hooks = data.get("detail_hooks", [])
+    if isinstance(hooks, list):
+        normalized["detail_hooks"] = [
+            str(h).strip()[:60] for h in hooks[:MAX_DETAIL_HOOKS]
+            if isinstance(h, str) and h.strip()
+        ]
+
+    discovery = data.get("discovery")
+    if isinstance(discovery, dict):
+        disc_desc = str(discovery.get("description", "")).strip()
+        if disc_desc:
+            fact_id = str(discovery.get("fact_id", "")).strip().lower()
+            fact_id = "".join(
+                ch if ch.isalnum() else "_" for ch in fact_id
+            ).strip("_")[:48]
+            normalized["discovery"] = {
+                "fact_id": fact_id or f"detail_{abs(hash(disc_desc)) % 10**8}",
+                "description": disc_desc[:MAX_DETAIL_DESCRIPTION_LENGTH],
+                "is_evidence": bool(discovery.get("is_evidence", False)),
+            }
+
+    return normalized
+
+
 MAX_PLAYER_INPUT_LENGTH = 500
 
 # Phrases commonly used in prompt injection attempts

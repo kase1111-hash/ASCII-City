@@ -299,7 +299,12 @@ class CommandParser:
         return """
 Available Commands:
   [number]          - Interact with numbered hotspot
-  examine [thing]   - Look at something closely
+  examine [thing]   - Look at something
+  look closer [at thing] - Zoom in for finer detail (repeat to go deeper)
+  step back         - Zoom back out
+  look under/behind [thing] - Check around an object
+  focus on [feature] - Study a specific detail you noticed
+  use magnifying glass on [thing] - Magnified inspection
   talk [person]     - Start conversation with someone
   take [item]       - Pick up an item
   use [item] on [thing] - Use an item on something

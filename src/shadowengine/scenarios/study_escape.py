@@ -302,6 +302,16 @@ def create_study_escape(seed: int = None) -> Game:
                     "Body found in the alley behind O'Malley's Bar. No witnesses... yet."
     ))
 
+    office.add_hotspot(Hotspot.create_item(
+        id="hs_magnifier",
+        label="Magnifying Glass",
+        position=(20, 12),
+        description="Your trusty brass magnifying glass, worn smooth by years of use.",
+        item_id="magnifying glass",
+        take_text="You pocket the magnifying glass. In this business, "
+                  "the truth lives in the details.",
+    ))
+
     office.add_hotspot(Hotspot(
         id="hs_window",
         label="Window",
@@ -605,8 +615,8 @@ def run_study_escape():
     print("A body in the alley. A city full of secrets.")
     print("Everyone's got something to hide. Find the truth.")
     print()
-    print("Commands: examine [object], talk [person], go [place]")
-    print("          threaten, accuse, inventory, wait, help")
+    print("Commands: examine [object], look closer, talk [person], go [place]")
+    print("          use magnifying glass on [object], threaten, accuse, help")
     print()
     print("The LLM generates NPC dialogue and narrative dynamically.")
     print("Every playthrough tells a different story.")
