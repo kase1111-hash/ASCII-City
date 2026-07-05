@@ -23,6 +23,9 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Look Closer** - Progressive zoom on anything: four depth levels of LLM-generated detail, tool-gated magnification, hidden discoveries, and darkness that actually matters
 - **Discoveries Become the World** - A find at high zoom can materialize as a new object in the scene, itself inspectable and collectible
 - **Evidence-Driven Interrogation** - A case file tracks every lead and clue; 'show \<evidence\>' puts a discovery on the table mid-conversation and applies real pressure
+- **The World Fights Back** - Find evidence in front of witnesses and leave it behind, and the culprit gets to it first. The absence becomes a clue of its own
+- **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
+- **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
 
 ### Planned (code exists, not yet integrated into game loop)
 
@@ -235,6 +238,23 @@ Councilman Harrow says nervously:
 
 Showing hard evidence applies interrogation pressure — enough of it
 and suspects crack.
+
+And the city pushes back. Find something incriminating while someone's
+watching, then leave it uncollected? Word travels. Come back and it's
+gone — but the theft itself is evidence, recorded in world memory as
+truth whether or not you ever pin it on them:
+
+```
+> (returning to your office)
+
+  Something's off. The Black Box is gone — someone got here
+  before you. They knew you'd found it.
+
+  DISCOVERED: The Black Box was taken. Someone is covering
+  their tracks.
+```
+
+Collect evidence fast, or investigate when no one is watching.
 
 ---
 

@@ -55,6 +55,9 @@ class Revelation:
     importance: int             # 1-3, how critical to solution
     prerequisites: list[str] = field(default_factory=list)  # Other revelations needed first
     source: str = ""           # How to discover (examine X, talk to Y, etc.)
+    # Optional: accumulating evidence discoveries at this location can
+    # satisfy the revelation (see SPINE_EVIDENCE_THRESHOLD)
+    location_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -62,7 +65,8 @@ class Revelation:
             "description": self.description,
             "importance": self.importance,
             "prerequisites": self.prerequisites,
-            "source": self.source
+            "source": self.source,
+            "location_id": self.location_id
         }
 
     @classmethod

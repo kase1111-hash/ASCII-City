@@ -119,6 +119,7 @@ class InspectionParser:
             "glasses": "spectacles",
             "reading glasses": "spectacles",
             "uv light": "uv_light",
+            "uv lamp": "uv_light",
             "blacklight": "uv_light",
             "ultraviolet": "uv_light",
             "mirror": "mirror",

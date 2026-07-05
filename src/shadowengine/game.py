@@ -27,6 +27,7 @@ from .signal_router import SignalRouter
 from .npc_intelligence import PropagationEngine
 from .event_bridge import GameEventBridge
 from .inspection_manager import InspectionManager
+from .evidence_watch import EvidenceWatch
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -59,6 +60,7 @@ class GameState:
         self.world_state: WorldState = WorldState()
         self.propagation_engine: PropagationEngine = PropagationEngine()
         self.event_bridge: GameEventBridge = GameEventBridge(self.propagation_engine)
+        self.evidence_watch: EvidenceWatch = EvidenceWatch()
 
 
 class Game:
@@ -260,6 +262,9 @@ class Game:
             return
 
         self.state.memory.player.visit_location(location.id)
+
+        # The world's counter-moves: tampered evidence, missing objects
+        self.state.evidence_watch.update(self.state, self.renderer)
 
         scene = Scene(location=location, width=self.config.screen_width)
         self.renderer.render_scene(scene)

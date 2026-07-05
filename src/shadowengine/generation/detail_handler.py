@@ -63,6 +63,7 @@ class LLMDetailHandler:
         is_evidence: bool = False,
         clue_hint: Optional[str] = None,
         aspect: Optional[str] = None,
+        scale_override: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Generate one detail layer.
@@ -76,12 +77,14 @@ class LLMDetailHandler:
             is_evidence: Whether this object is a known clue
             clue_hint: Hidden-truth context the discovery should connect to
             aspect: Optional viewpoint ("under it", "behind it", "the carvings")
+            scale_override: Replaces the zoom-scale guidance entirely
+                (sensory tools see by their own rules, not by distance)
         """
         system_prompt = self._build_system_prompt(zoom_value, is_evidence)
         user_prompt = self._build_user_prompt(
             object_name, base_description, zoom_value,
             location_name, location_description,
-            prior_layers or [], clue_hint, aspect,
+            prior_layers or [], clue_hint, aspect, scale_override,
         )
 
         response = self.llm_client.chat([
@@ -170,8 +173,11 @@ RULES:
         prior_layers: list[str],
         clue_hint: Optional[str],
         aspect: Optional[str],
+        scale_override: Optional[str] = None,
     ) -> str:
-        scale = ZOOM_SCALE_GUIDANCE.get(zoom_value, ZOOM_SCALE_GUIDANCE[3])
+        scale = scale_override or ZOOM_SCALE_GUIDANCE.get(
+            zoom_value, ZOOM_SCALE_GUIDANCE[3]
+        )
 
         parts = [f"OBJECT: {object_name}"]
         if base_description:

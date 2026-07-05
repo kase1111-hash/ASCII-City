@@ -21,6 +21,7 @@ from .inspection import (
     InspectableObject, DetailLayer, ZoomLevel, ZoomConstraints,
     get_tool, get_best_tool_for_inspection,
 )
+from .config import SPINE_EVIDENCE_THRESHOLD
 from .interaction import Hotspot, HotspotType
 from .memory import EventType
 from .generation.detail_handler import LLMDetailHandler
@@ -44,6 +45,39 @@ def definite_label(name: str) -> str:
     if lower.split()[0] in _ARTICLES:
         return lower
     return f"the {lower}"
+
+
+def check_location_leads(state, renderer: 'Renderer') -> None:
+    """
+    Piece leads together from accumulated evidence.
+
+    A revelation tagged with a location_id is satisfied once the player
+    has gathered enough evidence discoveries at that location — so clues
+    the LLM invented on the spot can still advance the authored case.
+    """
+    spine = state.spine
+    if not spine:
+        return
+
+    counts: dict[str, int] = {}
+    for discovery in state.memory.player.discoveries.values():
+        if discovery.is_evidence:
+            counts[discovery.location] = counts.get(discovery.location, 0) + 1
+
+    for revelation in spine.revelations:
+        location_id = getattr(revelation, "location_id", None)
+        if not location_id or revelation.id in spine.revealed_facts:
+            continue
+        if counts.get(location_id, 0) < SPINE_EVIDENCE_THRESHOLD:
+            continue
+        # make_revelation enforces prerequisites; if they aren't met yet,
+        # this quietly retries the next time evidence lands here
+        if spine.make_revelation(revelation.id):
+            renderer.render_narration(
+                "The pieces click together. What you've found here "
+                "adds up to something."
+            )
+            renderer.render_discovery(f"LEAD UNCOVERED: {revelation.description}")
 
 
 def guess_material(text: str) -> Optional[str]:
@@ -77,12 +111,40 @@ TOOL_KEYWORDS = [
     ("flashlight", "lantern"),
     ("torch", "lantern"),
     ("uv light", "uv_light"),
+    ("uv lamp", "uv_light"),
     ("blacklight", "uv_light"),
     ("spectacle", "spectacles"),
     ("stethoscope", "stethoscope"),
     ("mirror", "mirror"),
     ("probe", "probe"),
 ]
+
+# Sensory tools reveal what zooming can't: each generates its own
+# tool-flavored detail instead of stepping through zoom levels.
+# (Magnifying tools — glass, loupe, telescope — use the zoom path.)
+TOOL_ASPECTS = {
+    "uv_light": (
+        "it under ultraviolet light — reveal ONLY what UV shows: cleaned "
+        "stains, organic traces, invisible marks, treated surfaces",
+        "You sweep the ultraviolet lamp across {label}. The visible world "
+        "falls away...",
+    ),
+    "stethoscope": (
+        "it through a stethoscope pressed against it — reveal ONLY what can "
+        "be heard: mechanisms, hollows, movement, ticking, flowing",
+        "You press the stethoscope to {label} and close your eyes...",
+    ),
+    "mirror": (
+        "its hidden faces using an angled mirror — reveal ONLY what is "
+        "normally out of sight: undersides, back panels, recesses",
+        "You angle the mirror to see what {label} keeps hidden...",
+    ),
+    "probe": (
+        "its gaps and openings explored with a thin probe — reveal ONLY "
+        "what touch finds: obstructions, hidden catches, lodged objects",
+        "You work the thin probe into {label}...",
+    ),
+}
 
 # First words that always mean movement, never inspection
 _MOVEMENT_WORDS = {
@@ -275,6 +337,11 @@ class InspectionManager:
             self.renderer.render_error(f"You don't have a {nice_name}.")
             return None
 
+        # Sensory tools (UV, stethoscope, mirror, probe) reveal their own
+        # kind of detail rather than stepping through zoom levels
+        if tool.id in TOOL_ASPECTS:
+            return self._do_tool_aspect(tool, obj, hotspot, state)
+
         current = self.engine.zoom_manager.get_current_zoom(obj.id)
         target_value = min(
             current.value + tool.zoom_bonus + 1, ZoomLevel.FINE.value
@@ -291,6 +358,66 @@ class InspectionManager:
 
         self._tool_line = tool.get_inspection_text(obj.name)
         return self.engine.inspect_object(obj.id, ZoomLevel(target_value), tool)
+
+    def _do_tool_aspect(
+        self, tool, obj: InspectableObject, hotspot: 'Hotspot', state,
+    ) -> InspectionResult:
+        """A sensory tool's unique view of an object (cached per pair)."""
+        aspect_prompt, lead_template = TOOL_ASPECTS[tool.id]
+        label = definite_label(obj.name)
+        lead_in = lead_template.format(label=label)
+
+        cache_key = (obj.id, f"tool:{tool.id}")
+        data = self._aspect_cache.get(cache_key)
+        if data is None:
+            location = state.locations.get(state.current_location_id)
+            data = self.detail_handler.generate_layer(
+                object_name=obj.name,
+                base_description=obj.base_description,
+                zoom_value=ZoomLevel.FINE.value,
+                location_name=location.name if location else "",
+                location_description=location.description if location else "",
+                prior_layers=self._layer_descriptions(obj),
+                is_evidence=self._is_evidence(hotspot),
+                clue_hint=self._clue_hint(hotspot),
+                aspect=aspect_prompt,
+                scale_override=(
+                    "THROUGH THE INSTRUMENT: describe only what this "
+                    "instrument can reveal — nothing the naked eye would see."
+                ),
+            )
+            if data is not None:
+                self._aspect_cache[cache_key] = data
+
+        if data is None:
+            result = InspectionResult(
+                success=True,
+                description=(
+                    f"{lead_in}\n\nNothing out of the ordinary presents "
+                    "itself this time."
+                ),
+                zoom_level=ZoomLevel.FINE,
+            )
+            result._verbatim = True
+            return result
+
+        new_facts = []
+        discovery = data.get("discovery")
+        if discovery:
+            fact_id = f"insp_{hotspot.id}_{discovery['fact_id']}"
+            self._fact_details[fact_id] = discovery
+            new_facts = [fact_id]
+
+        result = InspectionResult(
+            success=True,
+            description=f"{lead_in}\n\n{data['description']}",
+            zoom_level=ZoomLevel.FINE,
+            new_facts=new_facts,
+            tool_helped=True,
+            generated_details=data.get("detail_hooks", []),
+        )
+        result._verbatim = True
+        return result
 
     def _do_aspect(
         self, command, obj: InspectableObject, hotspot: 'Hotspot', state,
@@ -630,8 +757,12 @@ class InspectionManager:
             # as its own hotspot — inspectable and takeable in turn
             if detail and detail.get("reveals_object"):
                 self._spawn_hotspot(
-                    detail["reveals_object"], fact_id, hotspot, location,
+                    detail["reveals_object"], fact_id, hotspot, location, state,
                 )
+
+        # Enough evidence in one place can crack a lead in the case
+        if result.new_facts:
+            check_location_leads(state, self.renderer)
 
         # Grant found items
         for item in result.new_items:
@@ -671,6 +802,7 @@ class InspectionManager:
         fact_id: str,
         source_hotspot: 'Hotspot',
         location: 'Location',
+        state,
     ) -> None:
         """Materialize a discovered object as a new hotspot in the scene."""
         label = revealed["label"]
@@ -710,10 +842,27 @@ class InspectionManager:
             f"({definite_label(label)} can now be examined on its own.)"
         )
 
-    def _record_witnessed(
-        self, hotspot: 'Hotspot', state, location: 'Location'
-    ) -> None:
-        witnesses = [
+        # Found in front of witnesses? Word travels. Leave it here too
+        # long and someone with a secret will get to it first.
+        witnesses = self._witnesses_at(state, location, source_hotspot)
+        watch = getattr(state, 'evidence_watch', None)
+        if witnesses and watch is not None and state.spine:
+            watch.register(
+                hotspot_id=new_hotspot.id,
+                location_id=state.current_location_id,
+                label=label,
+                fact_id=fact_id,
+                witnesses=witnesses,
+                created_time=state.memory.current_time,
+            )
+
+    @staticmethod
+    def _witnesses_at(
+        state, location: 'Location', exclude: Optional['Hotspot'] = None,
+    ) -> list[str]:
+        """NPCs present who can see what the player is doing."""
+        exclude_id = exclude.target_id if exclude else None
+        return [
             hs.target_id
             for hs in location.hotspots
             if (
@@ -721,9 +870,14 @@ class InspectionManager:
                 and hs.target_id
                 and hs.target_id in state.characters
                 and hs.active
-                and hs.target_id != hotspot.target_id
+                and hs.target_id != exclude_id
             )
         ]
+
+    def _record_witnessed(
+        self, hotspot: 'Hotspot', state, location: 'Location'
+    ) -> None:
+        witnesses = self._witnesses_at(state, location, hotspot)
         if not witnesses:
             return
 
