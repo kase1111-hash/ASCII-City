@@ -8,7 +8,7 @@
 
 ShadowEngine is an AI-driven ASCII game engine where locations, dialogue, and interactions are generated dynamically by an LLM (Ollama or OpenAI). Instead of scripted stories, the engine uses natural language parsing and procedural generation to create an open-ended text adventure where the player can go anywhere and talk to anyone.
 
-The long-term goal is systemic emergence: behavioral circuits, NPC rumor networks, and layered memory producing stories no one pre-wrote. Right now the engine delivers LLM-driven exploration and dialogue with a three-layer memory system. See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
+The long-term goal is systemic emergence: behavioral circuits, NPC rumor networks, and layered memory producing stories no one pre-wrote. The engine now delivers LLM-driven exploration and dialogue backed by a three-layer memory system, signal-driven behavioral circuits, and NPC rumor propagation. See [REFOCUS_PLAN.md](REFOCUS_PLAN.md) for the integration roadmap.
 
 ## Key Features
 
@@ -18,12 +18,12 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **Procedural Location Generation** - New areas generated on-the-fly as the player explores
 - **NPC Dialogue** - LLM-generated character responses shaped by archetype and game state
 - **Atmospheric Simulation** - Weather, time of day, and pressure affect the world
-- **Zoom Inspection** - Progressive detail reveal with tools
+- **Behavioral Circuits** - Objects respond to signals (kick, push, press) with cascading physical effects
+- **NPC Intelligence** - Rumor propagation, gossip between NPCs, and subjective NPC memory
 
 ### Planned (code exists, not yet integrated into game loop)
 
-- **Behavioral Circuits** - Universal entity interaction model via signal processing
-- **NPC Intelligence** - Rumor propagation, social networks, subjective NPC memory
+- **Zoom Inspection** - Progressive detail reveal with tools
 - **ASCII Art Studio** - Player-created art editor (deferred)
 - **Audio / TTS** - Text-to-speech and ambient audio (deferred)
 - **Modding System** - Theme packs, custom scenarios, content registry (deferred)
@@ -35,24 +35,24 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 
 **Memory-First**: Every event is recorded in a three-layer memory system (world truth, character beliefs, player knowledge). Nothing meaningful happens without being remembered.
 
-**Systemic Emergence** (in progress): The engine is being refocused to wire behavioral circuits, NPC intelligence, and rumor networks into the game loop so that player actions produce cascading, unscripted consequences.
+**Systemic Emergence**: Behavioral circuits, NPC intelligence, and rumor networks are wired into the game loop — NPCs witness player actions, form subjective memories, and spread rumors, while interactive objects react to signals with cascading physical effects.
 
 ---
 
 ## Status
 
-**Refocusing** — Subsystems are built and tested; now wiring them into the game loop.
+**Refocusing** — Core subsystems are wired into the game loop; remaining modules are tested but isolated.
 
 | System | Status | Integrated |
 |--------|--------|:----------:|
 | Game Loop & Commands | Working | Yes |
 | LLM Location Generation | Working | Yes |
 | LLM NPC Dialogue | Working | Yes |
-| Three-Layer Memory | Working | Partial (player only) |
+| Three-Layer Memory | Working | Yes |
 | Environment / Weather | Working | Yes |
-| Behavioral Circuits | Tested, isolated | No |
-| NPC Intelligence & Rumors | Tested, isolated | No |
-| Inspection / Zoom | Working | Yes |
+| Behavioral Circuits | Working | Yes (used in Dockside Job scenario) |
+| NPC Intelligence & Rumors | Working | Yes |
+| Inspection / Zoom | Tested, isolated | No |
 | Audio / TTS | Deferred | -- |
 | ASCII Art Studio | Deferred | -- |
 | Modding System | Deferred | -- |
@@ -102,7 +102,7 @@ Specification documents are in [docs/specs/](docs/specs/).
 - **Interface**: Terminal / CMD / Shell
 - **Save System**: JSON memory snapshots
 - **Dependencies**: Zero for core game (pytest for testing)
-- **Tests**: ~2,100 active tests (deferred modules excluded)
+- **Tests**: ~2,200 active tests (deferred modules excluded)
 
 ---
 
@@ -139,7 +139,7 @@ The game requires an LLM backend for dynamic generation. By default it connects 
 ### Running Tests
 
 ```bash
-pytest                           # All active tests (~2,100)
+pytest                           # All active tests (~2,200)
 pytest -v                        # Verbose output
 pytest -m unit                   # Unit tests only
 pytest -m integration            # Integration tests only
@@ -160,9 +160,9 @@ echoes through the shaft. The elevator shudders but doesn't move.
 
 A rat in the corner freezes, ears perked toward the noise.
 
-> look closer at the button
+> examine the button
 
-[Zoom 1] The button housing is corroded, green patina spreading
+The button housing is corroded, green patina spreading
 across the brass. Wires peek through a crack in the casing.
 
 > use screwdriver on button
