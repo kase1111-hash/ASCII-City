@@ -28,6 +28,7 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **The Street Talks** - NPCs voice what the rumor network knows. Scrutinize a crime scene in front of the wrong person and someone across town will needle you about it
 - **A Culprit Who Runs** - Push a suspect near their breaking point and they change haunts to avoid you; push harder and they try to skip town on a countdown. Let them make it and the case goes cold
 - **The Framed Fight Back** - Expose a plant and word reaches the person it framed; they come to you, scared, with an alibi — and the fact of the setup becomes evidence of its own
+- **The World Survives Saving** - A full snapshot: generated detail layers, spawned and planted objects, rumors in flight, a culprit mid-escape. Quit, resume, and the city remembers everything
 - **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
 - **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
 
@@ -109,7 +110,7 @@ Specification documents are in [docs/specs/](docs/specs/).
 - **Language**: Python 3.10+ (standard library for core, LLM API for generation)
 - **LLM Backend**: Ollama (local, default) or OpenAI API
 - **Interface**: Terminal / CMD / Shell
-- **Save System**: JSON memory snapshots
+- **Save System**: Full-world JSON snapshots with integrity checksums (memory, generated detail, hotspot state, rumors, narrative clocks); legacy memory-only saves still load
 - **Dependencies**: Zero for core game (pytest for testing)
 - **Tests**: ~2,200 active tests (deferred modules excluded)
 

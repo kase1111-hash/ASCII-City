@@ -30,6 +30,7 @@ from .inspection_manager import InspectionManager
 from .evidence_watch import EvidenceWatch
 from .street_talk import StreetTalk
 from .npc_agency import NPCAgency
+from .save_system import SaveSystem
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -92,35 +93,43 @@ class Game:
         # LLM
         self.llm_client = create_llm_client()
 
-        # Dialogue handler
-        self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)
+        self.signal_router = SignalRouter(renderer=self.renderer)
+        self.save_system = SaveSystem(self)
 
-        # Delegates
+        self.rebuild_delegates(seed=self.config.seed)
+
+    # ------------------------------------------------------------------
+    # Game setup
+    # ------------------------------------------------------------------
+
+    def rebuild_delegates(self, seed: int = None) -> None:
+        """
+        (Re)build every delegate that holds references into self.state.
+
+        Called on construction, on new_game, and after loading a save
+        (the restored state needs freshly-bound delegates).
+        """
+        self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)
         self.location_manager = LocationManager(
             llm_client=self.llm_client,
             world_state=self.state.world_state,
             renderer=self.renderer,
         )
-
         self.conversation_manager = ConversationManager(
             renderer=self.renderer,
             dialogue_handler=self.dialogue_handler,
             audio_engine=self.audio_engine,
             speech_enabled=self.config.enable_speech,
         )
-
-        self.signal_router = SignalRouter(renderer=self.renderer)
-
         self.inspection_manager = InspectionManager(
             llm_client=self.llm_client,
             world_state=self.state.world_state,
             renderer=self.renderer,
-            seed=self.config.seed,
+            seed=seed,
         )
-
         self.street_talk = StreetTalk(self.llm_client)
         self.npc_agency = NPCAgency(self.llm_client)
-
+        self.npc_agency.seed(seed)
         self.command_handler = CommandHandler(
             parser=self.parser,
             renderer=self.renderer,
@@ -129,11 +138,8 @@ class Game:
             conversation_manager=self.conversation_manager,
             signal_router=self.signal_router,
             inspection_manager=self.inspection_manager,
+            save_system=self.save_system,
         )
-
-    # ------------------------------------------------------------------
-    # Game setup
-    # ------------------------------------------------------------------
 
     def new_game(self, seed: int = None) -> None:
         """Start a new game."""
@@ -146,37 +152,7 @@ class Game:
         # Apply theme-driven weather bias so genre packs affect atmosphere
         self.state.environment.weather.apply_theme_weights(self.theme.weather_weights)
 
-        # Update delegates that hold references to world_state
-        self.dialogue_handler = DialogueHandler(self.llm_client, self.state.world_state)
-        self.location_manager = LocationManager(
-            llm_client=self.llm_client,
-            world_state=self.state.world_state,
-            renderer=self.renderer,
-        )
-        self.conversation_manager = ConversationManager(
-            renderer=self.renderer,
-            dialogue_handler=self.dialogue_handler,
-            audio_engine=self.audio_engine,
-            speech_enabled=self.config.enable_speech,
-        )
-        self.inspection_manager = InspectionManager(
-            llm_client=self.llm_client,
-            world_state=self.state.world_state,
-            renderer=self.renderer,
-            seed=seed if seed is not None else self.config.seed,
-        )
-        self.street_talk = StreetTalk(self.llm_client)
-        self.npc_agency = NPCAgency(self.llm_client)
-        self.npc_agency.seed(seed if seed is not None else self.config.seed)
-        self.command_handler = CommandHandler(
-            parser=self.parser,
-            renderer=self.renderer,
-            llm_client=self.llm_client,
-            location_manager=self.location_manager,
-            conversation_manager=self.conversation_manager,
-            signal_router=self.signal_router,
-            inspection_manager=self.inspection_manager,
-        )
+        self.rebuild_delegates(seed=seed if seed is not None else self.config.seed)
 
     # Map Character archetypes to npc_intelligence types
     _NPC_TYPE_MAP = {

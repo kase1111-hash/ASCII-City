@@ -253,7 +253,10 @@ class TimeSystem:
                 }
                 for e in self.events
             ],
-            "period_history": self.period_history,
+            "period_history": [
+                (m, p.name if isinstance(p, TimePeriod) else p)
+                for m, p in self.period_history
+            ],
         }
 
     @classmethod

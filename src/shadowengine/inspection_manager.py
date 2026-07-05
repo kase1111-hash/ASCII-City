@@ -912,6 +912,50 @@ class InspectionManager:
             )
         ]
 
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """Serialize everything the manager learned this playthrough."""
+        return {
+            "engine": self.engine.to_dict(),
+            "object_by_hotspot": dict(self._object_by_hotspot),
+            "hotspot_by_object": dict(self._hotspot_by_object),
+            "layers_attempted": {
+                k: sorted(v) for k, v in self._layers_attempted.items()
+            },
+            "fact_details": dict(self._fact_details),
+            "recorded_facts": sorted(self._recorded_facts),
+            "granted_items": [list(pair) for pair in sorted(self._granted_items)],
+            "aspect_cache": [
+                [obj_id, aspect, data]
+                for (obj_id, aspect), data in self._aspect_cache.items()
+            ],
+        }
+
+    def restore(self, data: Optional[dict]) -> None:
+        """Restore manager state from a snapshot."""
+        if not data:
+            return
+        from .inspection import InspectionEngine
+        if data.get("engine"):
+            self.engine = InspectionEngine.from_dict(data["engine"])
+        self._object_by_hotspot = dict(data.get("object_by_hotspot", {}))
+        self._hotspot_by_object = dict(data.get("hotspot_by_object", {}))
+        self._layers_attempted = {
+            k: set(v) for k, v in data.get("layers_attempted", {}).items()
+        }
+        self._fact_details = dict(data.get("fact_details", {}))
+        self._recorded_facts = set(data.get("recorded_facts", []))
+        self._granted_items = {
+            tuple(pair) for pair in data.get("granted_items", [])
+        }
+        self._aspect_cache = {
+            (obj_id, aspect): cached
+            for obj_id, aspect, cached in data.get("aspect_cache", [])
+        }
+
     def _record_witnessed(
         self, hotspot: 'Hotspot', state, location: 'Location'
     ) -> None:

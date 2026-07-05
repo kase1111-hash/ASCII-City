@@ -40,6 +40,20 @@ class StreetTalk:
         self._voiced: set[tuple[str, str]] = set()
         self._last_remark_time: int = -REMARK_COOLDOWN_UNITS
 
+    def to_dict(self) -> dict:
+        return {
+            "voiced": [list(pair) for pair in sorted(self._voiced)],
+            "last_remark_time": self._last_remark_time,
+        }
+
+    def restore(self, data) -> None:
+        if not data:
+            return
+        self._voiced = {tuple(pair) for pair in data.get("voiced", [])}
+        self._last_remark_time = data.get(
+            "last_remark_time", -REMARK_COOLDOWN_UNITS
+        )
+
     def update(self, state, renderer: 'Renderer') -> None:
         """Called once per exploration tick; at most one remark fires."""
         engine = getattr(state, 'propagation_engine', None)
