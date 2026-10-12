@@ -1281,20 +1281,29 @@ Interpret what the player wants to do and respond with JSON."""
             return
 
         asked = set((raw_input or "").lower().split()[1:])
-        if asked & {"autosave", "auto", "quit", "last"}:
-            slots = [auto_path]
-        elif asked & {"save", "saved", "manual", "savegame", "mine"}:
-            slots = [save_path]
-        else:
-            slots = sorted(
-                (p for p in (save_path, auto_path) if os.path.exists(p)),
-                key=os.path.getmtime, reverse=True,
-            )
-        slots = [p for p in slots if os.path.exists(p)]
-        if not slots:
+        newest_first = sorted(
+            (p for p in (save_path, auto_path) if os.path.exists(p)),
+            key=os.path.getmtime, reverse=True,
+        )
+        if not newest_first:
             self.renderer.render_error("No save file found.")
             self.renderer.wait_for_key()
             return
+        # 'load autosave' / 'load save' put that slot first; 'load last
+        # save' or plain 'load' take the newest. A missing slot falls back
+        # to the other one rather than claiming there's no save at all.
+        preferred = None
+        if not asked & {"last", "latest", "recent", "newest"}:
+            if asked & {"autosave", "auto", "quit"}:
+                preferred = auto_path
+            elif asked & {"save", "saved", "manual", "savegame", "mine"}:
+                preferred = save_path
+        slots = newest_first if preferred is None else (
+            [preferred] + [p for p in newest_first if p != preferred]
+        )
+        slots = [p for p in slots if os.path.exists(p)]
+        if preferred and slots[0] != preferred:
+            self.renderer.render_text("There's no save in that slot; loading the one you have.")
 
         failed = []
         for path in slots:

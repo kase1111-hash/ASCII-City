@@ -233,11 +233,18 @@ class ConversationManager:
         names = [w.replace("'", "") for w in tail if w not in self._ADDRESS_WORDS]
         if names and not self._names_partner(names, character, state):
             other = self._names_someone_else(names, character, state)
-            whom = other.name if other else "someone else"
-            return None, (
-                f"You're talking to {character.name}. Leave the conversation "
-                f"first to {action} {whom}."
-            )
+            if other:
+                return None, (
+                    f"You're talking to {character.name}. Leave the conversation "
+                    f"first to {action} {other.name}."
+                )
+            # "I accuse you, you rat!": aimed at the partner, whatever else
+            if "you" not in tail and "yourself" not in tail:
+                return None, (
+                    f"Who's that? You're talking to {character.name}: say "
+                    f"'{action} you', or leave the conversation first to "
+                    f"{action} someone else."
+                )
         third_person = any(w in ("him", "her", "them") for w in tail)
         location = state.locations.get(state.current_location_id)
         if not names and third_person and location and len(location.get_people()) > 1:

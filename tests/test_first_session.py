@@ -815,7 +815,14 @@ class TestConversationTargets:
         harrow = game.state.characters["politician"]
         drive(game, ["talk harrow", line])
         assert harrow.state.pressure_accumulated == 0
-        assert "Leave the conversation first" in capsys.readouterr().out
+        assert "leave the conversation first" in capsys.readouterr().out.lower()
+
+    @pytest.mark.parametrize("line", ["I accuse you, you rat!", "accuse you, you murderer"])
+    def test_epithets_aimed_at_you_still_count(self, line):
+        game = noir("informant", start="street")
+        sally = game.state.characters["informant"]
+        drive(game, ["talk sally", line])
+        assert sally.state.pressure_accumulated > 0
 
     @pytest.mark.parametrize("line", [
         "I accuse you of lying to the police", "I accuse you of hiding the truth",
@@ -867,3 +874,31 @@ class TestSaveSafety:
         out = capsys.readouterr().out
         assert "getting out of town" in out
         assert "Mickey" not in out.split("WORD ON THE STREET")[1].split("\n")[0]
+
+
+@pytest.mark.integration
+class TestRoundFour:
+
+    @pytest.mark.parametrize("phrase", ["load last save", "load my last save", "load last game", "load the latest save"])
+    def test_load_last_save(self, phrase, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "save", "go door to street", phrase])
+        assert game.state.current_location_id == "office"
+        assert "magnifying glass" in game.state.inventory
+
+    def test_load_a_missing_slot_falls_back(self, tmp_path, capsys):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "quit"])          # only autosave.json
+        later = noir(tmp_path=tmp_path)
+        drive(later, ["load my save"])
+        assert "magnifying glass" in later.state.inventory
+        assert "No save file found" not in capsys.readouterr().out
+
+    @pytest.mark.parametrize("phrase,partner", [
+        ("I accuse harrow", "politician"), ("let me ask harrow about marcus", "politician"),
+        ("I want to threaten harrow", "politician"),
+    ])
+    def test_preambles_reach_person_verbs(self, phrase, partner):
+        game = noir(start="office")
+        drive(game, [phrase])
+        assert game.state.conversation_partner == partner

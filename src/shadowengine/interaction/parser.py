@@ -144,10 +144,14 @@ class CommandParser:
         """
         context = context or {}
 
-        # Normalize input; "I want to look at the desk" is "look at the desk"
-        text = raw_input.lower().strip()
-        if text != "i":
-            text = self._PREAMBLE.sub("", text, count=1).strip() or text
+        # Normalize input; "I want to look at the desk" is "look at the
+        # desk" — for everything downstream too, so the handlers that re-read
+        # the player's words see the same command
+        cleaned = raw_input.strip()
+        if cleaned.lower() != "i":
+            cleaned = self._PREAMBLE.sub("", cleaned, count=1).strip() or cleaned
+        raw_input = cleaned
+        text = cleaned.lower()
 
         if not text:
             return Command(
@@ -255,7 +259,8 @@ class CommandParser:
     _PREAMBLE = re.compile(
         r"^(?:i\s+(?:want|wanna|would like|need|am going|'m going|try)\s+to\s+"
         r"|i'd\s+like\s+to\s+|i'll\s+|i\s+will\s+|let\s+me\s+|let's\s+"
-        r"|(?:please|ok|okay|now|then)\s+|i\s+(?=\w))"
+        r"|(?:please|ok|okay|now|then)\s+|i\s+(?=\w))",
+        re.IGNORECASE,
     )
 
     # "exit the game", "quit now"
