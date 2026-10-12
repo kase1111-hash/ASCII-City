@@ -23,6 +23,13 @@ DIRECTION_WORDS = {
     "onto", "toward", "towards",
 }
 
+# Words that carry how you go, not where: "head over to the bar again"
+MOVEMENT_FILLER = {
+    "over", "across", "around", "round", "straight", "right", "now",
+    "again", "quickly", "quick", "then", "on", "there", "along", "ahead",
+    "home", "immediately", "fast",
+}
+
 # Rank thresholds callers can pass as max_rank
 WHOLE_WORDS = 1.0
 FRAGMENTS = 2.0
@@ -84,11 +91,15 @@ def best_match(
     query: str, labels: Sequence[str], max_rank: float = FRAGMENTS,
 ) -> Optional[int]:
     """Index of the label the query names best (first wins a tie), or None."""
+    # A "Back to ..." exit only wins a tie when the player said "back"
+    said_back = "back" in label_words(query)
     best = None
     for index, label in enumerate(labels):
         rank = match_rank(query, label)
         if rank is None or rank > max_rank:
             continue
-        if best is None or rank < best[0]:
-            best = (rank, index)
+        is_back = label.lower().startswith("back") and not said_back
+        key = (rank, is_back)
+        if best is None or key < best[0]:
+            best = (key, index)
     return best[1] if best else None

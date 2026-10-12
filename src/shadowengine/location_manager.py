@@ -20,6 +20,7 @@ from .llm.validation import safe_parse_json, validate_location_response
 from .world_state import WorldState
 from .generation.location_generator import LocationGenerator
 from .testimony import Testimony
+from .interaction.matching import label_words
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +56,19 @@ class LocationManager:
         add_character_fn,
     ) -> None:
         """Handle directional movement (north, south, east, west, back)."""
-        # Check existing exit hotspots for this direction
-        for hotspot in current_location.hotspots:
-            if hotspot.hotspot_type == HotspotType.EXIT:
-                label_lower = hotspot.label.lower()
-                if direction in label_lower or (
-                    hasattr(hotspot, 'direction') and hotspot.direction == direction
-                ):
-                    self.handle_go(hotspot, current_location, state, config, add_character_fn)
-                    return
+        # Check existing exit hotspots for this direction. A "Back to North"
+        # exit leads back where you came from, not north
+        exits = [h for h in current_location.hotspots if h.hotspot_type == HotspotType.EXIT and h.active]
+        exits.sort(key=lambda h: h.label.lower().startswith("back"))
+        for hotspot in exits:
+            label_lower = hotspot.label.lower()
+            if label_lower.startswith("back") and direction != "back":
+                continue
+            if direction in label_lower.split() or (
+                hasattr(hotspot, 'direction') and hotspot.direction == direction
+            ):
+                self.handle_go(hotspot, current_location, state, config, add_character_fn)
+                return
 
         # No existing exit — generate new location in that direction
         self.renderer.render_narration(f"You head {direction}...")
@@ -166,9 +171,10 @@ class LocationManager:
     }
 
     @classmethod
-    def _place_words(cls, text: str) -> set[str]:
+    def _place_words(cls, text: str, variants: bool = False) -> set[str]:
+        """Words that name a place ("O'Malley's" also answers to "malleys")."""
         return {
-            w for w in re.findall(r"[a-z0-9']+", text.lower().replace("_", " "))
+            w for w in label_words(text.replace("_", " "), variants=variants)
             if w not in cls._PLACE_STOPWORDS
         }
 
@@ -188,20 +194,33 @@ class LocationManager:
             loc_id: self._place_words(loc.name) | self._place_words(loc_id)
             for loc_id, loc in state.locations.items()
         }
-        names = {loc_id: set(words) for loc_id, words in own.items()}
+        names = {
+            loc_id: set(words) | self._place_words(state.locations[loc_id].name, variants=True)
+            for loc_id, words in own.items()
+        }
+        exit_words: dict[str, set[str]] = {loc_id: set() for loc_id in names}
         for loc in state.locations.values():
             for hotspot in loc.hotspots:
                 if hotspot.hotspot_type == HotspotType.EXIT and hotspot.target_id in names:
-                    names[hotspot.target_id] |= self._place_words(hotspot.label)
+                    words = self._place_words(hotspot.label, variants=True)
+                    names[hotspot.target_id] |= words
+                    exit_words[hotspot.target_id] |= words
 
         matches = [loc_id for loc_id, words in names.items() if wanted <= words]
         if not matches:
             return None
-        # The place whose own name the player said most completely wins:
-        # "go office" means the office, not "office_north"
+        # The place whose own name the player said most completely wins
+        # ("go office" means the office, not "office_north"); then the one
+        # the world's doors already call by those words ("the bar" is
+        # O'Malley's, not a "Jazz Bar" somebody wandered into)
         return min(
             matches,
-            key=lambda loc_id: (len(own[loc_id] - wanted), len(names[loc_id]), loc_id),
+            key=lambda loc_id: (
+                len(own[loc_id] - wanted),
+                0 if wanted <= exit_words[loc_id] else 1,
+                len(names[loc_id]),
+                loc_id,
+            ),
         )
 
     def generate_and_move(

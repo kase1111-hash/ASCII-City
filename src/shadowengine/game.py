@@ -148,6 +148,7 @@ class Game:
             inspection_manager=self.inspection_manager,
             save_system=self.save_system,
         )
+        self.command_handler.npc_agency = self.npc_agency   # case file shows the clock
         # case/inventory/save/load/quit work mid-conversation too
         self.conversation_manager.meta_handler = (
             lambda raw, state: self.command_handler.handle_meta(raw, state, self.config)

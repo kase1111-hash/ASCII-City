@@ -23,7 +23,9 @@ from .location_manager import LocationManager
 from .conversation import ConversationManager
 from .circuits import SignalType, InputSignal, OutputSignal, ProcessingResult
 from .testimony import advance_leads
-from .interaction.matching import label_words, WHOLE_WORDS, FRAGMENTS
+from .interaction.matching import (
+    label_words, match_rank, FILLER, MOVEMENT_FILLER, WHOLE_WORDS, FRAGMENTS,
+)
 
 # Separate slots: quitting auto-saves without overwriting a case you saved
 SAVE_FILE = "savegame.json"
@@ -94,6 +96,11 @@ class CommandHandler:
 
         # "back", "go back", "back out", "leave": retrace your steps
         if raw_lower in self._BACK_WORDS or raw_lower == "leave":
+            self._go_back(state, config, add_character_fn)
+            return
+
+        # "go back inside", "walk back", "head back now": retrace too
+        if self._GO_BACK.match(raw_lower):
             self._go_back(state, config, add_character_fn)
             return
 
@@ -200,25 +207,17 @@ class CommandHandler:
 
         # Find target hotspot
         hotspot = self._resolve_hotspot(command, current_location, state)
+
+        # Going somewhere: unless the words named a way out here, work out
+        # where they mean
+        if command.command_type == CommandType.GO and command.target and (
+            hotspot is None or hotspot.hotspot_type != HotspotType.EXIT
+        ):
+            said = " ".join(words[1:]) or command.target
+            self._travel(said, words[0] if words else "go", current_location, state, config, add_character_fn)
+            return
+
         if not hotspot:
-            if command.command_type == CommandType.GO and command.target:
-                target = command.target.lower()
-                dir_map = {"n": "north", "s": "south", "e": "east", "w": "west"}
-                if target in dir_map or target in dir_map.values():
-                    self.location_manager.handle_direction(
-                        dir_map.get(target, target), current_location, state, config, add_character_fn
-                    )
-                    return
-                if self._names_current_room(target, state):
-                    self._show_error(
-                        f"You're already in {current_location.name}. "
-                        f"{self._exits_text(current_location)}"
-                    )
-                    return
-                self.location_manager.handle_free_movement(
-                    command.target, current_location, state, config, add_character_fn
-                )
-                return
             # A place name ("alley" in the bar): say how to get there
             known = (
                 self.location_manager.match_known_location(command.target, state)
@@ -230,25 +229,6 @@ class CommandHandler:
                 )
                 return
             self._show_error("I don't see that here.")
-            return
-
-        # Going to something that isn't a way out: the place by that name,
-        # if there is one; otherwise say so
-        if command.command_type == CommandType.GO and hotspot.hotspot_type != HotspotType.EXIT:
-            # Judge the player's own words, not the label they were matched to
-            said = " ".join(words[1:]) or (command.target or "")
-            known = self.location_manager.match_known_location(said, state) if said else None
-            if self._names_current_room(said, state):
-                self._show_error(
-                    f"You're already in {current_location.name}. "
-                    f"{self._exits_text(current_location)}"
-                )
-            elif known and known != state.current_location_id:
-                self.location_manager.handle_free_movement(
-                    said, current_location, state, config, add_character_fn
-                )
-            else:
-                self._show_error(f"{hotspot.label} isn't a way out. {self._exits_text(current_location)}")
             return
 
         # Commands that require a hotspot
@@ -297,6 +277,132 @@ class CommandHandler:
     }
     # "back to X" needs the "to": "back booth" is the booth, not a trip
     _BACK_TO = re.compile(r"^(?:go\s+|head\s+)?(?:back|return)\s+to\s+(.+)$")
+    _GO_BACK = re.compile(
+        r"^(?:go|walk|head|come|run)\s+back"  # "step back" zooms out
+        r"(?:\s+(?:in|inside|out|outside|up|down|there|now|again|home|the way i came))?$"
+    )
+
+    # Only these go somewhere nobody has been yet; 'move the body' doesn't
+    _TRAVEL_VERBS = {"go", "walk", "head", "travel", "run", "hurry", "visit", "enter", "drive"}
+    # Leading words that say why you're going, not where
+    _ERRAND_WORDS = {
+        "talk", "speak", "see", "find", "meet", "visit", "check", "ask",
+        "question", "to", "with", "over", "across", "around", "round",
+        "straight", "right", "on",
+    }
+
+    def _destination_words(self, said: str) -> list[str]:
+        """'head over to the bar again' -> ['bar']; 'go talk to sally' -> ['sally']."""
+        tokens = re.findall(r"[a-z0-9']+", said.lower())
+        while tokens and tokens[0] in self._ERRAND_WORDS:
+            tokens.pop(0)
+        return [t for t in tokens if t not in MOVEMENT_FILLER and t not in FILLER]
+
+    def _travel(
+        self, said: str, verb: str, location: Optional[Location], state: 'GameState',
+        config: GameConfig, add_character_fn,
+    ) -> None:
+        """
+        Where does the player mean? In order: a direction, an exit here, a
+        place already known, someone or something already known (go to
+        them), a near-miss spelling of a known place (ask), and only then
+        somewhere new — and only for real travel verbs.
+        """
+        dest_words = self._destination_words(said)
+        if not dest_words:
+            self._show_exits(location)
+            return
+        dest = " ".join(dest_words)
+
+        dir_map = {"n": "north", "s": "south", "e": "east", "w": "west"}
+        if dest in dir_map or dest in dir_map.values():
+            self.location_manager.handle_direction(
+                dir_map.get(dest, dest), location, state, config, add_character_fn
+            )
+            return
+
+        if location:
+            hotspot = location.get_hotspot_by_label(dest, max_rank=WHOLE_WORDS)
+            if hotspot is not None and hotspot.hotspot_type == HotspotType.EXIT:
+                self.location_manager.handle_go(hotspot, location, state, config, add_character_fn)
+                return
+
+        known = self.location_manager.match_known_location(dest, state)
+        if known == state.current_location_id:
+            self._show_error(f"You're already in {location.name}. {self._exits_text(location)}")
+            return
+        if known:
+            self.location_manager.handle_free_movement(dest, location, state, config, add_character_fn)
+            return
+
+        found = self._find_in_world(dest, state)
+        if found:
+            where, hotspot = found
+            if where == state.current_location_id:
+                if hotspot.hotspot_type == HotspotType.PERSON:
+                    self._handle_talk(hotspot, state)
+                else:
+                    self._handle_examine(hotspot, state, config)
+            else:
+                place = state.locations[where]
+                self.renderer.render_narration(f"You make your way to {place.name}.")
+                self.location_manager.handle_free_movement(
+                    place.name, location, state, config, add_character_fn,
+                )
+            return
+
+        near = self._near_place(dest_words, state)
+        if near:
+            self._show_error(
+                f"Did you mean {state.locations[near].name}? "
+                f"Try 'go {state.locations[near].name.lower()}'."
+            )
+            return
+
+        if verb in self._TRAVEL_VERBS:
+            self.location_manager.handle_free_movement(dest, location, state, config, add_character_fn)
+        else:
+            self._show_error("I don't see that here.")
+
+    def _find_in_world(self, dest: str, state: 'GameState') -> Optional[tuple]:
+        """(location id, hotspot) for a person or thing the words name — here first."""
+        order = [state.current_location_id] + [
+            loc_id for loc_id in state.locations if loc_id != state.current_location_id
+        ]
+        for loc_id in order:
+            location = state.locations[loc_id]
+            for hotspot in location.get_visible_hotspots():
+                if hotspot.hotspot_type == HotspotType.EXIT:
+                    continue
+                if match_rank(dest, hotspot.label) is not None and match_rank(dest, hotspot.label) <= WHOLE_WORDS:
+                    return loc_id, hotspot
+            person = self._resolve_person_by_name(dest, location, state)
+            if person is not None:
+                return loc_id, person
+        return None
+
+    def _near_place(self, dest_words: list[str], state: 'GameState') -> Optional[str]:
+        """A known place the words are a typo or abbreviation of ('offic', 'allley')."""
+        def close(word: str, candidates: set[str]) -> bool:
+            limit = 1 if len(word) <= 5 else 2
+            return any(
+                c[:1] == word[:1] and (
+                    (len(word) >= 3 and c.startswith(word))
+                    or self.parser._levenshtein(word, c) <= limit
+                )
+                for c in candidates
+            )
+
+        for loc_id, location in state.locations.items():
+            words = set(label_words(location.name, variants=True))
+            for other in state.locations.values():
+                for hotspot in other.get_exits_list():
+                    if hotspot.target_id == loc_id:
+                        words |= set(label_words(hotspot.label, variants=True))
+            words -= {"back", "exit", "go", "door"}
+            if words and all(close(w, words) for w in dest_words):
+                return loc_id
+        return None
 
     # Words that point at the room itself rather than anything in it
     _ROOM_WORDS = {"around", "about", "round", "here", "me", "room", "place", "scene", "area"}
@@ -312,7 +418,13 @@ class CommandHandler:
             self.renderer.render_text("Back to work.")
             return
 
-        if autosave:
+        if autosave and not self._has_progress(state) and os.path.exists(
+            os.path.join(config.save_dir, AUTOSAVE_FILE)
+        ):
+            # Nothing done this session: keep the last one's auto-save
+            self.renderer.render_text("Your last case is still saved. 'load' picks it up.")
+            autosave = False
+        elif autosave:
             # Its own slot: quitting never overwrites a case you saved
             save_path = os.path.join(config.save_dir, AUTOSAVE_FILE)
             try:
@@ -326,6 +438,18 @@ class CommandHandler:
                 if not self.renderer.render_confirm("Quit without saving? (y/n)"):
                     return
         state.is_running = False
+
+    @staticmethod
+    def _has_progress(state: 'GameState') -> bool:
+        """Has anything happened this session worth an auto-save?"""
+        player = state.memory.player
+        return bool(
+            state.memory.current_time > 0
+            or player.discoveries
+            or player.talked_to
+            or state.inventory
+            or getattr(state, "location_trail", None)
+        )
 
     def _go_back(self, state: 'GameState', config: GameConfig, add_character_fn) -> None:
         """Retrace your steps: the last place you came from, then the one before."""
@@ -406,6 +530,16 @@ class CommandHandler:
             if hotspot is not None and hotspot.hotspot_type == HotspotType.EXIT:
                 self.location_manager.handle_go(hotspot, location, state, config, add_character_fn)
                 return
+            # "exit to the alley", "go out to the bar": a place you named
+            # with "to" (and know); "leave the building" just leaves
+            named = re.search(r"\bto\s+(.+)$", said)
+            if named:
+                known = self.location_manager.match_known_location(named.group(1), state)
+                if known and known != state.current_location_id:
+                    self.location_manager.handle_free_movement(
+                        named.group(1), location, state, config, add_character_fn,
+                    )
+                    return
         self._leave_room(state, config, add_character_fn)
 
     def _names_current_room(self, text: str, state: 'GameState') -> bool:
@@ -416,8 +550,10 @@ class CommandHandler:
         wanted = set(label_words(text))
         if not wanted:
             return False
-        # Its name, not its id: a generated "office_north" isn't the office
-        if wanted <= set(label_words(location.name)):
+        # Its whole name — a generated "Jazz Bar" isn't every bar — or the
+        # place the words resolve to (never its id: "office_north" isn't
+        # the office)
+        if wanted == set(label_words(location.name)):
             return True
         return self.location_manager.match_known_location(text, state) == location.id
 
@@ -562,7 +698,16 @@ class CommandHandler:
         if not state.in_conversation:
             return
         character = state.characters[hotspot.target_id]
-        if verb == CommandType.ACCUSE:
+        charge = re.search(r"\bof\s+(.+)$", after_verb)
+        if verb == CommandType.ACCUSE and charge and not self.conversation_manager.is_murder_charge(
+            charge.group(1).split()
+        ):
+            # "accuse mickey of lying" is something to say to him
+            self.conversation_manager.handle_free_dialogue(
+                character, f"I accuse you of {charge.group(1)}.", state,
+            )
+            self.renderer.wait_for_key()
+        elif verb == CommandType.ACCUSE:
             self.conversation_manager.handle_accuse(character, state)
         elif verb == CommandType.THREATEN:
             self.conversation_manager.handle_threaten(character, state)
@@ -637,6 +782,15 @@ class CommandHandler:
             ]
             lines.append(f"PEOPLE INTERVIEWED: {', '.join(sorted(names))}")
 
+        agency = getattr(self, "npc_agency", None)
+        if agency is not None and agency.flee_deadline is not None and not agency.culprit_fled:
+            remaining = max(agency.flee_deadline - state.memory.current_time, 0)
+            lines.append("")
+            lines.append(
+                f"WORD ON THE STREET: someone you've rattled is getting out of "
+                f"town. About {remaining} moves before they're gone."
+            )
+
         lines.append("")
         lines.append("(In conversation, 'show <evidence>' puts it on the table.)")
 
@@ -656,6 +810,10 @@ class CommandHandler:
             return None
         if command.hotspot_number:
             return location.get_hotspot_by_number(command.hotspot_number)
+        elif command.command_type == CommandType.TALK and not command.target:
+            # "hi", "talk": whoever is here, if there's just one
+            people = location.get_people()
+            return people[0] if len(people) == 1 else None
         elif command.target:
             target = command.target.strip()
             if target.strip("[]#").isdigit():
@@ -1151,11 +1309,11 @@ Interpret what the player wants to do and respond with JSON."""
                 continue
             if path == auto_path:
                 self.renderer.render_text("Game loaded! (from when you last quit)")
-                if os.path.exists(save_path) and save_path not in failed:
+                if save_path not in failed and self.save_system.is_readable(save_path):
                     self.renderer.render_text("Your own saved case is still there: 'load save'.")
             else:
                 self.renderer.render_text("Game loaded!")
-                if os.path.exists(auto_path) and auto_path not in failed and not asked:
+                if not asked and auto_path not in failed and self.save_system.is_readable(auto_path):
                     self.renderer.render_text("(For where you last quit instead: 'load autosave'.)")
             if failed:
                 self.renderer.render_error("(The other save was damaged and couldn't be read.)")

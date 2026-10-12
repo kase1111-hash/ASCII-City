@@ -95,6 +95,22 @@ class SaveSystem:
     # Load
     # ------------------------------------------------------------------
 
+    def is_readable(self, filepath: str) -> bool:
+        """Would this save load? (Exists, parses, and its checksum holds.)"""
+        try:
+            with open(filepath) as f:
+                envelope = json.load(f)
+            if not isinstance(envelope, dict):
+                return False
+            if envelope.get("version", 1) < SAVE_VERSION:
+                return True   # legacy memory-only save: load() accepts it
+            data = envelope.get("data")
+            return isinstance(data, dict) and hmac.compare_digest(
+                str(envelope.get("checksum", "")), self._checksum(data),
+            )
+        except (OSError, ValueError, TypeError):
+            return False
+
     def load(self, filepath: str) -> None:
         """Restore a snapshot; raises on missing/corrupt files."""
         with open(filepath, "r") as f:

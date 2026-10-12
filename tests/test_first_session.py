@@ -693,3 +693,177 @@ class TestWhatCountsAsPressure:
         game = noir(start="bar")
         drive(game, ["case", phrase])
         assert game.state.conversation_partner == "bartender"
+
+
+# ============================================================
+# Third review round: one place decides where "go X" means
+# ============================================================
+
+@pytest.mark.integration
+class TestWhereGoingMeans:
+
+    def test_north_keeps_going_north_through_fallback_rooms(self):
+        game = noir(start="office")
+        drive(game, ["north", "north", "north"])
+        assert game.state.current_location_id == "office_north_north_north"
+
+    @pytest.mark.parametrize("start,phrase,partner", [
+        ("street", "go talk to sally", "informant"),
+        ("bar", "walk over to mickey", "bartender"),
+        ("bar", "go see mickey", "bartender"),
+    ])
+    def test_going_to_someone_here_talks_to_them(self, start, phrase, partner):
+        game = noir(start=start)
+        drive(game, [phrase])
+        assert game.state.conversation_partner == partner
+        assert set(game.state.locations) == AUTHORED
+
+    @pytest.mark.parametrize("phrase,where", [
+        ("go to mickey", "bar"), ("go to the bar counter", "bar"),
+        ("go to the chalk outline", "alley"),
+    ])
+    def test_going_to_someone_or_something_known_goes_there(self, phrase, where):
+        game = noir(start="street")
+        drive(game, [phrase])
+        assert game.state.current_location_id == where
+        assert set(game.state.locations) == AUTHORED
+
+    @pytest.mark.parametrize("phrase", [
+        "head over to the bar", "go straight to the bar", "go to the bar again",
+        "hurry over to the bar", "visit the bar", "run to the bar",
+    ])
+    def test_how_you_go_doesnt_change_where(self, phrase):
+        game = noir(start="street")
+        drive(game, [phrase])
+        assert game.state.current_location_id == "bar"
+
+    @pytest.mark.parametrize("phrase", ["go back inside", "go back in", "walk back", "go back now"])
+    def test_go_back_variants_retrace(self, phrase):
+        game = noir(start="bar")
+        drive(game, ["exit to street", phrase])
+        assert game.state.current_location_id == "bar"
+        assert set(game.state.locations) == AUTHORED
+
+    def test_step_back_still_zooms_out_not_walks(self):
+        game = noir(start="office")
+        drive(game, ["go door to street", "go bar", "look closer at the counter", "step back"])
+        assert game.state.current_location_id == "bar"
+
+    def test_moving_things_is_not_travel(self):
+        game = noir(start="alley")
+        drive(game, ["move the body", "move the crates"])
+        assert set(game.state.locations) == AUTHORED
+
+    @pytest.mark.parametrize("phrase", ["go offic", "go to the allley", "go stree"])
+    def test_typoed_places_ask_instead_of_inventing(self, phrase, capsys):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert set(game.state.locations) == AUTHORED
+        assert "Did you mean" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("phrase", ["omalleys", "malley's", "o'malleys"])
+    def test_everyday_spellings_from_anywhere(self, phrase):
+        game = noir(start="office")
+        drive(game, [f"go to {phrase}"])
+        assert game.state.current_location_id == "bar"
+
+    def test_a_generated_bar_is_not_every_bar(self):
+        game = noir(start="street")
+        drive(game, ["go to the jazz bar", "go to the bar"])
+        assert game.state.current_location_id == "bar"
+
+    @pytest.mark.parametrize("phrase,where", [
+        ("go out to the alley", "alley"), ("exit to the alley", "alley"),
+    ])
+    def test_out_to_a_named_place(self, phrase, where):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert game.state.current_location_id == where
+
+    @pytest.mark.parametrize("phrase,partner", [
+        ("sit in the booth", None), ("call mickey", "bartender"),
+        ("hello mickey", "bartender"), ("hey mickey", "bartender"), ("hi", "bartender"),
+    ])
+    def test_unknown_verbs_and_greetings(self, phrase, partner, capsys):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert "I don't see that here" not in capsys.readouterr().out
+        assert game.state.conversation_partner == partner
+
+    @pytest.mark.parametrize("phrase", ["I want to look at the booth", "I'd like to talk to mickey", "let me examine the counter"])
+    def test_chatty_players(self, phrase, capsys):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        out = capsys.readouterr().out
+        assert "inventory is empty" not in out
+        assert "I don't see that here" not in out
+
+
+@pytest.mark.integration
+class TestConversationTargets:
+
+    @pytest.mark.parametrize("line", ["accuse the councilman", "accuse mr harrow", "accuse 1", "threaten vincent"])
+    def test_naming_the_partner_any_way(self, line):
+        game = noir("informant", start="office")
+        harrow = game.state.characters["politician"]
+        drive(game, ["case", "talk harrow", line])
+        assert harrow.state.pressure_accumulated > 0
+
+    @pytest.mark.parametrize("line", ["accuse the bartender", "accuse mick", "accuse malley", "threaten whispers", "accuse the barkeep"])
+    def test_naming_anyone_else_is_refused(self, line, capsys):
+        game = noir("informant", start="office")
+        harrow = game.state.characters["politician"]
+        drive(game, ["talk harrow", line])
+        assert harrow.state.pressure_accumulated == 0
+        assert "Leave the conversation first" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("line", [
+        "I accuse you of lying to the police", "I accuse you of hiding the truth",
+        "accuse you of being a crook",
+    ])
+    def test_only_murder_charges_count(self, line):
+        game = noir("informant", start="office")
+        harrow = game.state.characters["politician"]
+        drive(game, ["talk harrow", line])
+        assert harrow.state.pressure_accumulated == 0
+
+    def test_accuse_of_lying_from_the_street_is_just_talk(self):
+        game = noir("informant", start="bar")
+        mickey = game.state.characters["bartender"]
+        drive(game, ["accuse mickey of lying about the night"])
+        assert mickey.state.pressure_accumulated == 0
+        assert game.state.conversation_partner == "bartender"
+
+    def test_load_a_slot_mid_conversation(self, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "save"])
+        other = noir(start="bar", tmp_path=tmp_path)
+        drive(other, ["talk mickey", "load save", "inventory"])
+        assert "magnifying glass" in other.state.inventory
+
+
+@pytest.mark.integration
+class TestSaveSafety:
+
+    def test_idle_session_keeps_the_last_autosave(self, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "quit"])
+        before = (tmp_path / "autosave.json").read_text()
+        idle = noir(start="office", tmp_path=tmp_path)
+        drive(idle, ["quit"])
+        assert (tmp_path / "autosave.json").read_text() == before
+
+    def test_damaged_save_is_not_advertised(self, tmp_path, capsys):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "quit"])
+        (tmp_path / "savegame.json").write_text("{broken")
+        later = noir(tmp_path=tmp_path)
+        drive(later, ["load"])
+        assert "'load save'" not in capsys.readouterr().out
+
+    def test_case_file_shows_the_flee_clock(self, capsys):
+        game = noir("bartender", start="bar")
+        drive(game, ["talk mickey", "threaten", "leave", "case"])
+        out = capsys.readouterr().out
+        assert "getting out of town" in out
+        assert "Mickey" not in out.split("WORD ON THE STREET")[1].split("\n")[0]

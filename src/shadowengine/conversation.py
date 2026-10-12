@@ -20,6 +20,7 @@ from .character import Character
 from .render import Renderer
 from .generation.dialogue_handler import DialogueHandler
 from .testimony import Testimony
+from .interaction.matching import label_words
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,12 @@ class ConversationManager:
             return
 
         # The case file, pockets, save/load/quit work mid-conversation too
-        if input_lower in self.META_WORDS and self.meta_handler:
+        # ("load save" and "load autosave" included)
+        is_meta = input_lower in self.META_WORDS or (
+            first in ("load", "save") and len(words) > 1
+            and all(w in self._SLOT_WORDS for w in words[1:])
+        )
+        if is_meta and self.meta_handler:
             if self.meta_handler(input_lower, state):
                 return
 
@@ -162,15 +168,15 @@ class ConversationManager:
         self.renderer.wait_for_key()
 
     # What "accuse"/"arrest" has to be about to count as naming the killer
-    _MURDER_WORDS = {
-        "murder", "murdering", "killing", "kill", "killed", "it", "this",
-        "marcus", "webb", "his", "the",
+    MURDER_WORDS = {
+        "murder", "murdering", "murdered", "killing", "kill", "killed",
+        "homicide", "marcus", "webb", "webbs",
     }
     # Words that refer to the person without naming anyone else
     _ADDRESS_WORDS = {
         "you", "yourself", "him", "her", "them", "the", "a", "an", "mr",
         "mrs", "miss", "ms", "sir", "madam", "pal", "buddy", "friend", "now",
-        "again", "please", "right", "here", "councilman", "officer",
+        "again", "please", "right", "here",
     }
     _PRESSURE_FORMS = {
         "accuse": "accuse", "accusing": "accuse", "arrest": "accuse",
@@ -216,7 +222,7 @@ class ConversationManager:
         tail = words[index + 1:]
         if "of" in tail:
             charge = tail[tail.index("of") + 1:]
-            if action == "accuse" and not set(charge) & self._MURDER_WORDS:
+            if action == "accuse" and not self.is_murder_charge(charge):
                 return None, None          # "I accuse you of lying" is talk
             tail = tail[:tail.index("of")]
         for i, word in enumerate(tail):
@@ -225,11 +231,12 @@ class ConversationManager:
                 break
 
         names = [w.replace("'", "") for w in tail if w not in self._ADDRESS_WORDS]
-        other = self._names_someone_else(names, character, state) if names else None
-        if other:
+        if names and not self._names_partner(names, character, state):
+            other = self._names_someone_else(names, character, state)
+            whom = other.name if other else "someone else"
             return None, (
                 f"You're talking to {character.name}. Leave the conversation "
-                f"first to {action} {other.name}."
+                f"first to {action} {whom}."
             )
         third_person = any(w in ("him", "her", "them") for w in tail)
         location = state.locations.get(state.current_location_id)
@@ -240,15 +247,50 @@ class ConversationManager:
             )
         return action, None
 
+    @classmethod
+    def is_murder_charge(cls, charge: list[str]) -> bool:
+        """'of murder', 'of killing marcus', a bare 'of it' — not 'of lying'."""
+        words = [w.strip(".,!'\"").lower() for w in charge if w.strip(".,!'\"")]
+        if not words:
+            return True
+        if set(words) & cls.MURDER_WORDS:
+            return True
+        return words in (["it"], ["this"], ["that"])
+
+    def _person_words(self, character: Character, state: 'GameState') -> set[str]:
+        """Everything a character answers to: name, role, nickname, label here."""
+        words = set(label_words(f"{character.name} {character.id.replace('_', ' ')}", variants=True))
+        location = state.locations.get(state.current_location_id)
+        if location:
+            for hotspot in location.get_people():
+                if hotspot.target_id == character.id:
+                    words |= set(label_words(hotspot.label, variants=True))
+        return words
+
+    def _named_by(self, names: list[str], character: Character, state: 'GameState') -> bool:
+        """Do these words (or a legend number) point at this character?"""
+        location = state.locations.get(state.current_location_id)
+        cleaned = [n for n in (re.sub(r"[^a-z0-9]", "", w) for w in names) if n]
+        if not cleaned:
+            return False
+        if len(cleaned) == 1 and cleaned[0].isdigit() and location:
+            hotspot = location.get_hotspot_by_number(int(cleaned[0]))
+            return bool(hotspot) and hotspot.target_id == character.id
+        known = self._person_words(character, state)
+        return all(
+            any(k == w or (len(w) >= 3 and k.startswith(w)) for k in known)
+            for w in cleaned
+        )
+
+    def _names_partner(self, names: list[str], character: Character, state: 'GameState') -> bool:
+        return self._named_by(names, character, state)
+
     def _names_someone_else(
         self, names: list[str], character: Character, state: 'GameState',
     ) -> Optional[Character]:
-        """Another cast member these words name (and the partner doesn't)."""
-        wanted = set(names)
-        if wanted <= self._partner_words(character):
-            return None
+        """Another cast member these words point at."""
         for other in state.characters.values():
-            if other.id != character.id and wanted <= self._partner_words(other):
+            if other.id != character.id and self._named_by(names, other, state):
                 return other
         return None
 
@@ -273,6 +315,11 @@ they know.
   inventory         Check your pockets
   leave             End the conversation
 """
+
+    _SLOT_WORDS = {
+        "save", "saved", "autosave", "auto", "game", "my", "case", "manual",
+        "last", "quit", "the",
+    }
 
     META_WORDS = {
         "case", "casebook", "notes", "journal", "clues", "evidence",

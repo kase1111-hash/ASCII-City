@@ -69,7 +69,7 @@ class CommandParser:
             CommandType.TALK: [
                 "talk", "speak", "ask", "question", "interview",
                 "chat", "converse", "say", "t", "tell", "greet",
-                "approach", "interrogate"
+                "approach", "interrogate", "hello", "hi", "hey"
             ],
             CommandType.TAKE: [
                 "take", "get", "grab", "pick", "pick up", "collect", "acquire", "g"
@@ -79,6 +79,7 @@ class CommandParser:
             ],
             CommandType.GO: [
                 "go", "walk", "move", "enter", "exit", "leave", "head",
+                "visit", "run", "hurry",
                 "n", "s", "e", "w", "north", "south", "east", "west"
             ],
             CommandType.INVENTORY: [
@@ -143,8 +144,10 @@ class CommandParser:
         """
         context = context or {}
 
-        # Normalize input
+        # Normalize input; "I want to look at the desk" is "look at the desk"
         text = raw_input.lower().strip()
+        if text != "i":
+            text = self._PREAMBLE.sub("", text, count=1).strip() or text
 
         if not text:
             return Command(
@@ -248,6 +251,12 @@ class CommandParser:
             secondary=secondary,
             topic=topic,
         )
+
+    _PREAMBLE = re.compile(
+        r"^(?:i\s+(?:want|wanna|would like|need|am going|'m going|try)\s+to\s+"
+        r"|i'd\s+like\s+to\s+|i'll\s+|i\s+will\s+|let\s+me\s+|let's\s+"
+        r"|(?:please|ok|okay|now|then)\s+|i\s+(?=\w))"
+    )
 
     # "exit the game", "quit now"
     QUIT_OBJECTS = {"game", "program", "shadowengine", "app"}
@@ -371,6 +380,19 @@ class CommandParser:
             if hotspot_type == "exit":
                 return Command(command_type=CommandType.GO, target=hotspot.get("label"))
             return Command(command_type=CommandType.EXAMINE, target=hotspot.get("label"))
+
+        # An unknown verb with something on screen after it ("sit in the
+        # booth", "call mickey"): look at it, or talk to them — never walk
+        rest = [t for t in tokens[1:] if t not in self.articles]
+        if rest:
+            index = best_match(
+                " ".join(rest), [h.get("label", "") for h in hotspots], max_rank=WHOLE_WORDS,
+            )
+            if index is not None:
+                hotspot = hotspots[index]
+                if hotspot.get("type") == "person":
+                    return Command(command_type=CommandType.TALK, target=hotspot.get("label"))
+                return Command(command_type=CommandType.EXAMINE, target=hotspot.get("label"))
 
         # Default to examine for unknown nouns
         return Command(
