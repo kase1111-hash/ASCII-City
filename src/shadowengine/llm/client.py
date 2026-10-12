@@ -22,18 +22,24 @@ DEFAULT_BASE_URL = "http://localhost:11434"
 
 def safe_base_url(url: str, default: str = DEFAULT_BASE_URL) -> str:
     """
-    The LLM endpoint must be plain http(s). A bare host:port (the way
-    OLLAMA_HOST is often written) gets http:// added; anything else (file:,
-    ftp:, garbage) falls back to the default rather than being opened.
+    The LLM endpoint must be plain http(s). A bare host or host:port (the
+    way OLLAMA_HOST is often written) gets http:// and, if it has no port,
+    Ollama's 11434; anything else (file:, ftp:, garbage) falls back to the
+    default rather than being opened.
     """
     url = (url or "").strip()
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme in ("http", "https") and parsed.netloc:
-        return url.rstrip("/")
-    if "://" not in url and url:
-        candidate = f"http://{url}"
-        if urllib.parse.urlparse(candidate).netloc:
-            return candidate.rstrip("/")
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            return url.rstrip("/")
+        if "://" not in url and url:
+            candidate = urllib.parse.urlparse(f"http://{url}")
+            if candidate.netloc:
+                if candidate.port is None:
+                    candidate = candidate._replace(netloc=f"{candidate.netloc}:11434")
+                return candidate.geturl().rstrip("/")
+    except ValueError:
+        pass  # malformed (e.g. a broken IPv6 literal)
     logger.warning("Ignoring LLM base URL %r (must be http or https); using %s", url, default)
     return default
 

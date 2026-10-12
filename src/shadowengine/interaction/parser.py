@@ -64,14 +64,15 @@ class CommandParser:
         self.verb_mappings = {
             CommandType.EXAMINE: [
                 "examine", "look", "check", "inspect", "see", "view",
-                "read", "study", "observe", "x", "l"
+                "read", "study", "observe", "x", "l", "search"
             ],
             CommandType.TALK: [
                 "talk", "speak", "ask", "question", "interview",
-                "chat", "converse", "say", "t"
+                "chat", "converse", "say", "t", "tell", "greet",
+                "approach", "interrogate"
             ],
             CommandType.TAKE: [
-                "take", "get", "grab", "pick", "collect", "acquire", "g"
+                "take", "get", "grab", "pick", "pick up", "collect", "acquire", "g"
             ],
             CommandType.USE: [
                 "use", "apply", "put", "insert", "combine", "u"
@@ -187,10 +188,31 @@ class CommandParser:
             # Maybe they just typed a noun - try to figure out default action
             return self._infer_from_noun(tokens, context)
 
-        # "exit to street" goes somewhere; a bare "exit" means quit (the
-        # quit handler asks before anything is lost)
-        if tokens[0] == "exit" and not remaining_tokens:
+        # "exit to street" goes somewhere; a bare "exit" (or "exit the
+        # game") means quit — the quit handler asks before anything is lost
+        if tokens[0] in ("exit", "leave", "quit") and (
+            not remaining_tokens and tokens[0] == "exit"
+            or [t for t in remaining_tokens if t not in self.articles]
+            and all(t in self.QUIT_OBJECTS or t in self.articles for t in remaining_tokens)
+        ):
             return Command(command_type=CommandType.QUIT)
+
+        # "go 3", "examine [2]", "talk #1": the numbers on screen
+        rest = [t for t in remaining_tokens if t not in self.articles]
+        if len(rest) == 1 and re.fullmatch(r"[\[#]?\d+\]?", rest[0]):
+            return Command(
+                command_type=verb_type,
+                hotspot_number=int(rest[0].strip("[]#")),
+            )
+
+        # "talk to mickey about the booth": the person is the target, the
+        # rest is what to ask about (matched separately, so a thing in the
+        # room named in the topic can't steal the target)
+        topic = None
+        if verb_type in (CommandType.TALK, CommandType.ASK) and "about" in remaining_tokens:
+            cut = remaining_tokens.index("about")
+            topic = " ".join(remaining_tokens[cut + 1:]) or None
+            remaining_tokens = remaining_tokens[:cut]
 
         # Extract target
         target = self._extract_target(remaining_tokens, context)
@@ -206,8 +228,12 @@ class CommandParser:
         return Command(
             command_type=verb_type,
             target=target,
-            secondary=secondary
+            secondary=secondary,
+            topic=topic,
         )
+
+    # "exit the game", "quit now"
+    QUIT_OBJECTS = {"game", "program", "shadowengine", "now", "please", "app"}
 
     def _find_verb(self, tokens: list[str]) -> Tuple[CommandType, list[str]]:
         """Find the verb in tokens and return remaining tokens."""
@@ -244,8 +270,16 @@ class CommandParser:
             distance = self._levenshtein(word, verb_word)
             if distance > max_distance:
                 continue
-            # On a tie, a verb the player started typing wins ("tak" -> take)
-            rank = (distance, 0 if verb_word.startswith(word) else 1)
+            # On a tie, a verb the player started typing wins ("tak" ->
+            # take), then one with the same first letter ("arest" ->
+            # arrest, not rest), then a mere letter swap ("taek" -> take)
+            rank = (
+                distance,
+                0 if verb_word.startswith(word) else 1,
+                0 if verb_word[:1] == word[:1] else 1,
+                0 if sorted(verb_word) == sorted(word) else 1,
+                abs(len(verb_word) - len(word)),
+            )
             if best is None or rank < best[0]:
                 best = (rank, cmd_type)
         return best[1] if best else None

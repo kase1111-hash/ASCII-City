@@ -95,12 +95,28 @@ class TestQuitting:
         game = noir(start="office", tmp_path=tmp_path)
         drive(game, ["take magnifying glass", "quit"])
         assert not game.state.is_running
-        save = tmp_path / "savegame.json"
-        assert save.exists()
+        assert (tmp_path / "autosave.json").exists()
 
         resumed = noir(tmp_path=tmp_path)
         drive(resumed, ["load", "inventory"])
         assert "magnifying glass" in resumed.state.inventory
+
+    def test_quitting_never_overwrites_a_saved_case(self, tmp_path):
+        """A fresh session quit must not clobber the case you saved."""
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "save"])
+        saved = (tmp_path / "savegame.json").read_text()
+
+        fresh = noir(start="office", tmp_path=tmp_path)
+        drive(fresh, ["quit"])
+        assert (tmp_path / "savegame.json").read_text() == saved
+
+    @pytest.mark.parametrize("phrase", ["exit game", "exit the game", "quit now", "leave the game"])
+    def test_exit_the_game_quits(self, phrase):
+        game = noir(start="office")
+        drive(game, [phrase])
+        assert not game.state.is_running
+        assert set(game.state.locations) == {"office", "street", "bar", "alley"}
 
     def test_end_of_input_counts_as_yes(self, monkeypatch):
         renderer = Renderer()
@@ -223,10 +239,91 @@ class TestCommandsDoSomething:
         drive(game, ["go door to street", phrase])
         assert game.state.current_location_id == "office"
 
-    def test_back_with_nowhere_to_go_says_so(self, capsys):
+    def test_back_retraces_the_trail(self):
         game = noir(start="office")
-        drive(game, ["back"])
+        drive(game, ["go door to street", "go bar", "back", "back"])
         assert game.state.current_location_id == "office"
+
+    def test_back_with_no_trail_takes_the_way_out(self):
+        game = noir(start="bar")
+        drive(game, ["back"])
+        assert game.state.current_location_id == "street"
+
+    @pytest.mark.parametrize("phrase", ["leave the bar", "exit the bar", "exit bar", "leave"])
+    def test_leaving_the_room_by_name(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert game.state.current_location_id == "street"
+
+    @pytest.mark.parametrize("phrase", ["back to the bar", "return to the bar", "go back to the bar"])
+    def test_back_to_somewhere(self, phrase):
+        game = noir(start="office")
+        drive(game, ["go door to street", phrase])
+        assert game.state.current_location_id == "bar"
+
+    @pytest.mark.parametrize("word", ["bye", "goodbye", "end"])
+    def test_farewells_outside_conversation_go_nowhere(self, word, capsys):
+        game = noir(start="office")
+        drive(game, ["go door to street", word])
+        assert game.state.current_location_id == "street"
+        assert "not talking to anyone" in capsys.readouterr().out
+
+    def test_back_after_load_stays_in_the_loaded_game(self, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["go door to street", "go bar", "save"])
+        other = noir(start="alley", tmp_path=tmp_path)
+        drive(other, ["load", "back"])
+        assert other.state.current_location_id == "street"
+
+    @pytest.mark.parametrize("form", ["go {}", "go [{}]", "go #{}"])
+    def test_go_by_legend_number(self, form):
+        game = noir(start="office")
+        drive(game, ["case"])             # a tick numbers the legend
+        door = game.state.locations["office"].get_exits_list()[0].number
+        drive(game, [form.format(door)])
+        assert game.state.current_location_id == "street"
+        assert set(game.state.locations) == {"office", "street", "bar", "alley"}
+
+    def test_go_to_a_number_never_invents_a_place(self):
+        game = noir(start="office")
+        drive(game, ["case", "go 99"])
+        assert game.state.current_location_id == "office"
+        assert set(game.state.locations) == {"office", "street", "bar", "alley"}
+
+    @pytest.mark.parametrize("phrase", ["go to the alley", "go alley", "alley"])
+    def test_alley_from_inside_the_bar(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert not game.state.in_conversation
+        assert game.state.current_location_id == "alley"
+
+    @pytest.mark.parametrize("phrase", ["pick up the magnifying glass", "examine my desk", "search the desk"])
+    def test_extra_words_still_find_the_thing(self, phrase, capsys):
+        game = noir(start="office")
+        drive(game, [phrase])
+        assert "I don't see that here" not in capsys.readouterr().out
+
+    @pytest.mark.parametrize("phrase", ["look around the room", "look around here", "examine the room", "look at the office"])
+    def test_ways_to_look_around(self, phrase, capsys):
+        game = noir(start="office")
+        drive(game, [phrase])
+        out = capsys.readouterr().out
+        assert "I don't see that here" not in out
+        assert "People here: Councilman Harrow" in out
+
+    def test_go_to_the_room_you_are_in(self, capsys):
+        game = noir(start="bar")
+        drive(game, ["go bar"])
+        assert game.state.current_location_id == "bar"
+        assert "already in O'Malley's Bar" in capsys.readouterr().out
+
+    def test_back_with_nowhere_to_go_says_so(self, capsys):
+        from shadowengine.render import Location
+        game = noir(start="office")
+        game.state.locations["void"] = Location(id="void", name="The Void", description="Nothing.")
+        game.state.current_location_id = "void"
+        drive(game, ["back"])
+        assert game.state.current_location_id == "void"
         assert "nowhere to go back to" in capsys.readouterr().out
 
     def test_bare_go_lists_exits(self, capsys):
@@ -274,15 +371,83 @@ class TestCommandsDoSomething:
         handler.generate_response = lambda *a, **k: calls.append(1) or original(*a, **k)
         drive(game, ["talk mickey", "case", "inventory"])
         assert calls == []                        # not sent to Mickey
-        assert "CASE" in capsys.readouterr().out.upper()
+        out = capsys.readouterr().out
+        assert "CASE FILE" in out and "LEADS (" in out
         assert game.state.in_conversation
 
-    def test_accuse_him_in_conversation(self):
+    @pytest.mark.parametrize("line", ["accuse him", "I accuse you!", "I accuse you.", "You did it!", "accuse harrow of murder"])
+    def test_accusing_the_partner(self, line):
         game = noir(start="office")
         harrow = game.state.characters["politician"]
-        drive(game, ["talk harrow", "I accuse you"])
-        drive(game, ["accuse him"])
-        assert harrow.state.pressure_accumulated > 0
+        drive(game, ["talk harrow"])
+        before = harrow.state.pressure_accumulated
+        drive(game, [line])
+        assert harrow.state.pressure_accumulated > before
+
+    @pytest.mark.parametrize("line", ["accuse mickey", "threaten sally", "arrest the bartender"])
+    def test_naming_someone_else_leaves_the_partner_alone(self, line, capsys):
+        game = noir(start="office")
+        harrow = game.state.characters["politician"]
+        drive(game, ["talk harrow", line])
+        assert harrow.state.pressure_accumulated == 0
+        assert "Leave the conversation first" in capsys.readouterr().out
+
+    def test_show_me_is_just_talk(self, capsys):
+        game = noir(start="bar")
+        drive(game, ["talk mickey", "Show me your hands"])
+        assert "nothing like" not in capsys.readouterr().out
+
+    def test_show_the_partner_something(self):
+        game = noir(start="bar")
+        drive(game, ["examine back booth", "talk mickey", "show the bartender the napkin"])
+        memory = game.state.memory.get_character_memory("bartender")
+        assert any(i.interaction_type == "shown_evidence" for i in memory.player_interactions)
+
+    def test_cracked_witness_stops_repeating_their_secret(self, capsys):
+        game = noir("informant", start="bar")
+        drive(game, ["talk mickey", "threaten", "threaten", "what now?", "and then?"])
+        out = capsys.readouterr().out
+        assert out.count("Fine! You want the truth?") <= 1
+
+    @pytest.mark.parametrize("phrase", ["accuse mickey of murder", "threaten mickey with the napkin", "ask mickey what he saw"])
+    def test_person_verbs_ignore_trailing_words(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert game.state.conversation_partner == "bartender"
+
+    def test_ask_with_a_question_word_keeps_the_question(self):
+        game = noir(start="bar")
+        drive(game, ["ask mickey what happened that night"])
+        assert "that night" in game.state.characters["bartender"].exhausted_topics
+
+    def test_pronoun_when_one_person_is_here(self):
+        game = noir(start="office")
+        drive(game, ["threaten him"])
+        assert game.state.conversation_partner == "politician"
+
+    def test_show_person_the_thing(self):
+        game = noir(start="bar")
+        drive(game, ["examine back booth", "show mickey the napkin"])
+        memory = game.state.memory.get_character_memory("bartender")
+        assert any(i.interaction_type == "shown_evidence" for i in memory.player_interactions)
+
+    def test_talk_about_something_in_the_room(self):
+        game = noir(start="office")
+        drive(game, ["talk to councilman harrow about the window"])
+        assert game.state.conversation_partner == "politician"
+
+    @pytest.mark.parametrize("phrase", ["tell mickey", "interrogate mickey", "talk whispers"])
+    def test_more_ways_to_talk(self, phrase):
+        start = "street" if "whispers" in phrase else "bar"
+        game = noir(start=start)
+        drive(game, [phrase])
+        assert game.state.in_conversation
+
+    @pytest.mark.parametrize("phrase,expected", [("accuse 1", "politician"), ("1 accuse", "politician"), ("talk 1", "politician")])
+    def test_person_verbs_take_legend_numbers(self, phrase, expected):
+        game = noir(start="office")
+        drive(game, ["case", phrase])        # a tick to number the legend
+        assert game.state.conversation_partner == expected
 
     def test_show_needs_something_to_show(self, capsys):
         game = noir(start="bar")
@@ -319,6 +484,16 @@ class TestOneAccusation:
 
 class TestRendererAndClient:
 
+    def test_dialogue_paragraph_breaks_are_blank_not_quoted(self, capsys):
+        Renderer().render_dialogue("Mickey", "First part.\n\nSecond part.")
+        out = capsys.readouterr().out
+        assert '""' not in out
+        assert '"First part."' in out and '"Second part."' in out
+
+    def test_no_escape_codes_when_not_a_terminal(self, capsys):
+        Renderer().clear_screen()      # pytest's stdout is not a tty
+        assert "\033" not in capsys.readouterr().out
+
     def test_wrap_keeps_paragraphs_and_indents(self):
         renderer = Renderer(width=40)
         lines = renderer._word_wrap("Title:\n  short line\n\nA long paragraph " + "word " * 12, 30)
@@ -342,6 +517,10 @@ class TestRendererAndClient:
         ("file:///etc/passwd", DEFAULT_BASE_URL),
         ("ftp://host", DEFAULT_BASE_URL),
         ("", DEFAULT_BASE_URL),
+        ("localhost", "http://localhost:11434"),
+        ("0.0.0.0:11434", "http://0.0.0.0:11434"),
+        ("[::1", DEFAULT_BASE_URL),
+        ("http://[bad", DEFAULT_BASE_URL),
     ])
     def test_llm_endpoints_are_http_only(self, url, expected):
         assert safe_base_url(url) == expected

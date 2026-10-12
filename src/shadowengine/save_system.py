@@ -57,6 +57,7 @@ class SaveSystem:
             "memory": state.memory.to_dict(),
             "inventory": list(state.inventory),
             "current_location_id": state.current_location_id,
+            "location_trail": list(state.location_trail),
             "locations": [loc.to_dict() for loc in state.locations.values()],
             "characters": [c.to_dict() for c in state.characters.values()],
             "spine": state.spine.to_dict() if state.spine else None,
@@ -119,6 +120,7 @@ class SaveSystem:
         state.memory = MemoryBank.from_dict(data["memory"])
         state.inventory = [str(i) for i in data.get("inventory", [])]
         state.current_location_id = data.get("current_location_id", "")
+        state.location_trail = [str(i) for i in data.get("location_trail", [])]
 
         state.locations = {}
         for loc_data in data.get("locations", []):

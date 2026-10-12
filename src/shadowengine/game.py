@@ -45,6 +45,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# How many steps 'back' can retrace
+MAX_LOCATION_TRAIL = 30
+
 
 class GameState:
     """Container for all game state."""
@@ -54,7 +57,9 @@ class GameState:
         self.characters: dict[str, Character] = {}
         self.locations: dict[str, Location] = {}
         self.current_location_id: str = ""
-        self.previous_location_id: str = ""   # where "back" goes
+        # Where you've been, most recent last: "back" retraces it
+        self.location_trail: list[str] = []
+        self.retracing: bool = False          # set by "back" for one move
         self.spine: Optional[NarrativeSpine] = None
         self.dialogue_manager = DialogueManager()
         self.inventory: list[str] = []
@@ -292,12 +297,16 @@ class Game:
 
         command = self.parser.parse(raw_input, context)
 
-        before = self.state.current_location_id
+        state, before = self.state, self.state.current_location_id
+        state.retracing = False
         self.command_handler.handle_command(
-            command, context, self.state, self.config, self.add_character,
+            command, context, state, self.config, self.add_character,
         )
-        if self.state.current_location_id != before:
-            self.state.previous_location_id = before
+        # Remember the way back — unless this move *was* the way back, or a
+        # load just swapped in a different game
+        if self.state is state and state.current_location_id != before and not state.retracing:
+            state.location_trail.append(before)
+            del state.location_trail[:-MAX_LOCATION_TRAIL]
 
     # ------------------------------------------------------------------
     # Convenience accessors (used by scenarios)

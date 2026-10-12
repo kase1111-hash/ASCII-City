@@ -32,10 +32,14 @@ class Renderer:
 
         if sys.platform == "win32":
             os.system("cls")
-        else:
+        elif sys.stdout.isatty() and os.environ.get("TERM", "") not in ("", "dumb"):
             # Home + clear screen, but leave scrollback alone so the
             # player can scroll up to what just happened
             print("\033[H\033[2J", end="", flush=True)
+        else:
+            # A terminal that can't clear (or output going to a file):
+            # a gap between screens instead of escape-code garbage
+            print("\n")
 
     @contextmanager
     def held_output(self):
@@ -86,7 +90,7 @@ class Renderer:
 
         lines = self._word_wrap(text, self.width - 6)
         for line in lines:
-            print(f'  "{line}"')
+            print(f'  "{line}"' if line else "")
         print()
 
     def render_narration(self, text: str) -> None:

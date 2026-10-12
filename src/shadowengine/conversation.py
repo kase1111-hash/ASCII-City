@@ -7,6 +7,7 @@ LLM-driven dialogue into a testable, focused module.
 
 from typing import Optional
 import logging
+import re
 
 from .config import (
     THREATEN_PRESSURE_AMOUNT, THREATEN_TRUST_PENALTY,
@@ -133,22 +134,73 @@ class ConversationManager:
             if self.meta_handler(input_lower, state):
                 return
 
-        if first in ("threaten", "intimidate"):
-            self.handle_threaten(character, state)
+        # "threaten him", "I accuse you!", "accuse her of murder" — aimed at
+        # whoever you're talking to; naming someone else doesn't hit them
+        action, rest = self._pressure_intent(words)
+        if action:
+            if rest and not self._names_partner(rest, character):
+                self.renderer.render_error(
+                    f"You're talking to {character.name}. Leave the "
+                    f"conversation first to {action} someone else."
+                )
+                self.renderer.wait_for_key()
+                return
+            if action == "threaten":
+                self.handle_threaten(character, state)
+            else:
+                self.handle_accuse(character, state)
             return
 
-        if first in ("accuse", "arrest") or input_lower in ("i accuse you", "you did it"):
-            self.handle_accuse(character, state)
-            return
-
-        if first in ("show", "present"):
-            self.handle_show_evidence(character, raw_input.strip()[len(first):].strip(), state)
+        # "show the napkin", "show him the napkin" — but "show me your
+        # hands" is just talk
+        if first in ("show", "present") and not (len(words) > 1 and words[1] in ("me", "us")):
+            partner_words = self._partner_words(character)
+            query = " ".join(w for w in words[1:] if w not in partner_words)
+            self.handle_show_evidence(character, query, state)
             return
 
         # Free-form dialogue via LLM
         self.handle_free_dialogue(character, raw_input, state)
         self.offer_testimony(character, state)
         self.renderer.wait_for_key()
+
+    _CLAUSE = re.compile(
+        r"\s+(?:of|for|with|about|what|who|where|why|how|when|that|if)\s+.*$"
+    )
+    _FILLER = {
+        "him", "her", "them", "you", "yourself", "the", "a", "an", "it",
+        "now", "again", "please", "right", "here",
+    }
+
+    def _pressure_intent(self, words: list[str]) -> tuple[Optional[str], list[str]]:
+        """('threaten'|'accuse'|None, words naming the target, if any)."""
+        if not words:
+            return None, []
+        norm = " ".join(words)
+        if norm in ("you did it", "you killed him", "you killed marcus", "you killed marcus webb"):
+            return "accuse", []
+        index = None
+        if words[0] in ("threaten", "intimidate", "accuse", "arrest"):
+            index = 0
+        elif (
+            len(words) > 1 and words[0] in ("i", "im", "i'm")
+            and words[1].startswith(("accus", "arrest", "threaten"))
+        ):
+            index = 1
+        if index is None:
+            return None, []
+        action = "threaten" if words[index].startswith(("threaten", "intimidate")) else "accuse"
+        rest = self._CLAUSE.sub("", " " + " ".join(words[index + 1:])).split()
+        return action, [w for w in rest if w not in self._FILLER]
+
+    @staticmethod
+    def _partner_words(character: Character) -> set[str]:
+        text = f"{character.name} {character.id.replace('_', ' ')}"
+        return set(re.findall(r"[a-z0-9]+", text.lower().replace("'", "")))
+
+    def _names_partner(self, words: list[str], character: Character) -> bool:
+        cleaned = {re.sub(r"[^a-z0-9]", "", w.replace("'", "")) for w in words} - {""}
+        return bool(cleaned) and cleaned <= self._partner_words(character)
 
     ACTIONS_FOOTER = (
         "(Say anything. Or: show [evidence], threaten, accuse, case, leave)"
@@ -182,8 +234,16 @@ they know.
         mood_mod = character.get_response_mood_modifier()
         char_memory = state.memory.get_character_memory(character.id)
 
-        # If character is cracked, they reveal their secret
-        if character.state.is_cracked and character.secret_truth:
+        # If character is cracked, they reveal their secret — the culprit
+        # keeps confessing, anyone else says it once and then talks normally
+        already_told = bool(char_memory) and any(
+            i.interaction_type == "confessed_to" for i in char_memory.player_interactions
+        )
+        if (
+            character.state.is_cracked
+            and character.secret_truth
+            and (self.testimony.is_culprit(character, state) or not already_told)
+        ):
             response_text = f"Fine! You want the truth? {character.secret_truth}"
             self.show_dialogue(character, response_text, "desperately")
             state.world_state.generation_memory.record_dialogue(

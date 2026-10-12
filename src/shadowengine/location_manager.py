@@ -125,6 +125,12 @@ class LocationManager:
         if not current_location:
             return
 
+        # "go 7" means a number on screen, never a place called "7"
+        if destination.strip().strip("[]#").isdigit():
+            self.renderer.render_error(f"Nothing here is numbered {destination.strip()}.")
+            self.renderer.wait_for_key()
+            return
+
         dest_id = destination.lower().replace(" ", "_").replace("'", "")
 
         # Check existing locations for a match
@@ -155,7 +161,8 @@ class LocationManager:
 
     _PLACE_STOPWORDS = {
         "the", "a", "an", "to", "your", "my", "back", "exit", "toward",
-        "towards", "into", "inside", "go", "head", "return",
+        "towards", "into", "inside", "go", "head", "return", "through",
+        "via", "out", "outside", "down", "up", "of", "onto",
     }
 
     @classmethod
