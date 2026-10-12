@@ -139,9 +139,15 @@ class Character:
         self.available_topics: set[str] = set()
         self.exhausted_topics: set[str] = set()
 
-    def apply_pressure(self, amount: int) -> bool:
+        # Spine revelation ids this character can testify to
+        self.leads: list[str] = []
+
+    def apply_pressure(self, amount: int, can_crack: bool = True) -> bool:
         """
         Apply interrogation pressure.
+
+        With can_crack=False the character sweats but holds: pressure
+        stops just short of the breaking point.
 
         Returns True if character cracks.
         """
@@ -151,6 +157,10 @@ class Character:
 
         effective_pressure = amount * fear_modifier * guilt_modifier
         self.state.pressure_accumulated += int(effective_pressure)
+        if not can_crack and not self.state.is_cracked:
+            self.state.pressure_accumulated = min(
+                self.state.pressure_accumulated, max(self.trust_threshold - 1, 0)
+            )
 
         # Check if cracked
         if self.state.pressure_accumulated >= self.trust_threshold and not self.state.is_cracked:
@@ -201,6 +211,11 @@ class Character:
         if topic in self.available_topics:
             self.available_topics.remove(topic)
             self.exhausted_topics.add(topic)
+
+    def add_lead(self, revelation_id: str) -> None:
+        """Let this character testify to a spine revelation."""
+        if revelation_id not in self.leads:
+            self.leads.append(revelation_id)
 
     def get_available_topics(self) -> set[str]:
         """Get topics available for discussion."""
@@ -257,7 +272,8 @@ class Character:
             "state": self.state.to_dict(),
             "knowledge": list(self.knowledge),
             "available_topics": list(self.available_topics),
-            "exhausted_topics": list(self.exhausted_topics)
+            "exhausted_topics": list(self.exhausted_topics),
+            "leads": list(self.leads)
         }
 
     @classmethod
@@ -280,6 +296,7 @@ class Character:
         char.knowledge = set(data.get("knowledge", []))
         char.available_topics = set(data.get("available_topics", []))
         char.exhausted_topics = set(data.get("exhausted_topics", []))
+        char.leads = list(data.get("leads", []))
         return char
 
     def __repr__(self) -> str:

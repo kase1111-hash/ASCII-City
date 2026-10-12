@@ -229,9 +229,15 @@ class InspectionParser:
     def _check_zoom_command(self, text: str) -> Optional[Tuple[InspectionIntent, Optional[str]]]:
         """Check for zoom in/out command."""
         # Check zoom out first (more specific); longest phrases first so
-        # "zoom out" wins over bare "out"
+        # "zoom out" wins over bare "out". The phrase has to be the command
+        # itself — leading ("step back from the desk") or trailing ("look
+        # away") — not a word inside a name like "examine back booth".
         for phrase in sorted(self.zoom_out_phrases, key=len, reverse=True):
-            if self._has_phrase(phrase, text):
+            escaped = re.escape(phrase)
+            if (
+                re.search(rf"^(?:(?:look|step|pull|lean|stand|draw)\s+)?{escaped}\b", text)
+                or re.search(rf"\b{escaped}$", text)
+            ):
                 return (InspectionIntent.ZOOM_OUT, None)
 
         # Check zoom in

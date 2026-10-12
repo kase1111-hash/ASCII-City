@@ -51,6 +51,12 @@ CULPRIT_RELOCATE_COOLDOWN_UNITS = 8
 # the detective with their side of it
 FRAMED_DEFENSE_DELAY_UNITS = 3
 
+# Testimony: asking about something an NPC cares about (one of their
+# topics) earns this much trust, once per topic. Past the threshold, a
+# non-culprit tells you what they know about the case.
+RAPPORT_TRUST_GAIN = 10
+TESTIMONY_TRUST_THRESHOLD = 30
+
 # Moral action weights
 THREATEN_MORAL_WEIGHT = 0.8
 THREATEN_RUTHLESS_EFFECT = 0.3

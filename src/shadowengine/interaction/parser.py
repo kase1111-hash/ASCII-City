@@ -252,18 +252,27 @@ class CommandParser:
 
         target = " ".join(filtered)
 
-        # Try to match against known targets
+        # Try to match against known targets. Labels lose their articles
+        # too, so "door to street" still finds "Door to Street".
         known_targets = context.get("targets", [])
         for known in known_targets:
-            if known.lower() in target or target in known.lower():
+            known_norm = self._strip_articles(known)
+            if not known_norm:
+                continue
+            if known_norm in target or target in known_norm:
                 return known
 
         # Check for partial match
         for known in known_targets:
-            if target in known.lower() or known.lower().startswith(target):
+            known_norm = self._strip_articles(known)
+            if known_norm and known_norm.startswith(target):
                 return known
 
         return target if target else None
+
+    def _strip_articles(self, text: str) -> str:
+        """Lowercase text with articles/prepositions dropped."""
+        return " ".join(w for w in text.lower().split() if w not in self.articles)
 
     def _infer_from_noun(self, tokens: list[str], context: dict) -> Command:
         """

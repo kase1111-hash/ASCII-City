@@ -18,6 +18,7 @@ from .config import (
 from .character import Character
 from .render import Renderer
 from .generation.dialogue_handler import DialogueHandler
+from .testimony import Testimony
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,13 @@ class ConversationManager:
         dialogue_handler: DialogueHandler,
         audio_engine=None,
         speech_enabled: bool = False,
+        testimony: Optional[Testimony] = None,
     ):
         self.renderer = renderer
         self.dialogue_handler = dialogue_handler
         self.audio_engine = audio_engine
         self.speech_enabled = speech_enabled
+        self.testimony = testimony or Testimony()
 
     def speak_dialogue(self, character_id: str, text: str, mood: str = "") -> None:
         """Speak dialogue using TTS if enabled."""
@@ -68,6 +71,15 @@ class ConversationManager:
         self.renderer.render_dialogue(character.name, text, mood)
         self.speak_dialogue(character.id, text, mood)
 
+    def offer_testimony(self, character: Character, state: 'GameState') -> list[str]:
+        """If the exchange left them ready to talk, they tell what they know."""
+        return self.testimony.offer(
+            character, state, self.renderer,
+            speak=lambda c, line: self.show_dialogue(
+                c, line, c.get_response_mood_modifier()
+            ),
+        )
+
     def conversation_loop(self, state: 'GameState') -> None:
         """Handle one tick of conversation mode."""
         character_id = state.conversation_partner
@@ -86,6 +98,10 @@ class ConversationManager:
 
         if character.state.is_cracked:
             self.renderer.render_text("\n(They seem broken, ready to confess...)")
+
+        topics = sorted(character.get_available_topics())
+        if topics:
+            self.renderer.render_text(f"(They might open up about: {', '.join(topics)})")
 
         # Get free-form input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
@@ -112,12 +128,16 @@ class ConversationManager:
 
         # Free-form dialogue via LLM
         self.handle_free_dialogue(character, raw_input, state)
+        self.offer_testimony(character, state)
         self.renderer.wait_for_key()
 
     def handle_free_dialogue(
         self, character: Character, player_input: str, state: 'GameState'
     ) -> None:
         """Handle any free-form dialogue input via LLM."""
+        # Asking about what they care about builds rapport
+        self.testimony.note_rapport(character, player_input)
+
         mood_mod = character.get_response_mood_modifier()
         char_memory = state.memory.get_character_memory(character.id)
 
@@ -216,6 +236,7 @@ class ConversationManager:
             current_location_id=state.current_location_id,
             character_memory=char_memory,
             intelligence_hints=intelligence_hints,
+            case_knowledge=self.testimony.case_knowledge(character, state),
         )
 
     @staticmethod
@@ -227,7 +248,11 @@ class ConversationManager:
         discoveries = list(state.memory.player.discoveries.values())
         ranked = sorted(discoveries, key=lambda d: not d.is_evidence)
         for discovery in ranked:
-            haystack = f"{discovery.description} {discovery.fact_id}".lower()
+            # Where it came from counts too: "show chalk" finds what the
+            # chalk outline revealed
+            haystack = (
+                f"{discovery.description} {discovery.fact_id} {discovery.source}"
+            ).lower()
             if all(word in haystack for word in query.split()):
                 return discovery
         return None
@@ -280,7 +305,9 @@ class ConversationManager:
             ):
                 pressure = SHOW_CHAIN_EVIDENCE_PRESSURE_AMOUNT
 
-        cracked = character.apply_pressure(pressure) if pressure else False
+        cracked = character.apply_pressure(
+            pressure, can_crack=self.testimony.can_crack(character, state),
+        ) if pressure else False
 
         if cracked and character.secret_truth:
             self.renderer.render_narration(
@@ -318,11 +345,16 @@ class ConversationManager:
             timestamp=state.memory.current_time,
         )
 
+        self.offer_testimony(character, state)
         self.renderer.wait_for_key()
 
     def handle_threaten(self, character: Character, state: 'GameState') -> None:
         """Handle threatening a character."""
-        cracked = character.apply_pressure(THREATEN_PRESSURE_AMOUNT)
+        already_cracked = character.state.is_cracked
+        cracked = character.apply_pressure(
+            THREATEN_PRESSURE_AMOUNT,
+            can_crack=self.testimony.can_crack(character, state),
+        )
 
         state.memory.player.record_moral_action(
             action_type="threaten",
@@ -343,6 +375,9 @@ class ConversationManager:
                 f"{character.name} breaks down under your pressure!"
             )
             response_text = f"Stop! I'll tell you everything! {character.secret_truth}"
+            self.show_dialogue(character, response_text, "desperately")
+        elif already_cracked:
+            response_text = "I already told you everything! What more do you want?"
             self.show_dialogue(character, response_text, "desperately")
         else:
             mood_mod = character.get_response_mood_modifier()
@@ -378,11 +413,15 @@ class ConversationManager:
                 character.id, location=state.current_location_id
             )
 
+        self.offer_testimony(character, state)
         self.renderer.wait_for_key()
 
     def handle_accuse(self, character: Character, state: 'GameState') -> None:
         """Handle accusing a character."""
-        character.apply_pressure(ACCUSE_PRESSURE_AMOUNT)
+        character.apply_pressure(
+            ACCUSE_PRESSURE_AMOUNT,
+            can_crack=self.testimony.can_crack(character, state),
+        )
 
         if state.spine and character.id == state.spine.true_resolution.culprit_id:
             evidence = set(state.memory.player.discoveries.keys())
@@ -445,4 +484,5 @@ class ConversationManager:
                 character.id, location=state.current_location_id
             )
 
+        self.offer_testimony(character, state)
         self.renderer.wait_for_key()

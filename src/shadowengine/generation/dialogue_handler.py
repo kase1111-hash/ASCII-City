@@ -43,6 +43,7 @@ class DialogueHandler:
         current_location_id: str = "",
         character_memory: Optional['CharacterMemory'] = None,
         intelligence_hints: Optional[dict] = None,
+        case_knowledge: Optional[list[str]] = None,
     ) -> Optional[str]:
         """
         Generate an NPC dialogue response using the LLM.
@@ -56,6 +57,7 @@ class DialogueHandler:
             current_location_id: ID of the current location
             character_memory: The NPC's subjective memory (beliefs, interactions)
             intelligence_hints: Behavior hints from PropagationEngine (tone, willingness, rumors)
+            case_knowledge: What this NPC knows about the case and is holding back
 
         Returns:
             The generated dialogue string, or None if generation failed
@@ -93,6 +95,17 @@ class DialogueHandler:
 
         # Build intelligence context from PropagationEngine
         intel_context = self._build_intelligence_context(intelligence_hints)
+
+        # What they know about the case — hinted at until they open up
+        if case_knowledge:
+            case_section = (
+                "WHAT YOU KNOW ABOUT THE CASE (you're holding this back - "
+                "hint at it, and only say it straight once you trust the "
+                "detective):\n" + "\n".join(f"- {fact}" for fact in case_knowledge)
+            )
+            intel_context = (
+                f"{intel_context}\n\n{case_section}" if intel_context else case_section
+            )
 
         # Build the system prompt
         system_prompt = self._build_system_prompt(

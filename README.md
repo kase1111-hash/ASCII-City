@@ -31,6 +31,9 @@ The long-term goal is systemic emergence: behavioral circuits, NPC rumor network
 - **The World Survives Saving** - A full snapshot: generated detail layers, spawned and planted objects, rumors in flight, a culprit mid-escape. Quit, resume, and the city remembers everything
 - **Sensory Tools** - UV light exposes scrubbed stains, a stethoscope hears hidden mechanisms, a mirror sees behind things — each tool generates its own kind of detail on any object
 - **Clues Add Up** - Accumulate enough evidence at the right place and the case's hidden leads click together, even from clues the LLM invented on the spot
+- **Everyone Knows Something** - Every NPC carries a piece of the case. Ask about what they care about and they warm to you; earn enough trust (or break them) and their testimony goes into the case file as evidence. Leads they give you click into place as soon as the rest of the chain catches up
+- **A Culprit Who Holds** - The guilty never volunteer and won't confess to threats alone. Only once the case has them cornered does pressure break them, and their confession counts. Squeeze them without proof and they start to run
+- **The City's Strangers Matter Too** - People the LLM invents as you explore are real, talkable characters, never clones or overwrites of the cast, and each one is woven a lead a witness could plausibly know
 
 ### Planned (code exists, not yet integrated into game loop)
 
@@ -149,7 +152,7 @@ The game requires an LLM backend for dynamic generation. By default it connects 
 ### Running Tests
 
 ```bash
-pytest                           # All active tests (~2,200)
+pytest                           # All active tests (~2,300)
 pytest -v                        # Verbose output
 pytest -m unit                   # Unit tests only
 pytest -m integration            # Integration tests only
@@ -300,7 +303,29 @@ The endgame has a clock. A culprit close to breaking starts moving:
 ```
 
 Crack them with evidence, or corner them with an accusation — before
-the countdown runs out. And the innocent don't wait to be cleared:
+the countdown runs out. The people around the case can get you there.
+Ask them about the things they care about and they'll open up:
+
+```
+> talk mickey
+  (They might open up about: marcus webb, regulars, that night, the bar)
+
+[talking to Mickey O'Malley] > who are your regulars?
+
+  Mickey O'Malley glances around, then lowers their voice.
+
+Mickey O'Malley says warmly:
+  "Marcus spent his last night in my back booth with Sally Malone.
+  They argued, low and ugly, then went out the back toward the alley."
+
+  TESTIMONY: Marcus Webb spent his last night in the back booth at
+  O'Malley's with Sally Malone...
+  LEAD UNCOVERED: Someone saw the victim with another person
+```
+
+The culprit is the exception. They never volunteer, and threats don't
+break them until the evidence has them cornered. And the innocent
+don't wait to be cleared:
 
 ```
   Eddie the Barfly crosses the room to you, voice low and urgent.

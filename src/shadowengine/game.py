@@ -31,6 +31,7 @@ from .evidence_watch import EvidenceWatch
 from .street_talk import StreetTalk
 from .npc_agency import NPCAgency
 from .save_system import SaveSystem
+from .testimony import Testimony, advance_leads
 
 # Audio deferred — see _deferred/audio/
 try:
@@ -120,6 +121,7 @@ class Game:
             dialogue_handler=self.dialogue_handler,
             audio_engine=self.audio_engine,
             speech_enabled=self.config.enable_speech,
+            testimony=Testimony(self.llm_client),
         )
         self.inspection_manager = InspectionManager(
             llm_client=self.llm_client,
@@ -258,6 +260,10 @@ class Game:
         self.npc_agency.update(self.state, self.renderer)
         if not self.state.is_running:
             return
+
+        # Evidence gathered earlier may now satisfy a lead whose
+        # prerequisites have since fallen into place
+        advance_leads(self.state, self.renderer)
 
         scene = Scene(location=location, width=self.config.screen_width)
         self.renderer.render_scene(scene)

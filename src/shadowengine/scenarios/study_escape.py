@@ -167,6 +167,26 @@ def create_study_escape(seed: int = None) -> Game:
     chosen_motive = random.choice(motives)
     chosen_method = random.choice(methods)
 
+    # The culprit's own words, once they break
+    method_confessions = {
+        "poison in a drink": "I slipped the poison into his drink myself.",
+        "hired muscle": "I paid some muscle to do it.",
+        "staged accident": "I made it look like an accident.",
+        "pushed from a height": "I pushed him off the fire escape.",
+    }
+    confession_text = (
+        f"I killed Marcus Webb. {chosen_motive[0].upper()}{chosen_motive[1:]}. "
+        f"{method_confessions[chosen_method]}"
+    )
+
+    # How the cast refers to each suspect when they talk about the case
+    suspect_names = {
+        "bartender": "Mickey O'Malley",
+        "informant": "Sally Malone",
+        "politician": "Councilman Harrow",
+    }
+    culprit_name = suspect_names[chosen_culprit]
+
     # Create the narrative spine - the hidden truth
     spine = NarrativeSpine(
         conflict_type=ConflictType.MURDER,
@@ -184,7 +204,11 @@ def create_study_escape(seed: int = None) -> Game:
                 id="witness_account",
                 description="Someone saw the victim with another person",
                 importance=2,
-                source="Talk to people who were there that night"
+                source="Talk to people who were there that night",
+                testimony=f"Marcus Webb spent his last night in the back booth "
+                          f"at O'Malley's with {culprit_name}. They argued, low "
+                          f"and ugly, then left together out the back - toward "
+                          f"the alley."
             ),
             Revelation(
                 id="physical_evidence",
@@ -199,14 +223,18 @@ def create_study_escape(seed: int = None) -> Game:
                 description=f"The culprit's motive: {chosen_motive}",
                 importance=3,
                 prerequisites=["physical_evidence"],
-                source="Dig into the suspect's background"
+                source="Get someone who knew Marcus's business to open up",
+                testimony=f"{culprit_name} had a reason to want Marcus Webb "
+                          f"dead - {chosen_motive}."
             ),
             Revelation(
                 id="confession",
                 description="The culprit breaks down and confesses",
                 importance=3,
                 prerequisites=["motive_revealed"],
-                source="Confront the culprit with evidence"
+                source="Confront the culprit with evidence",
+                testimony=f"{culprit_name} confessed to killing Marcus Webb - "
+                          f"{chosen_motive}. The method: {chosen_method}."
             )
         ],
         twist_probability=0.2
@@ -222,7 +250,7 @@ def create_study_escape(seed: int = None) -> Game:
         archetype=Archetype.SURVIVOR if chosen_culprit != "bartender" else Archetype.GUILTY,
         description="A weathered bartender who's seen too much. "
                    "Gray hair, tired eyes, hands that never stop moving.",
-        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+        secret_truth=confession_text
                     if chosen_culprit == "bartender"
                     else "I saw who Marcus was talking to that night, but I'm scared to say.",
         public_lie="I don't know nothing. I just pour drinks."
@@ -244,7 +272,7 @@ def create_study_escape(seed: int = None) -> Game:
         archetype=Archetype.OPPORTUNIST if chosen_culprit != "informant" else Archetype.GUILTY,
         description="A street informant with ears everywhere. "
                    "Small, quick, always watching the exits.",
-        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+        secret_truth=confession_text
                     if chosen_culprit == "informant"
                     else "I know who did it, but information isn't free.",
         public_lie="Marcus? Sure, I knew him. Everybody did."
@@ -266,7 +294,7 @@ def create_study_escape(seed: int = None) -> Game:
         archetype=Archetype.AUTHORITY if chosen_culprit != "politician" else Archetype.GUILTY,
         description="A city councilman with expensive tastes and powerful friends. "
                    "Slicked hair, gold watch, smile that doesn't reach his eyes.",
-        secret_truth=f"I killed Marcus Webb. {chosen_motive}. I used {chosen_method}."
+        secret_truth=confession_text
                     if chosen_culprit == "politician"
                     else "Marcus was doing my books. He found something he shouldn't have.",
         public_lie="Tragic loss. Marcus was a... friend of the community."
@@ -281,6 +309,21 @@ def create_study_escape(seed: int = None) -> Game:
     politician.add_topic("your connections")
     politician.add_topic("the night in question")
     game.add_character(politician)
+
+    # Who can tell the detective what. Every suspect carries a piece of the
+    # case, and whoever the culprit is, each lead has an innocent source:
+    # the witness saw Marcus's last night, the connected know the motive,
+    # and the culprit holds the motive and the confession.
+    if chosen_culprit != "bartender":
+        bartender.add_lead("witness_account")
+    else:
+        informant.add_lead("witness_account")   # ears everywhere
+    for suspect in (informant, politician):
+        if suspect.id != chosen_culprit:
+            suspect.add_lead("motive_revealed")
+    culprit = game.state.characters[chosen_culprit]
+    culprit.add_lead("motive_revealed")
+    culprit.add_lead("confession")
 
     # Create starting location - your detective office
     office = Location(
