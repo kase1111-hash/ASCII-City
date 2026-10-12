@@ -41,6 +41,9 @@ class ConversationManager:
         self.audio_engine = audio_engine
         self.speech_enabled = speech_enabled
         self.testimony = testimony or Testimony()
+        # Handles case/inventory/save/load/quit typed mid-conversation;
+        # returns True if it handled the input (wired by the Game)
+        self.meta_handler = None
 
     def speak_dialogue(self, character_id: str, text: str, mood: str = "") -> None:
         """Speak dialogue using TTS if enabled."""
@@ -97,15 +100,21 @@ class ConversationManager:
         self.renderer.render_text(f"{'=' * 60}")
 
         if character.state.is_cracked:
-            self.renderer.render_text("\n(They seem broken, ready to confess...)")
+            if self.testimony.is_culprit(character, state):
+                self.renderer.render_text("\n(They seem broken, ready to confess...)")
+            else:
+                self.renderer.render_text("\n(They've stopped holding anything back.)")
 
         topics = sorted(character.get_available_topics())
         if topics:
             self.renderer.render_text(f"(They might open up about: {', '.join(topics)})")
+        self.renderer.render_text(self.ACTIONS_FOOTER)
 
         # Get free-form input
         raw_input = self.renderer.render_dialogue_prompt(character.name)
         input_lower = raw_input.lower().strip()
+        words = input_lower.replace("!", " ").replace("?", " ").replace(".", " ").split()
+        first = words[0] if words else ""
 
         if input_lower in ["leave", "bye", "goodbye", "exit", "go", "back"]:
             state.in_conversation = False
@@ -114,22 +123,54 @@ class ConversationManager:
             self.renderer.wait_for_key()
             return
 
-        if input_lower == "threaten":
+        if input_lower in ("help", "?", "h", "commands"):
+            self.renderer.render_text(self.CONVERSATION_HELP)
+            self.renderer.wait_for_key()
+            return
+
+        # The case file, pockets, save/load/quit work mid-conversation too
+        if input_lower in self.META_WORDS and self.meta_handler:
+            if self.meta_handler(input_lower, state):
+                return
+
+        if first in ("threaten", "intimidate"):
             self.handle_threaten(character, state)
             return
 
-        if input_lower == "accuse":
+        if first in ("accuse", "arrest") or input_lower in ("i accuse you", "you did it"):
             self.handle_accuse(character, state)
             return
 
-        if input_lower.startswith("show "):
-            self.handle_show_evidence(character, raw_input[5:].strip(), state)
+        if first in ("show", "present"):
+            self.handle_show_evidence(character, raw_input.strip()[len(first):].strip(), state)
             return
 
         # Free-form dialogue via LLM
         self.handle_free_dialogue(character, raw_input, state)
         self.offer_testimony(character, state)
         self.renderer.wait_for_key()
+
+    ACTIONS_FOOTER = (
+        "(Say anything. Or: show [evidence], threaten, accuse, case, leave)"
+    )
+
+    CONVERSATION_HELP = """
+While talking, just type what you'd say. Ask about the things they care
+about and they'll warm to you; when they trust you, they'll tell you what
+they know.
+
+  show [evidence]   Lay something from your case file on the table
+  threaten          Lean on them (they'll trust you less)
+  accuse            Name them as the killer
+  case              Check your case file without leaving
+  inventory         Check your pockets
+  leave             End the conversation
+"""
+
+    META_WORDS = {
+        "case", "casebook", "notes", "journal", "clues", "evidence",
+        "inventory", "inv", "items", "i", "save", "load", "quit", "q",
+    }
 
     def handle_free_dialogue(
         self, character: Character, player_input: str, state: 'GameState'
@@ -267,6 +308,17 @@ class ConversationManager:
         part of the chain that actually proves the case. This is the payoff
         loop for close inspection: what you find, you can use.
         """
+        # "show him the chalk" is about the chalk
+        query = " ".join(
+            w for w in query.lower().split()
+            if w not in ("him", "her", "them", "you", "the", "a", "an", "this", "that", "my", "to")
+        )
+        if not query:
+            self.renderer.render_error(
+                "Show them what? Name something from your case file ('case')."
+            )
+            self.renderer.wait_for_key()
+            return
         discovery = self._find_discovery(query, state)
 
         # Fall back to showing a carried item as free dialogue
@@ -418,12 +470,20 @@ class ConversationManager:
 
     def handle_accuse(self, character: Character, state: 'GameState') -> None:
         """Handle accusing a character."""
-        character.apply_pressure(
+        cracked = character.apply_pressure(
             ACCUSE_PRESSURE_AMOUNT,
             can_crack=self.testimony.can_crack(character, state),
         )
 
         if state.spine and character.id == state.spine.true_resolution.culprit_id:
+            # Cornered and accused, the culprit breaks — and their confession
+            # is part of the case being judged, not something you have to
+            # accuse them a second time to have counted
+            if cracked:
+                self.renderer.render_narration(
+                    f"{character.name}'s composure goes all at once."
+                )
+                self.offer_testimony(character, state)
             evidence = set(state.memory.player.discoveries.keys())
             is_correct, explanation = state.spine.check_solution(character.id, evidence)
 

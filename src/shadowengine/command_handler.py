@@ -64,7 +64,7 @@ class CommandHandler:
         """Route a parsed command to the appropriate handler."""
         # Commands that don't require a hotspot
         simple_handlers = {
-            CommandType.QUIT: lambda: self._handle_quit(state),
+            CommandType.QUIT: lambda: self._handle_quit(state, config),
             CommandType.HELP: lambda: self._show_text(self.parser.get_help_text()),
             CommandType.INVENTORY: lambda: self._show_inventory(state),
             CommandType.CASE: lambda: self._handle_case(state),
@@ -76,6 +76,25 @@ class CommandHandler:
 
         if command.command_type in simple_handlers:
             simple_handlers[command.command_type]()
+            return
+
+        raw_lower = (command.raw_input or "").lower().strip()
+
+        # "back", "go back", "leave": return to where you just were
+        if raw_lower in self._BACK_WORDS or (
+            command.command_type == CommandType.LEAVE and not command.target
+        ):
+            self._go_back(state, config, add_character_fn)
+            return
+
+        # Bare "look" / "look around": take in the room again
+        if (
+            command.command_type == CommandType.EXAMINE
+            and not command.hotspot_number
+            and (not command.target or command.target in self._LOOK_AROUND_TARGETS)
+            and (not command.target or raw_lower.split()[0] in ("look", "l"))
+        ):
+            self._handle_look_around(state)
             return
 
         # Close-inspection commands (look closer, zoom, step back, look
@@ -139,6 +158,29 @@ class CommandHandler:
                 )
                 return
 
+        # Acting on a person from the street: accuse, threaten, ask, show
+        if command.command_type in (
+            CommandType.ACCUSE, CommandType.THREATEN, CommandType.ASK, CommandType.SHOW,
+        ):
+            self._handle_person_verb(command, current_location, state)
+            return
+
+        # A bare "go" / "exit": say where you can go
+        if (
+            command.command_type == CommandType.GO
+            and not command.target
+            and not command.hotspot_number
+        ):
+            self._show_exits(current_location)
+            return
+
+        # "talk to mickey about marcus" talks to Mickey, then asks
+        topic = None
+        if command.command_type == CommandType.TALK and command.target and " about " in f" {command.target} ":
+            person, _, topic = f" {command.target} ".partition(" about ")
+            command.target = person.strip() or command.target
+            topic = topic.strip() or None
+
         # Find target hotspot
         hotspot = self._resolve_hotspot(command, current_location, state)
         if not hotspot:
@@ -176,10 +218,178 @@ class CommandHandler:
         handler = hotspot_handlers.get(command.command_type)
         if handler:
             handler(hotspot)
+            if topic and state.in_conversation:
+                self._ask_about(state, topic)
 
-    def _handle_quit(self, state: 'GameState') -> None:
-        """Handle quit command."""
+    def handle_meta(self, raw_input: str, state: 'GameState', config: GameConfig) -> bool:
+        """
+        Run a case/inventory/save/load/quit command typed mid-conversation.
+        Returns True if the input was one of those.
+        """
+        command = self.parser.parse(raw_input, {})
+        handlers = {
+            CommandType.CASE: lambda: self._handle_case(state),
+            CommandType.INVENTORY: lambda: self._show_inventory(state),
+            CommandType.SAVE: lambda: self._handle_save(state, config),
+            CommandType.LOAD: lambda: self._handle_load(state, config),
+            CommandType.QUIT: lambda: self._handle_quit(state, config),
+        }
+        handler = handlers.get(command.command_type)
+        if handler is None:
+            return False
+        handler()
+        return True
+
+    _BACK_WORDS = {"back", "b", "go back", "return", "go back out", "head back"}
+    _LOOK_AROUND_TARGETS = {"around", "room", "here", "about", "scene", "place"}
+
+    def _handle_quit(self, state: 'GameState', config: GameConfig = None) -> None:
+        """Quit — after asking, and with the case saved if auto-save is on."""
+        if not self.renderer.render_confirm("Close the case file for tonight? (y/n)"):
+            self.renderer.render_text("Back to work.")
+            return
+
+        if config is not None and config.auto_save and self.save_system:
+            save_path = os.path.join(config.save_dir, "savegame.json")
+            try:
+                self.save_system.save(save_path)
+                self.renderer.render_text(
+                    f"Case saved to {save_path}. Type 'load' next time to "
+                    "pick up where you left off."
+                )
+            except OSError as e:
+                logger.error("Auto-save on quit failed: %s", e)
+                self.renderer.render_error("Couldn't save the case on the way out.")
         state.is_running = False
+
+    def _go_back(self, state: 'GameState', config: GameConfig, add_character_fn) -> None:
+        """Return to the previous location (or take the way back out)."""
+        previous = getattr(state, "previous_location_id", "")
+        if previous and previous in state.locations and previous != state.current_location_id:
+            state.current_location_id = previous
+            state.memory.world.record(
+                event_type=EventType.MOVEMENT,
+                description=f"Player went back to {state.locations[previous].name}",
+                location=previous,
+                actors=["player"],
+            )
+            if config.time_passes_on_action:
+                state.memory.advance_time(config.time_units_per_action)
+            return
+
+        location = state.locations.get(state.current_location_id)
+        if location:
+            for hotspot in location.get_exits_list():
+                if hotspot.label.lower().startswith("back"):
+                    self.location_manager.handle_go(
+                        hotspot, location, state, config, add_character_fn,
+                    )
+                    return
+        self._show_error("There's nowhere to go back to. Try 'go' to see the exits.")
+
+    def _show_exits(self, location: Optional[Location]) -> None:
+        exits = location.get_exits_list() if location else []
+        if exits:
+            names = ", ".join(h.label for h in exits)
+            self._show_error(f"Go where? From here: {names}.")
+        else:
+            self._show_error("Go where? Name a place, or a direction like 'north'.")
+
+    def _handle_look_around(self, state: 'GameState') -> None:
+        """Describe the room again — who's here and what's worth a look."""
+        location = state.locations.get(state.current_location_id)
+        if not location:
+            return
+        self.renderer.render_narration(f"{location.name}. {location.description}")
+        if location.ambient_description:
+            self.renderer.render_text(location.ambient_description)
+        people = [h.label for h in location.get_people()]
+        things = [
+            h.label for h in location.get_visible_hotspots()
+            if h.hotspot_type not in (HotspotType.PERSON, HotspotType.EXIT)
+        ]
+        if people:
+            self.renderer.render_text(f"People here: {', '.join(people)}")
+        if things:
+            self.renderer.render_text(f"You notice: {', '.join(things)}")
+        exits = [h.label for h in location.get_exits_list()]
+        if exits:
+            self.renderer.render_text(f"Exits: {', '.join(exits)}")
+        self.renderer.wait_for_key()
+
+    _SHOW_TO = re.compile(r"^(?:show|present|give)\s+(.+?)\s+to\s+(.+)$")
+    _ASK_ABOUT = re.compile(r"^(?:ask)\s+(.+?)\s+about\s+(.+)$")
+
+    def _handle_person_verb(
+        self, command: Command, location: Optional[Location], state: 'GameState',
+    ) -> None:
+        """
+        accuse/threaten/ask/show aimed at someone in the room: walk up to
+        them and do it — the conversation carries on from there.
+        """
+        raw = (command.raw_input or "").strip()
+        raw_lower = raw.lower()
+        verb = command.command_type
+
+        person_text = command.target
+        evidence_query = topic = None
+        if verb == CommandType.SHOW:
+            match = self._SHOW_TO.match(raw_lower)
+            if not match:
+                self._show_error(
+                    "Show what to whom? Try 'show [evidence] to [person]', or "
+                    "talk to them first."
+                )
+                return
+            evidence_query, person_text = match.group(1), match.group(2)
+        elif verb == CommandType.ASK:
+            match = self._ASK_ABOUT.match(raw_lower)
+            if match:
+                person_text, topic = match.group(1), match.group(2)
+
+        if not person_text:
+            action = {
+                CommandType.ACCUSE: "Accuse", CommandType.THREATEN: "Threaten",
+                CommandType.ASK: "Ask", CommandType.SHOW: "Show",
+            }[verb]
+            self._show_error(f"{action} whom? Name someone here.")
+            return
+
+        for prefix in ("the ", "a ", "an "):
+            if person_text.startswith(prefix):
+                person_text = person_text[len(prefix):]
+        hotspot = None
+        if location:
+            hotspot = location.get_hotspot_by_label(person_text)
+            if hotspot is None or hotspot.hotspot_type != HotspotType.PERSON:
+                hotspot = self._resolve_person_by_name(person_text, location, state)
+        if hotspot is None or hotspot.hotspot_type != HotspotType.PERSON:
+            self._show_error("There's no one here by that description.")
+            return
+
+        self._handle_talk(hotspot, state)
+        if not state.in_conversation:
+            return
+        character = state.characters[hotspot.target_id]
+        if verb == CommandType.ACCUSE:
+            self.conversation_manager.handle_accuse(character, state)
+        elif verb == CommandType.THREATEN:
+            self.conversation_manager.handle_threaten(character, state)
+        elif verb == CommandType.SHOW:
+            self.conversation_manager.handle_show_evidence(character, evidence_query, state)
+        elif topic:
+            self._ask_about(state, topic)
+
+    def _ask_about(self, state: 'GameState', topic: str) -> None:
+        """Open the conversation with a question about a topic."""
+        character = state.characters.get(state.conversation_partner or "")
+        if character is None:
+            return
+        self.conversation_manager.handle_free_dialogue(
+            character, f"What can you tell me about {topic}?", state,
+        )
+        self.conversation_manager.offer_testimony(character, state)
+        self.renderer.wait_for_key()
 
     def _show_text(self, text: str) -> None:
         """Show text and wait for key."""
@@ -413,6 +623,10 @@ class CommandHandler:
         hotspot.mark_discovered()
 
         self.renderer.render_action_result(hotspot.examine_text or hotspot.description)
+
+        # Whatever you examine is what a bare "look closer" means next
+        if self.inspection_manager and hotspot.hotspot_type in self._INSPECTABLE_TYPES:
+            self.inspection_manager.note_attention(hotspot, state.current_location_id)
 
         # First examine of a physical object: teach the zoom mechanic
         if (

@@ -470,8 +470,11 @@ def create_study_escape(seed: int = None) -> Game:
         hotspot_type=HotspotType.OBJECT,
         position=(35, 15),
         description="A private booth in the shadows.",
-        examine_text="Someone left a napkin with a phone number. The ink is fresh.",
-        reveals_fact="witness_account"
+        examine_text="Someone left a napkin with a phone number. The ink is "
+                    "fresh. Whoever sat here that night, the bartender poured "
+                    "their drinks.",
+        # A clue, not the eyewitness: who sat here is for the witness to say
+        reveals_fact="booth_napkin"
     ))
 
     bar.add_hotspot(Hotspot(

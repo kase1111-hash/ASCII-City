@@ -2,6 +2,8 @@
 Renderer - Main rendering engine for terminal output.
 """
 
+from contextlib import contextmanager, redirect_stdout
+import io
 import logging
 import os
 import sys
@@ -31,7 +33,29 @@ class Renderer:
         if sys.platform == "win32":
             os.system("cls")
         else:
-            os.system("clear")
+            # Home + clear screen, but leave scrollback alone so the
+            # player can scroll up to what just happened
+            print("\033[H\033[2J", end="", flush=True)
+
+    @contextmanager
+    def held_output(self):
+        """
+        Hold everything printed inside the block instead of showing it.
+
+        The world moves at the start of a turn (evidence vanishes, word
+        spreads, the culprit packs a bag), but the scene redraw clears the
+        screen right after. Holding those lines lets them be shown beneath
+        the fresh scene with show_held() rather than wiped unread.
+        """
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            yield buffer
+
+    def show_held(self, buffer: io.StringIO) -> None:
+        """Print held output (if any) beneath the current screen."""
+        text = buffer.getvalue()
+        if text.strip():
+            print(text, end="" if text.endswith("\n") else "\n")
 
     def render_scene(self, scene: Scene) -> None:
         """Render a complete scene to the terminal."""
@@ -262,6 +286,15 @@ class Renderer:
         padding = self.width - len(left) - len(right)
         print(f"{left}{' ' * padding}{right}")
 
+    def render_confirm(self, question: str) -> bool:
+        """Ask a yes/no question. End of input counts as yes."""
+        try:
+            answer = input(f"{question} ")
+        except (EOFError, KeyboardInterrupt, OSError):
+            print()
+            return True
+        return answer.strip().lower() in ("y", "yes")
+
     def wait_for_key(self, prompt: str = "Press Enter to continue...") -> None:
         """Wait for player to press a key."""
         try:
@@ -270,27 +303,35 @@ class Renderer:
             pass
 
     def _word_wrap(self, text: str, width: int) -> list[str]:
-        """Wrap text to specified width."""
+        """
+        Wrap text to the given width, one paragraph at a time: line breaks
+        and blank lines are kept, lines that already fit are left as they
+        are (so tables stay aligned), and a wrapped line keeps its indent.
+        """
         if not text:
             return []
 
-        words = text.split()
         lines = []
-        current_line = []
-        current_length = 0
-
-        for word in words:
-            if current_length + len(word) + 1 <= width:
-                current_line.append(word)
-                current_length += len(word) + 1
-            else:
-                if current_line:
-                    lines.append(" ".join(current_line))
-                current_line = [word]
-                current_length = len(word)
-
-        if current_line:
-            lines.append(" ".join(current_line))
+        for raw_line in text.split("\n"):
+            line = raw_line.rstrip()
+            if not line.strip():
+                lines.append("")
+                continue
+            if len(line) <= width:
+                lines.append(line)
+                continue
+            indent = line[: len(line) - len(line.lstrip())]
+            current = ""
+            for word in line.split():
+                if not current:
+                    current = indent + word
+                elif len(current) + 1 + len(word) <= width:
+                    current += " " + word
+                else:
+                    lines.append(current)
+                    current = indent + word
+            if current:
+                lines.append(current)
 
         return lines
 

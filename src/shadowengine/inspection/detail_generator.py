@@ -329,7 +329,7 @@ class DetailGenerator:
         """Get a deterministic RNG for an object and zoom level."""
         # Create deterministic seed from object ID and zoom
         seed_str = f"{self.seed}:{object_id}:{zoom_level}"
-        seed_hash = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+        seed_hash = int(hashlib.md5(seed_str.encode(), usedforsecurity=False).hexdigest()[:8], 16)
         return random.Random(seed_hash)
 
     def add_template(self, template: DetailTemplate) -> None:

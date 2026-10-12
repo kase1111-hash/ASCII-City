@@ -11,10 +11,31 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+import urllib.parse
 import urllib.request
 import urllib.error
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_BASE_URL = "http://localhost:11434"
+
+
+def safe_base_url(url: str, default: str = DEFAULT_BASE_URL) -> str:
+    """
+    The LLM endpoint must be plain http(s). A bare host:port (the way
+    OLLAMA_HOST is often written) gets http:// added; anything else (file:,
+    ftp:, garbage) falls back to the default rather than being opened.
+    """
+    url = (url or "").strip()
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return url.rstrip("/")
+    if "://" not in url and url:
+        candidate = f"http://{url}"
+        if urllib.parse.urlparse(candidate).netloc:
+            return candidate.rstrip("/")
+    logger.warning("Ignoring LLM base URL %r (must be http or https); using %s", url, default)
+    return default
 
 
 class LLMBackend(Enum):
@@ -74,6 +95,8 @@ class LLMClient(ABC):
 
     def __init__(self, config: LLMConfig):
         self.config = config
+        # Every urlopen below relies on this: only http(s) endpoints
+        self.config.base_url = safe_base_url(config.base_url)
         self._available: Optional[bool] = None
 
     @abstractmethod
@@ -119,7 +142,7 @@ class OllamaClient(LLMClient):
         try:
             url = f"{self.config.base_url}/api/tags"
             req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310
                 data = json.loads(response.read().decode())
                 models = [m.get("name", "").split(":")[0] for m in data.get("models", [])]
                 return self.config.model.split(":")[0] in models or len(models) > 0
@@ -154,7 +177,7 @@ class OllamaClient(LLMClient):
                 method="POST"
             )
 
-            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:  # nosec B310
                 result = json.loads(response.read().decode())
                 latency = (time.time() - start) * 1000
                 tokens = result.get("eval_count", 0)
@@ -209,7 +232,7 @@ class OllamaClient(LLMClient):
                 method="POST"
             )
 
-            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:  # nosec B310
                 result = json.loads(response.read().decode())
                 latency = (time.time() - start) * 1000
                 tokens = result.get("eval_count", 0)
@@ -257,7 +280,7 @@ class OpenAIClient(LLMClient):
                 headers={"Authorization": f"Bearer {self.config.api_key}"},
                 method="GET"
             )
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:  # nosec B310
                 return response.status == 200
         except Exception:
             return False
@@ -298,7 +321,7 @@ class OpenAIClient(LLMClient):
                 method="POST"
             )
 
-            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:
+            with urllib.request.urlopen(req, timeout=self.config.timeout) as response:  # nosec B310
                 result = json.loads(response.read().decode())
                 latency = (time.time() - start) * 1000
 

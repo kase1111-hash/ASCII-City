@@ -9,6 +9,8 @@ from typing import Optional, Tuple
 from enum import Enum
 import re
 
+from .matching import best_match
+
 
 class CommandType(Enum):
     """Types of commands the player can issue."""
@@ -93,11 +95,11 @@ class CommandParser:
             CommandType.SAVE: ["save"],
             CommandType.LOAD: ["load"],
             CommandType.SETTINGS: ["settings", "options", "config", "prefs", "preferences"],
-            CommandType.QUIT: ["quit", "exit", "q"],
+            CommandType.QUIT: ["quit", "q"],
 
             # Dialogue commands
             CommandType.ASK: ["ask about", "ask"],
-            CommandType.ACCUSE: ["accuse", "confront"],
+            CommandType.ACCUSE: ["accuse", "confront", "arrest"],
             CommandType.THREATEN: ["threaten", "intimidate"],
             CommandType.SHOW: ["show", "present", "give"],
             CommandType.LEAVE: ["leave", "goodbye", "bye", "end"]
@@ -108,6 +110,13 @@ class CommandParser:
         for cmd_type, words in self.verb_mappings.items():
             for word in words:
                 self.word_to_verb[word] = cmd_type
+
+        # Never guessed from a typo: a misspelled word must not end the
+        # session, overwrite a save, or open a menu
+        self.no_fuzzy = {
+            CommandType.QUIT, CommandType.SAVE, CommandType.LOAD,
+            CommandType.SETTINGS,
+        }
 
         # Common words to strip
         self.articles = {"the", "a", "an", "at", "to", "with", "on", "in"}
@@ -178,6 +187,11 @@ class CommandParser:
             # Maybe they just typed a noun - try to figure out default action
             return self._infer_from_noun(tokens, context)
 
+        # "exit to street" goes somewhere; a bare "exit" means quit (the
+        # quit handler asks before anything is lost)
+        if tokens[0] == "exit" and not remaining_tokens:
+            return Command(command_type=CommandType.QUIT)
+
         # Extract target
         target = self._extract_target(remaining_tokens, context)
 
@@ -215,32 +229,50 @@ class CommandParser:
 
         return CommandType.UNKNOWN, tokens
 
-    def _fuzzy_find_verb(self, word: str, max_distance: int = 2) -> Optional[CommandType]:
-        """Try to find a verb with typo tolerance."""
+    def _fuzzy_find_verb(self, word: str, max_distance: Optional[int] = None) -> Optional[CommandType]:
+        """
+        Try to find a verb with typo tolerance. Short words get one edit
+        (a swapped pair counts as one: "tlak" is "talk"), longer words two;
+        otherwise "back" would read as "talk" and "press" as "pass".
+        """
+        if max_distance is None:
+            max_distance = 1 if len(word) <= 5 else 2
+        best = None
         for verb_word, cmd_type in self.word_to_verb.items():
-            if len(verb_word) > 2 and self._levenshtein(word, verb_word) <= max_distance:
-                return cmd_type
-        return None
+            if len(verb_word) <= 2 or cmd_type in self.no_fuzzy:
+                continue
+            distance = self._levenshtein(word, verb_word)
+            if distance > max_distance:
+                continue
+            # On a tie, a verb the player started typing wins ("tak" -> take)
+            rank = (distance, 0 if verb_word.startswith(word) else 1)
+            if best is None or rank < best[0]:
+                best = (rank, cmd_type)
+        return best[1] if best else None
 
     def _levenshtein(self, s1: str, s2: str) -> int:
-        """Calculate Levenshtein distance between two strings."""
-        if len(s1) < len(s2):
-            return self._levenshtein(s2, s1)
-
-        if len(s2) == 0:
-            return len(s1)
-
-        previous_row = range(len(s2) + 1)
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, c2 in enumerate(s2):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-
-        return previous_row[-1]
+        """Edit distance where swapping two adjacent letters counts as one edit."""
+        rows, cols = len(s1) + 1, len(s2) + 1
+        d = [[0] * cols for _ in range(rows)]
+        for i in range(rows):
+            d[i][0] = i
+        for j in range(cols):
+            d[0][j] = j
+        for i in range(1, rows):
+            for j in range(1, cols):
+                cost = 0 if s1[i - 1] == s2[j - 1] else 1
+                d[i][j] = min(
+                    d[i - 1][j] + 1,         # deletion
+                    d[i][j - 1] + 1,         # insertion
+                    d[i - 1][j - 1] + cost,  # substitution
+                )
+                if (
+                    i > 1 and j > 1
+                    and s1[i - 1] == s2[j - 2]
+                    and s1[i - 2] == s2[j - 1]
+                ):
+                    d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)  # transposition
+        return d[-1][-1]
 
     def _extract_target(self, tokens: list[str], context: dict) -> Optional[str]:
         """Extract the target from remaining tokens."""
@@ -252,27 +284,15 @@ class CommandParser:
 
         target = " ".join(filtered)
 
-        # Try to match against known targets. Labels lose their articles
-        # too, so "door to street" still finds "Door to Street".
+        # Match against what's in the scene: whole words first, so "alley"
+        # finds the Dark Alley rather than O'Malley's Bar; filler words don't
+        # count, so "door to street" still finds "Door to Street"
         known_targets = context.get("targets", [])
-        for known in known_targets:
-            known_norm = self._strip_articles(known)
-            if not known_norm:
-                continue
-            if known_norm in target or target in known_norm:
-                return known
-
-        # Check for partial match
-        for known in known_targets:
-            known_norm = self._strip_articles(known)
-            if known_norm and known_norm.startswith(target):
-                return known
+        index = best_match(target, known_targets)
+        if index is not None:
+            return known_targets[index]
 
         return target if target else None
-
-    def _strip_articles(self, text: str) -> str:
-        """Lowercase text with articles/prepositions dropped."""
-        return " ".join(w for w in text.lower().split() if w not in self.articles)
 
     def _infer_from_noun(self, tokens: list[str], context: dict) -> Command:
         """
@@ -282,24 +302,15 @@ class CommandParser:
 
         # Try to match against known targets and infer action
         hotspots = context.get("hotspots", [])
-        for hotspot in hotspots:
-            if target in hotspot.get("label", "").lower():
-                hotspot_type = hotspot.get("type", "object")
-                if hotspot_type == "person":
-                    return Command(
-                        command_type=CommandType.TALK,
-                        target=hotspot.get("label")
-                    )
-                elif hotspot_type == "exit":
-                    return Command(
-                        command_type=CommandType.GO,
-                        target=hotspot.get("label")
-                    )
-                else:
-                    return Command(
-                        command_type=CommandType.EXAMINE,
-                        target=hotspot.get("label")
-                    )
+        index = best_match(target, [h.get("label", "") for h in hotspots]) if target else None
+        if index is not None:
+            hotspot = hotspots[index]
+            hotspot_type = hotspot.get("type", "object")
+            if hotspot_type == "person":
+                return Command(command_type=CommandType.TALK, target=hotspot.get("label"))
+            if hotspot_type == "exit":
+                return Command(command_type=CommandType.GO, target=hotspot.get("label"))
+            return Command(command_type=CommandType.EXAMINE, target=hotspot.get("label"))
 
         # Default to examine for unknown nouns
         return Command(
@@ -310,34 +321,40 @@ class CommandParser:
     def get_help_text(self) -> str:
         """Return help text for available commands."""
         return """
-Available Commands:
-  [number]          - Interact with numbered hotspot
-  examine [thing]   - Look at something
-  look closer [at thing] - Zoom in for finer detail (repeat to go deeper)
-  step back         - Zoom back out
-  look under/behind [thing] - Check around an object
-  focus on [feature] - Study a specific detail you noticed
-  use magnifying glass on [thing] - Magnified inspection
-  talk [person]     - Start conversation with someone
-  take [item]       - Pick up an item
-  use [item] on [thing] - Use an item on something
-  go [direction]    - Move to another location
-  inventory         - Check your items
-  case              - Review your case file: leads, evidence, notes
-  wait              - Pass time
-  help              - Show this help
-  save              - Save your game
-  settings          - Open settings menu
-  quit              - Exit the game
+Getting around:
+  [number]                  Use the numbered thing on screen
+  examine [thing]           Look at something (x for short)
+  look                      Take in the room again
+  go [place or exit]        Move: 'go bar', 'go door to street', 'north'
+  back                      Return to where you just were
 
-During Conversation:
-  ask about [topic] - Ask about something
-  accuse            - Accuse them of something
-  threaten          - Threaten them (affects morality)
-  show [item]       - Show them something
-  leave             - End conversation
+Close inspection:
+  look closer [at thing]    Zoom in for finer detail (repeat to go deeper)
+  step back                 Zoom back out
+  look under/behind [thing] Check around an object
+  focus on [feature]        Study a detail you noticed
+  use magnifying glass on [thing]
 
-Shortcuts: x=examine, t=talk, g=take, i=inventory, n/s/e/w=directions
+People:
+  talk [person]             Start a conversation (t for short)
+  ask [person] about [topic]
+  show [evidence] to [person]
+  threaten [person]         Pressure them (it has a cost)
+  accuse [person]           Name them as the killer
+
+While talking, just type what you'd say. Ask about the things they
+care about and they'll warm to you. Also: show [evidence], threaten,
+accuse, case, inventory, leave.
+
+The case:
+  case                      Your case file: leads, evidence, notes
+  inventory                 What you're carrying (i)
+  take [item]               Pick something up
+  wait                      Let time pass
+
+  save / load               Save your case, or pick up a saved one
+  settings                  Game options
+  quit                      Leave (asks first; your case is saved)
 """
 
     def get_error_suggestion(self, command: Command, context: dict) -> str:

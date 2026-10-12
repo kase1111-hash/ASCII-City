@@ -54,6 +54,7 @@ class GameState:
         self.characters: dict[str, Character] = {}
         self.locations: dict[str, Location] = {}
         self.current_location_id: str = ""
+        self.previous_location_id: str = ""   # where "back" goes
         self.spine: Optional[NarrativeSpine] = None
         self.dialogue_manager = DialogueManager()
         self.inventory: list[str] = []
@@ -141,6 +142,10 @@ class Game:
             signal_router=self.signal_router,
             inspection_manager=self.inspection_manager,
             save_system=self.save_system,
+        )
+        # case/inventory/save/load/quit work mid-conversation too
+        self.conversation_manager.meta_handler = (
+            lambda raw, state: self.command_handler.handle_meta(raw, state, self.config)
         )
 
     def new_game(self, seed: int = None) -> None:
@@ -250,23 +255,30 @@ class Game:
 
         self.state.memory.player.visit_location(location.id)
 
-        # The world's counter-moves: tampered evidence, missing objects
-        self.state.evidence_watch.update(self.state, self.renderer)
+        # The world moves before the scene is redrawn — and the redraw
+        # clears the screen — so hold what it says and show it beneath
+        with self.renderer.held_output() as world_news:
+            # The world's counter-moves: tampered evidence, missing objects
+            self.state.evidence_watch.update(self.state, self.renderer)
 
-        # The street talks: NPCs voice what the rumor network knows
-        self.street_talk.update(self.state, self.renderer)
+            # The street talks: NPCs voice what the rumor network knows
+            self.street_talk.update(self.state, self.renderer)
 
-        # NPCs act on their own behalf: the culprit runs, the framed defend
-        self.npc_agency.update(self.state, self.renderer)
+            # NPCs act on their own behalf: the culprit runs, the framed defend
+            self.npc_agency.update(self.state, self.renderer)
+
+            # Evidence gathered earlier may now satisfy a lead whose
+            # prerequisites have since fallen into place
+            if self.state.is_running:
+                advance_leads(self.state, self.renderer)
+
         if not self.state.is_running:
+            self.renderer.show_held(world_news)
             return
-
-        # Evidence gathered earlier may now satisfy a lead whose
-        # prerequisites have since fallen into place
-        advance_leads(self.state, self.renderer)
 
         scene = Scene(location=location, width=self.config.screen_width)
         self.renderer.render_scene(scene)
+        self.renderer.show_held(world_news)
 
         raw_input = self.renderer.render_prompt()
 
@@ -280,9 +292,12 @@ class Game:
 
         command = self.parser.parse(raw_input, context)
 
+        before = self.state.current_location_id
         self.command_handler.handle_command(
             command, context, self.state, self.config, self.add_character,
         )
+        if self.state.current_location_id != before:
+            self.state.previous_location_id = before
 
     # ------------------------------------------------------------------
     # Convenience accessors (used by scenarios)
