@@ -290,12 +290,20 @@ class TestCommandsDoSomething:
         assert game.state.current_location_id == "office"
         assert set(game.state.locations) == {"office", "street", "bar", "alley"}
 
-    @pytest.mark.parametrize("phrase", ["go to the alley", "go alley", "alley"])
+    @pytest.mark.parametrize("phrase", ["go to the alley", "go alley"])
     def test_alley_from_inside_the_bar(self, phrase):
         game = noir(start="bar")
         drive(game, [phrase])
         assert not game.state.in_conversation
         assert game.state.current_location_id == "alley"
+
+    def test_bare_place_name_elsewhere_gives_directions(self, capsys):
+        """A bare 'alley' in the bar isn't Mickey O'Malley — and isn't a teleport."""
+        game = noir(start="bar")
+        drive(game, ["alley"])
+        assert not game.state.in_conversation
+        assert game.state.current_location_id == "bar"
+        assert "try 'go alley'" in capsys.readouterr().out
 
     @pytest.mark.parametrize("phrase", ["pick up the magnifying glass", "examine my desk", "search the desk"])
     def test_extra_words_still_find_the_thing(self, phrase, capsys):
@@ -524,3 +532,164 @@ class TestRendererAndClient:
     ])
     def test_llm_endpoints_are_http_only(self, url, expected):
         assert safe_base_url(url) == expected
+
+
+# ============================================================
+# Second review round: looser matching must not move you anywhere odd
+# ============================================================
+
+AUTHORED = {"office", "street", "bar", "alley"}
+
+
+@pytest.mark.integration
+class TestNothingInventsPlaces:
+
+    @pytest.mark.parametrize("start", ["office", "bar", "alley"])
+    def test_bare_street_goes_to_the_street(self, start):
+        game = noir(start=start)
+        drive(game, ["street"])
+        assert game.state.current_location_id == "street"
+
+    def test_back_booth_is_the_booth(self):
+        game = noir(start="bar")
+        drive(game, ["back booth"])
+        assert game.state.current_location_id == "bar"
+        assert game.state.memory.player.has_discovered("booth_napkin")
+
+    @pytest.mark.parametrize("start,phrase", [
+        ("office", "go to elm street"), ("street", "go to webb's office"),
+        ("street", "go to the jazz bar"), ("bar", "go to the back room"),
+    ])
+    def test_new_places_are_not_swallowed_by_old_exits(self, start, phrase):
+        game = noir(start=start)
+        drive(game, [phrase])
+        assert game.state.current_location_id not in AUTHORED
+
+    @pytest.mark.parametrize("phrase", [
+        "leave the room", "leave here", "leave this place", "leave him alone",
+        "leave quietly", "leave a tip", "leave the building", "exit the room",
+        "go out of the bar", "go out", "leave now", "back off", "back out",
+    ])
+    def test_leaving_never_invents_a_place(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert game.state.is_running
+        assert set(game.state.locations) == AUTHORED
+        assert game.state.current_location_id == "street"
+
+    @pytest.mark.parametrize("phrase", ["return to mickey", "back to the desk", "return the uv lamp"])
+    def test_back_to_unknown_places_says_so(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert set(game.state.locations) == AUTHORED
+
+    def test_back_to_where_you_are(self, capsys):
+        game = noir(start="office")
+        drive(game, ["back to the office"])
+        assert "already in Your Office" in capsys.readouterr().out
+
+    def test_go_north_from_a_room_called_north(self):
+        game = noir(start="alley")
+        drive(game, ["go north", "go north"])
+        assert game.state.current_location_id == "alley_north_north"
+
+    @pytest.mark.parametrize("word", ["rain", "building"])
+    def test_stray_words_do_not_move_you(self, word):
+        game = noir(start="bar")
+        drive(game, [word])
+        assert game.state.current_location_id == "bar"
+
+    def test_malleys_without_the_o(self):
+        game = noir(start="street")
+        drive(game, ["go to malley's"])
+        assert game.state.current_location_id == "bar"
+
+    def test_direction_words_decide_between_similar_exits(self):
+        from shadowengine.render import Location
+        from shadowengine.interaction import Hotspot, HotspotType
+        game = noir(start="office")
+        hotel = Location(id="hotel", name="Hotel Lobby", description="Marble.")
+        for label, target in (("Stairs Up", "office"), ("Stairs Down", "bar"), ("Way Out", "street")):
+            hotel.add_hotspot(Hotspot(
+                id=f"hs_{target}", label=label, hotspot_type=HotspotType.EXIT,
+                position=(1, 1), target_id=target,
+            ))
+        game.state.locations["hotel"] = hotel
+        game.state.current_location_id = "hotel"
+        drive(game, ["go down the stairs"])
+        assert game.state.current_location_id == "bar"
+        game.state.current_location_id = "hotel"
+        drive(game, ["go out"])
+        assert game.state.current_location_id == "street"
+
+
+@pytest.mark.integration
+class TestSaveSlots:
+
+    def test_load_offers_the_manual_save_after_a_quit(self, tmp_path, capsys):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "save"])
+        fresh = noir(start="office", tmp_path=tmp_path)
+        drive(fresh, ["quit"])
+
+        later = noir(tmp_path=tmp_path)
+        drive(later, ["load"])
+        assert "magnifying glass" not in later.state.inventory     # newest: the quit
+        assert "'load save'" in capsys.readouterr().out
+        drive(later, ["load save"])
+        assert "magnifying glass" in later.state.inventory
+
+    def test_damaged_newest_slot_falls_back(self, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["take magnifying glass", "save"])
+        (tmp_path / "autosave.json").write_text('{"version": 3, "chec')
+        later = noir(tmp_path=tmp_path)
+        drive(later, ["load"])
+        assert "magnifying glass" in later.state.inventory
+
+    def test_saves_are_written_whole(self, tmp_path):
+        game = noir(start="office", tmp_path=tmp_path)
+        drive(game, ["save"])
+        assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.integration
+class TestWhatCountsAsPressure:
+
+    @pytest.mark.parametrize("line", [
+        "You did it?", "Did someone threaten you?", "I accused the wrong man",
+        "I accuse you of lying", "I'm accusing you of lying to me", "Who did you accuse?",
+    ])
+    def test_talk_about_accusing_is_just_talk(self, line):
+        game = noir("informant", start="bar")
+        mickey = game.state.characters["bartender"]
+        drive(game, ["talk mickey", line])
+        assert mickey.state.pressure_accumulated == 0
+
+    @pytest.mark.parametrize("line", [
+        "I accuse you, Mickey O'Malley, of murder!", "threaten you, mickey",
+        "accuse mr. o'malley", "I'm arresting you, Mickey.", "accuse the bartender",
+    ])
+    def test_natural_ways_to_lean_on_the_partner(self, line):
+        game = noir("informant", start="bar")
+        mickey = game.state.characters["bartender"]
+        drive(game, ["talk mickey", line])
+        assert mickey.state.pressure_accumulated > 0
+
+    def test_cracked_witness_says_their_secret_once(self, capsys):
+        game = noir("informant", start="bar")
+        drive(game, ["talk mickey", "threaten", "threaten", "what did you see?", "who was it?"])
+        out = capsys.readouterr().out
+        assert out.count("I'm scared to say") == 1
+
+    @pytest.mark.parametrize("phrase", ["talk to him", "speak with him", "interrogate him"])
+    def test_talk_to_a_pronoun(self, phrase):
+        game = noir(start="bar")
+        drive(game, [phrase])
+        assert game.state.conversation_partner == "bartender"
+
+    @pytest.mark.parametrize("phrase", ["accuse 1 of murder", "ask 1 about marcus", "talk 1 about marcus"])
+    def test_numbers_with_more_words(self, phrase):
+        game = noir(start="bar")
+        drive(game, ["case", phrase])
+        assert game.state.conversation_partner == "bartender"

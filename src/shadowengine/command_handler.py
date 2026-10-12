@@ -23,7 +23,7 @@ from .location_manager import LocationManager
 from .conversation import ConversationManager
 from .circuits import SignalType, InputSignal, OutputSignal, ProcessingResult
 from .testimony import advance_leads
-from .interaction.matching import label_words
+from .interaction.matching import label_words, WHOLE_WORDS, FRAGMENTS
 
 # Separate slots: quitting auto-saves without overwriting a case you saved
 SAVE_FILE = "savegame.json"
@@ -75,7 +75,7 @@ class CommandHandler:
             CommandType.CASE: lambda: self._handle_case(state),
             CommandType.WAIT: lambda: self._handle_wait(state, config),
             CommandType.SAVE: lambda: self._handle_save(state, config),
-            CommandType.LOAD: lambda: self._handle_load(state, config),
+            CommandType.LOAD: lambda: self._handle_load(state, config, command.raw_input),
             CommandType.SETTINGS: lambda: self._handle_settings(state, config),
         }
 
@@ -92,37 +92,28 @@ class CommandHandler:
             self._show_error("You're not talking to anyone.")
             return
 
-        # "back", "go back", "leave": retrace your steps
+        # "back", "go back", "back out", "leave": retrace your steps
         if raw_lower in self._BACK_WORDS or raw_lower == "leave":
             self._go_back(state, config, add_character_fn)
             return
 
-        # "back to the bar", "return to the office", "go back to the street"
+        # "back to the bar", "return to the office": somewhere already known
         back_to = self._BACK_TO.match(raw_lower)
         if back_to:
             self._go_to(back_to.group(1), current_location, state, config, add_character_fn)
             return
 
-        # "leave the bar", "exit the office": take the way out of this room.
-        # (Checked on the player's own words: the parser may already have
-        # matched "the bar" to the Bar Counter.)
-        said_place = " ".join(words[1:])
-        if (
-            command.command_type in (CommandType.LEAVE, CommandType.GO)
-            and said_place
-            and not command.hotspot_number
-            and self._names_current_room(said_place, state)
-        ):
+        # "leave the bar", "exit the room", "leave him alone", "go out":
+        # leaving is never a trip somewhere new. (Read from the player's own
+        # words: the parser may have matched "the bar" to the Bar Counter.)
+        if command.command_type in (CommandType.LEAVE, CommandType.GO) and not command.hotspot_number:
+            said = " ".join(words[1:])
             if words[0] in ("leave", "exit"):
-                self._leave_room(state, config, add_character_fn)
-            else:
-                location = state.locations[state.current_location_id]
-                self._show_error(
-                    f"You're already in {location.name}. {self._exits_text(location)}"
-                )
-            return
-        if command.command_type == CommandType.LEAVE:
-            command.command_type = CommandType.GO   # "leave through the door"
+                self._leave_by(said, current_location, state, config, add_character_fn)
+                return
+            if words[1:2] and words[1] in ("out", "outside"):
+                self._leave_by(said, current_location, state, config, add_character_fn)
+                return
 
         # Bare "look", "look around the room", "examine the alley" (while in
         # it): take in the room again
@@ -218,35 +209,43 @@ class CommandHandler:
                         dir_map.get(target, target), current_location, state, config, add_character_fn
                     )
                     return
+                if self._names_current_room(target, state):
+                    self._show_error(
+                        f"You're already in {current_location.name}. "
+                        f"{self._exits_text(current_location)}"
+                    )
+                    return
                 self.location_manager.handle_free_movement(
                     command.target, current_location, state, config, add_character_fn
                 )
                 return
-            # Just a place name ("alley"): go there, if it's a place we know
-            if (
-                command.command_type == CommandType.EXAMINE
-                and command.target
-                and words and words[0] not in self.parser.word_to_verb
-            ):
-                known = self.location_manager.match_known_location(command.target, state)
-                if known and known != state.current_location_id:
-                    self.location_manager.handle_free_movement(
-                        command.target, current_location, state, config, add_character_fn
-                    )
-                    return
-            self._show_error("I don't see that here.")
-            return
-
-        # "go alley" from the bar shouldn't walk into Mickey: going somewhere
-        # that isn't a way out means the place by that name, if there is one
-        if command.command_type == CommandType.GO and hotspot.hotspot_type != HotspotType.EXIT:
+            # A place name ("alley" in the bar): say how to get there
             known = (
                 self.location_manager.match_known_location(command.target, state)
                 if command.target else None
             )
             if known and known != state.current_location_id:
+                self._show_error(
+                    f"I don't see that here. To go there, try 'go {command.target}'."
+                )
+                return
+            self._show_error("I don't see that here.")
+            return
+
+        # Going to something that isn't a way out: the place by that name,
+        # if there is one; otherwise say so
+        if command.command_type == CommandType.GO and hotspot.hotspot_type != HotspotType.EXIT:
+            # Judge the player's own words, not the label they were matched to
+            said = " ".join(words[1:]) or (command.target or "")
+            known = self.location_manager.match_known_location(said, state) if said else None
+            if self._names_current_room(said, state):
+                self._show_error(
+                    f"You're already in {current_location.name}. "
+                    f"{self._exits_text(current_location)}"
+                )
+            elif known and known != state.current_location_id:
                 self.location_manager.handle_free_movement(
-                    command.target, current_location, state, config, add_character_fn
+                    said, current_location, state, config, add_character_fn
                 )
             else:
                 self._show_error(f"{hotspot.label} isn't a way out. {self._exits_text(current_location)}")
@@ -283,7 +282,7 @@ class CommandHandler:
             CommandType.CASE: lambda: self._handle_case(state),
             CommandType.INVENTORY: lambda: self._show_inventory(state),
             CommandType.SAVE: lambda: self._handle_save(state, config),
-            CommandType.LOAD: lambda: self._handle_load(state, config),
+            CommandType.LOAD: lambda: self._handle_load(state, config, raw_input),
             CommandType.QUIT: lambda: self._handle_quit(state, config),
         }
         handler = handlers.get(command.command_type)
@@ -292,8 +291,12 @@ class CommandHandler:
         handler()
         return True
 
-    _BACK_WORDS = {"back", "b", "go back", "return", "go back out", "head back"}
-    _BACK_TO = re.compile(r"^(?:go\s+|head\s+)?(?:back|return)\s+(?:to\s+)?(.+)$")
+    _BACK_WORDS = {
+        "back", "b", "go back", "return", "go back out", "head back",
+        "back out", "back off", "back away", "back up", "step out",
+    }
+    # "back to X" needs the "to": "back booth" is the booth, not a trip
+    _BACK_TO = re.compile(r"^(?:go\s+|head\s+)?(?:back|return)\s+to\s+(.+)$")
 
     # Words that point at the room itself rather than anything in it
     _ROOM_WORDS = {"around", "about", "round", "here", "me", "room", "place", "scene", "area"}
@@ -365,14 +368,45 @@ class CommandHandler:
         self, destination: str, location: Optional[Location], state: 'GameState',
         config: GameConfig, add_character_fn,
     ) -> None:
-        """Go somewhere by name: an exit here, or a place already known."""
-        hotspot = location.get_hotspot_by_label(destination) if location else None
+        """
+        Go back to somewhere by name: an exit here, or a place already
+        known. Never invents a place.
+        """
+        hotspot = (
+            location.get_hotspot_by_label(destination, max_rank=WHOLE_WORDS)
+            if location else None
+        )
         if hotspot is not None and hotspot.hotspot_type == HotspotType.EXIT:
             self.location_manager.handle_go(hotspot, location, state, config, add_character_fn)
-        else:
+            return
+        known = self.location_manager.match_known_location(destination, state)
+        if known == state.current_location_id or self._names_current_room(destination, state):
+            self._show_error(f"You're already in {location.name}. {self._exits_text(location)}")
+        elif known:
             self.location_manager.handle_free_movement(
                 destination, location, state, config, add_character_fn,
             )
+        else:
+            self._show_error(
+                "You haven't been anywhere called that. To head somewhere new, "
+                f"try 'go {destination}'."
+            )
+
+    def _leave_by(
+        self, said: str, location: Optional[Location], state: 'GameState',
+        config: GameConfig, add_character_fn,
+    ) -> None:
+        """
+        'leave X' / 'exit X': through an exit X names, or else simply out
+        of this room ('leave the bar', 'leave the building', 'leave him
+        alone', 'leave quietly'). Never a trip anywhere else.
+        """
+        if said and location:
+            hotspot = location.get_hotspot_by_label(said, max_rank=WHOLE_WORDS)
+            if hotspot is not None and hotspot.hotspot_type == HotspotType.EXIT:
+                self.location_manager.handle_go(hotspot, location, state, config, add_character_fn)
+                return
+        self._leave_room(state, config, add_character_fn)
 
     def _names_current_room(self, text: str, state: 'GameState') -> bool:
         """Does this text name the room the player is standing in?"""
@@ -452,6 +486,9 @@ class CommandHandler:
         words = [w for w in text.split() if w not in ("the", "a", "an", "to", "with", "at")]
         if not words:
             return None
+        if len(words) == 1 and words[0].strip("[]#").isdigit():
+            # "accuse 1 of murder": the number on screen
+            return self._find_person(None, location, state, number=int(words[0].strip("[]#")))
         people = location.get_people()
         if len(words) == 1 and words[0] in self._PRONOUNS:
             return people[0] if len(people) == 1 else None
@@ -620,9 +657,17 @@ class CommandHandler:
         if command.hotspot_number:
             return location.get_hotspot_by_number(command.hotspot_number)
         elif command.target:
-            hotspot = location.get_hotspot_by_label(command.target)
+            target = command.target.strip()
+            if target.strip("[]#").isdigit():
+                return location.get_hotspot_by_number(int(target.strip("[]#")))
+            # Movement only takes whole words (no fragments)
+            max_rank = WHOLE_WORDS if command.command_type == CommandType.GO else FRAGMENTS
+            hotspot = location.get_hotspot_by_label(target, max_rank=max_rank)
             if hotspot is None and state is not None:
-                hotspot = self._resolve_person_by_name(command.target, location, state)
+                hotspot = self._resolve_person_by_name(target, location, state)
+            if hotspot is None and state is not None and command.command_type == CommandType.TALK:
+                # "talk to him" with one person here
+                hotspot = self._find_person(target, location, state)
             return hotspot
         return None
 
@@ -1058,35 +1103,66 @@ Interpret what the player wants to do and respond with JSON."""
             self.renderer.render_error("Save failed due to an unexpected error. Check the logs.")
         self.renderer.wait_for_key()
 
-    def _handle_load(self, state: 'GameState', config: GameConfig) -> None:
+    def _handle_load(self, state: 'GameState', config: GameConfig, raw_input: str = "") -> None:
         """
-        Load a saved game (full world snapshot when the save system is
-        wired): whichever is newer of your save and the quit auto-save.
+        Load a saved case. 'load save' / 'load autosave' pick a slot;
+        plain 'load' takes the newer of your save and the quit auto-save,
+        falling back to the other if that one won't load.
         """
         save_path = os.path.join(config.save_dir, SAVE_FILE)
-        if self.save_system:
-            slots = [
-                os.path.join(config.save_dir, name) for name in (SAVE_FILE, AUTOSAVE_FILE)
-            ]
-            existing = [path for path in slots if os.path.exists(path)]
-            if existing:
-                save_path = max(existing, key=os.path.getmtime)
-        try:
-            if self.save_system:
-                self.save_system.load(save_path)
-            else:
+        auto_path = os.path.join(config.save_dir, AUTOSAVE_FILE)
+        if not self.save_system:
+            try:
                 state.memory = MemoryBank.load(save_path)
-            if save_path.endswith(AUTOSAVE_FILE):
+                self.renderer.render_text("Game loaded!")
+            except FileNotFoundError:
+                self.renderer.render_error("No save file found.")
+            except (json.JSONDecodeError, ValueError):
+                self.renderer.render_error("Save file is corrupted. Starting fresh may be necessary.")
+            self.renderer.wait_for_key()
+            return
+
+        asked = set((raw_input or "").lower().split()[1:])
+        if asked & {"autosave", "auto", "quit", "last"}:
+            slots = [auto_path]
+        elif asked & {"save", "saved", "manual", "savegame", "mine"}:
+            slots = [save_path]
+        else:
+            slots = sorted(
+                (p for p in (save_path, auto_path) if os.path.exists(p)),
+                key=os.path.getmtime, reverse=True,
+            )
+        slots = [p for p in slots if os.path.exists(p)]
+        if not slots:
+            self.renderer.render_error("No save file found.")
+            self.renderer.wait_for_key()
+            return
+
+        failed = []
+        for path in slots:
+            try:
+                self.save_system.load(path)
+            except (json.JSONDecodeError, ValueError, KeyError):
+                failed.append(path)
+                continue
+            except Exception as e:
+                logger.error(f"Load failed: {type(e).__name__}: {e}")
+                failed.append(path)
+                continue
+            if path == auto_path:
                 self.renderer.render_text("Game loaded! (from when you last quit)")
+                if os.path.exists(save_path) and save_path not in failed:
+                    self.renderer.render_text("Your own saved case is still there: 'load save'.")
             else:
                 self.renderer.render_text("Game loaded!")
-        except FileNotFoundError:
-            self.renderer.render_error("No save file found.")
-        except (json.JSONDecodeError, ValueError):
-            self.renderer.render_error("Save file is corrupted. Starting fresh may be necessary.")
-        except Exception as e:
-            logger.error(f"Load failed: {type(e).__name__}: {e}")
-            self.renderer.render_error("Load failed due to an unexpected error. Check the logs.")
+                if os.path.exists(auto_path) and auto_path not in failed and not asked:
+                    self.renderer.render_text("(For where you last quit instead: 'load autosave'.)")
+            if failed:
+                self.renderer.render_error("(The other save was damaged and couldn't be read.)")
+            self.renderer.wait_for_key()
+            return
+
+        self.renderer.render_error("Save file is corrupted. Starting fresh may be necessary.")
         self.renderer.wait_for_key()
 
     # Defines the menu items shown in the settings screen.

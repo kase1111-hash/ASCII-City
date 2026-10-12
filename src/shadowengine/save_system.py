@@ -79,8 +79,16 @@ class SaveSystem:
         directory = os.path.dirname(filepath)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filepath, "w") as f:
-            json.dump(envelope, f, indent=2)
+        # Write beside the slot, then swap it in: a failed or interrupted
+        # save never leaves a half-written file where a good one was
+        temp_path = f"{filepath}.tmp"
+        try:
+            with open(temp_path, "w") as f:
+                json.dump(envelope, f, indent=2)
+            os.replace(temp_path, filepath)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         logger.info("Saved full game state to %s", filepath)
 
     # ------------------------------------------------------------------

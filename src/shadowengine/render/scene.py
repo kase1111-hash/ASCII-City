@@ -5,7 +5,7 @@ Scene and Location definitions.
 from dataclasses import dataclass, field
 from typing import Optional
 from ..interaction.hotspot import Hotspot, HotspotType
-from ..interaction.matching import best_match
+from ..interaction.matching import best_match, FRAGMENTS
 
 
 @dataclass
@@ -50,14 +50,14 @@ class Location:
                 return h
         return None
 
-    def get_hotspot_by_label(self, label: str) -> Optional[Hotspot]:
+    def get_hotspot_by_label(self, label: str, max_rank: float = FRAGMENTS) -> Optional[Hotspot]:
         """
         Get a visible hotspot by its label: an exact or whole-word match
-        beats a fragment inside a word ("alley" is the Dark Alley, not
-        O'Malley's Bar).
+        beats a word beginning ("alley" is the Dark Alley, and never
+        O'Malley's Bar). Pass max_rank=WHOLE_WORDS to refuse fragments.
         """
         candidates = [h for h in self.hotspots if h.visible and h.active]
-        index = best_match(label, [h.label for h in candidates])
+        index = best_match(label, [h.label for h in candidates], max_rank=max_rank)
         return candidates[index] if index is not None else None
 
     def get_people(self) -> list[Hotspot]:

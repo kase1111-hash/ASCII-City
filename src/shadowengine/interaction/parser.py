@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from enum import Enum
 import re
 
-from .matching import best_match
+from .matching import best_match, WHOLE_WORDS, FRAGMENTS
 
 
 class CommandType(Enum):
@@ -184,18 +184,33 @@ class CommandParser:
         # Try to find verb
         verb_type, remaining_tokens = self._find_verb(tokens)
 
+        # A typo-guessed verb never beats words that name something on
+        # screen: "street" is the street, not a misspelled "greet"
+        exact_verb = tokens[0] in self.word_to_verb or (
+            len(tokens) >= 2 and f"{tokens[0]} {tokens[1]}" in self.word_to_verb
+        )
+        if verb_type != CommandType.UNKNOWN and not exact_verb and best_match(
+            tokens[0], context.get("targets", []), max_rank=WHOLE_WORDS,
+        ) is not None:
+            verb_type = CommandType.UNKNOWN
+
         if verb_type == CommandType.UNKNOWN:
             # Maybe they just typed a noun - try to figure out default action
             return self._infer_from_noun(tokens, context)
 
-        # "exit to street" goes somewhere; a bare "exit" (or "exit the
-        # game") means quit — the quit handler asks before anything is lost
-        if tokens[0] in ("exit", "leave", "quit") and (
-            not remaining_tokens and tokens[0] == "exit"
-            or [t for t in remaining_tokens if t not in self.articles]
-            and all(t in self.QUIT_OBJECTS or t in self.articles for t in remaining_tokens)
-        ):
-            return Command(command_type=CommandType.QUIT)
+        # "exit to street" goes somewhere; a bare "exit", "exit the game"
+        # or "quit now" means quit — the quit handler asks first. ("leave
+        # now" just leaves the room.)
+        meaningful = [t for t in remaining_tokens if t not in self.articles]
+        if tokens[0] in ("exit", "leave", "quit"):
+            allowed = self.QUIT_OBJECTS | (
+                self.QUIT_MODIFIERS if tokens[0] != "leave" else set()
+            )
+            if (not meaningful and tokens[0] == "exit") or (
+                meaningful and all(t in allowed for t in meaningful)
+                and (tokens[0] != "leave" or any(t in self.QUIT_OBJECTS for t in meaningful))
+            ):
+                return Command(command_type=CommandType.QUIT)
 
         # "go 3", "examine [2]", "talk #1": the numbers on screen
         rest = [t for t in remaining_tokens if t not in self.articles]
@@ -214,8 +229,10 @@ class CommandParser:
             topic = " ".join(remaining_tokens[cut + 1:]) or None
             remaining_tokens = remaining_tokens[:cut]
 
-        # Extract target
-        target = self._extract_target(remaining_tokens, context)
+        # Extract target: movement only ever takes whole-word matches, so
+        # "go to elm street" can't be swallowed by a door to some street
+        max_rank = WHOLE_WORDS if verb_type in (CommandType.GO, CommandType.LEAVE) else FRAGMENTS
+        target = self._extract_target(remaining_tokens, context, max_rank)
 
         # Check for "use X on Y" pattern
         secondary = None
@@ -233,7 +250,8 @@ class CommandParser:
         )
 
     # "exit the game", "quit now"
-    QUIT_OBJECTS = {"game", "program", "shadowengine", "now", "please", "app"}
+    QUIT_OBJECTS = {"game", "program", "shadowengine", "app"}
+    QUIT_MODIFIERS = {"now", "please"}
 
     def _find_verb(self, tokens: list[str]) -> Tuple[CommandType, list[str]]:
         """Find the verb in tokens and return remaining tokens."""
@@ -266,6 +284,9 @@ class CommandParser:
         best = None
         for verb_word, cmd_type in self.word_to_verb.items():
             if len(verb_word) <= 2 or cmd_type in self.no_fuzzy:
+                continue
+            # Typos keep their first letter; "street" isn't "greet"
+            if verb_word[:1] != word[:1]:
                 continue
             distance = self._levenshtein(word, verb_word)
             if distance > max_distance:
@@ -308,7 +329,9 @@ class CommandParser:
                     d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)  # transposition
         return d[-1][-1]
 
-    def _extract_target(self, tokens: list[str], context: dict) -> Optional[str]:
+    def _extract_target(
+        self, tokens: list[str], context: dict, max_rank: float = FRAGMENTS,
+    ) -> Optional[str]:
         """Extract the target from remaining tokens."""
         # Remove articles
         filtered = [t for t in tokens if t not in self.articles]
@@ -322,7 +345,7 @@ class CommandParser:
         # finds the Dark Alley rather than O'Malley's Bar; filler words don't
         # count, so "door to street" still finds "Door to Street"
         known_targets = context.get("targets", [])
-        index = best_match(target, known_targets)
+        index = best_match(target, known_targets, max_rank=max_rank)
         if index is not None:
             return known_targets[index]
 
@@ -336,7 +359,10 @@ class CommandParser:
 
         # Try to match against known targets and infer action
         hotspots = context.get("hotspots", [])
-        index = best_match(target, [h.get("label", "") for h in hotspots]) if target else None
+        # Whole words only: a bare "alley" in the bar isn't Mickey O'Malley
+        index = best_match(
+            target, [h.get("label", "") for h in hotspots], max_rank=WHOLE_WORDS,
+        ) if target else None
         if index is not None:
             hotspot = hotspots[index]
             hotspot_type = hotspot.get("type", "object")

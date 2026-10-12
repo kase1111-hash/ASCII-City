@@ -136,19 +136,16 @@ class ConversationManager:
 
         # "threaten him", "I accuse you!", "accuse her of murder" — aimed at
         # whoever you're talking to; naming someone else doesn't hit them
-        action, rest = self._pressure_intent(words)
-        if action:
-            if rest and not self._names_partner(rest, character):
-                self.renderer.render_error(
-                    f"You're talking to {character.name}. Leave the "
-                    f"conversation first to {action} someone else."
-                )
-                self.renderer.wait_for_key()
-                return
-            if action == "threaten":
-                self.handle_threaten(character, state)
-            else:
-                self.handle_accuse(character, state)
+        action, refusal = self._pressure_intent(raw_input, character, state)
+        if refusal:
+            self.renderer.render_error(refusal)
+            self.renderer.wait_for_key()
+            return
+        if action == "threaten":
+            self.handle_threaten(character, state)
+            return
+        if action == "accuse":
+            self.handle_accuse(character, state)
             return
 
         # "show the napkin", "show him the napkin" — but "show me your
@@ -164,43 +161,101 @@ class ConversationManager:
         self.offer_testimony(character, state)
         self.renderer.wait_for_key()
 
-    _CLAUSE = re.compile(
-        r"\s+(?:of|for|with|about|what|who|where|why|how|when|that|if)\s+.*$"
-    )
-    _FILLER = {
-        "him", "her", "them", "you", "yourself", "the", "a", "an", "it",
-        "now", "again", "please", "right", "here",
+    # What "accuse"/"arrest" has to be about to count as naming the killer
+    _MURDER_WORDS = {
+        "murder", "murdering", "killing", "kill", "killed", "it", "this",
+        "marcus", "webb", "his", "the",
+    }
+    # Words that refer to the person without naming anyone else
+    _ADDRESS_WORDS = {
+        "you", "yourself", "him", "her", "them", "the", "a", "an", "mr",
+        "mrs", "miss", "ms", "sir", "madam", "pal", "buddy", "friend", "now",
+        "again", "please", "right", "here", "councilman", "officer",
+    }
+    _PRESSURE_FORMS = {
+        "accuse": "accuse", "accusing": "accuse", "arrest": "accuse",
+        "arresting": "accuse", "threaten": "threaten", "threatening": "threaten",
+        "intimidate": "threaten",
+    }
+    _CLAUSE_WORDS = {
+        "for", "with", "about", "because", "to", "in", "on", "if", "that",
+        "what", "who", "where", "why", "how", "when", "and", "or", "but",
     }
 
-    def _pressure_intent(self, words: list[str]) -> tuple[Optional[str], list[str]]:
-        """('threaten'|'accuse'|None, words naming the target, if any)."""
+    def _pressure_intent(
+        self, raw: str, character: Character, state: 'GameState',
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Is this line an accusation or a threat aimed at the partner?
+        Returns (action or None, refusal message or None). Questions,
+        the past tense, and "accusing you of lying" are just talk.
+        """
+        text = raw.strip().lower()
+        if not text or text.endswith("?"):
+            return None, None
+        words = [w for w in (re.sub(r"[^a-z0-9']", "", t) for t in text.split()) if w]
         if not words:
-            return None, []
-        norm = " ".join(words)
-        if norm in ("you did it", "you killed him", "you killed marcus", "you killed marcus webb"):
-            return "accuse", []
-        index = None
-        if words[0] in ("threaten", "intimidate", "accuse", "arrest"):
-            index = 0
-        elif (
-            len(words) > 1 and words[0] in ("i", "im", "i'm")
-            and words[1].startswith(("accus", "arrest", "threaten"))
+            return None, None
+        if " ".join(words) in (
+            "you did it", "you killed him", "you killed marcus",
+            "you killed marcus webb", "it was you",
         ):
-            index = 1
+            return "accuse", None
+
+        index = None
+        if words[0] in self._PRESSURE_FORMS and words[0] in ("accuse", "arrest", "threaten", "intimidate"):
+            index = 0
+        elif words[0] in ("i", "im", "i'm") and len(words) > 1:
+            offset = 2 if words[1] == "am" else 1
+            if len(words) > offset and words[offset] in self._PRESSURE_FORMS:
+                index = offset
         if index is None:
-            return None, []
-        action = "threaten" if words[index].startswith(("threaten", "intimidate")) else "accuse"
-        rest = self._CLAUSE.sub("", " " + " ".join(words[index + 1:])).split()
-        return action, [w for w in rest if w not in self._FILLER]
+            return None, None
+        action = self._PRESSURE_FORMS[words[index]]
+
+        tail = words[index + 1:]
+        if "of" in tail:
+            charge = tail[tail.index("of") + 1:]
+            if action == "accuse" and not set(charge) & self._MURDER_WORDS:
+                return None, None          # "I accuse you of lying" is talk
+            tail = tail[:tail.index("of")]
+        for i, word in enumerate(tail):
+            if word in self._CLAUSE_WORDS:
+                tail = tail[:i]
+                break
+
+        names = [w.replace("'", "") for w in tail if w not in self._ADDRESS_WORDS]
+        other = self._names_someone_else(names, character, state) if names else None
+        if other:
+            return None, (
+                f"You're talking to {character.name}. Leave the conversation "
+                f"first to {action} {other.name}."
+            )
+        third_person = any(w in ("him", "her", "them") for w in tail)
+        location = state.locations.get(state.current_location_id)
+        if not names and third_person and location and len(location.get_people()) > 1:
+            return None, (
+                f"Who do you mean? You're talking to {character.name} — say "
+                f"'{action} you', or leave the conversation first."
+            )
+        return action, None
+
+    def _names_someone_else(
+        self, names: list[str], character: Character, state: 'GameState',
+    ) -> Optional[Character]:
+        """Another cast member these words name (and the partner doesn't)."""
+        wanted = set(names)
+        if wanted <= self._partner_words(character):
+            return None
+        for other in state.characters.values():
+            if other.id != character.id and wanted <= self._partner_words(other):
+                return other
+        return None
 
     @staticmethod
     def _partner_words(character: Character) -> set[str]:
         text = f"{character.name} {character.id.replace('_', ' ')}"
         return set(re.findall(r"[a-z0-9]+", text.lower().replace("'", "")))
-
-    def _names_partner(self, words: list[str], character: Character) -> bool:
-        cleaned = {re.sub(r"[^a-z0-9]", "", w.replace("'", "")) for w in words} - {""}
-        return bool(cleaned) and cleaned <= self._partner_words(character)
 
     ACTIONS_FOOTER = (
         "(Say anything. Or: show [evidence], threaten, accuse, case, leave)"
@@ -223,6 +278,18 @@ they know.
         "case", "casebook", "notes", "journal", "clues", "evidence",
         "inventory", "inv", "items", "i", "save", "load", "quit", "q",
     }
+
+    def _record_secret_told(self, character: Character, state: 'GameState') -> None:
+        """Their secret is out: a non-culprit won't keep repeating it."""
+        char_memory = state.memory.get_character_memory(character.id)
+        if char_memory:
+            char_memory.record_player_interaction(
+                timestamp=state.memory.current_time,
+                interaction_type="confessed_to",
+                player_tone="pressing",
+                outcome="revealed_secret",
+                trust_change=0,
+            )
 
     def handle_free_dialogue(
         self, character: Character, player_input: str, state: 'GameState'
@@ -449,6 +516,8 @@ they know.
                 trust_change=0,
                 topic=discovery.description[:50],
             )
+        if cracked and character.secret_truth:
+            self._record_secret_told(character, state)
         state.world_state.generation_memory.record_dialogue(
             npc_id=character.id,
             player_said=f"[showed evidence: {discovery.description[:80]}]",
@@ -517,6 +586,8 @@ they know.
                 outcome="cracked" if cracked else "resisted",
                 trust_change=THREATEN_TRUST_PENALTY,
             )
+        if cracked:
+            self._record_secret_told(character, state)
 
         # Feed into NPC intelligence — other NPCs may hear about this
         bridge = getattr(state, 'event_bridge', None)
