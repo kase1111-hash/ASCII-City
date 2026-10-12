@@ -22,6 +22,7 @@ from .llm.validation import safe_parse_json, validate_free_exploration_response,
 from .location_manager import LocationManager
 from .conversation import ConversationManager
 from .circuits import SignalType, InputSignal, OutputSignal, ProcessingResult
+from .testimony import advance_leads
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,23 @@ class CommandHandler:
             self._handle_free_exploration(command.raw_input, context, state, config, add_character_fn)
             return
 
+        # A bare direction ("north", "n") parses as a GO verb with no
+        # target: the direction itself is where they want to go
+        if (
+            command.command_type == CommandType.GO
+            and not command.target
+            and not command.hotspot_number
+        ):
+            raw = (command.raw_input or "").lower().strip()
+            dir_map = {"n": "north", "s": "south", "e": "east", "w": "west"}
+            if raw in dir_map or raw in dir_map.values():
+                self.location_manager.handle_direction(
+                    dir_map.get(raw, raw), current_location, state, config, add_character_fn
+                )
+                return
+
         # Find target hotspot
-        hotspot = self._resolve_hotspot(command, current_location)
+        hotspot = self._resolve_hotspot(command, current_location, state)
         if not hotspot:
             if command.command_type == CommandType.GO and command.target:
                 target = command.target.lower()
@@ -231,14 +247,45 @@ class CommandHandler:
         self.renderer.render_error(message)
         self.renderer.wait_for_key()
 
-    def _resolve_hotspot(self, command: Command, location: Optional[Location]) -> Optional[Hotspot]:
+    def _resolve_hotspot(
+        self, command: Command, location: Optional[Location], state: 'GameState' = None,
+    ) -> Optional[Hotspot]:
         """Resolve command target to a hotspot."""
         if not location:
             return None
         if command.hotspot_number:
             return location.get_hotspot_by_number(command.hotspot_number)
         elif command.target:
-            return location.get_hotspot_by_label(command.target)
+            hotspot = location.get_hotspot_by_label(command.target)
+            if hotspot is None and state is not None:
+                hotspot = self._resolve_person_by_name(command.target, location, state)
+            return hotspot
+        return None
+
+    @staticmethod
+    def _resolve_person_by_name(
+        target: str, location: Location, state: 'GameState',
+    ) -> Optional[Hotspot]:
+        """
+        Find someone here by any part of their name or role, even when the
+        scene labels them differently ("talk harrow", "talk informant").
+        """
+        def words(text: str) -> set[str]:
+            return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+        wanted = words(target) - {"the", "a", "an", "to", "with", "mr", "mrs", "miss"}
+        if not wanted:
+            return None
+        for hotspot in location.get_people():
+            character = state.characters.get(hotspot.target_id or "")
+            if character is None:
+                continue
+            known = (
+                words(character.name) | words(hotspot.label)
+                | words(character.id.replace("_", " "))
+            )
+            if wanted <= known:
+                return hotspot
         return None
 
     def _handle_hotspot_default(
@@ -394,8 +441,7 @@ class CommandHandler:
             )
             self.renderer.render_discovery(hotspot.examine_text)
 
-            if state.spine:
-                state.spine.make_revelation(hotspot.reveals_fact)
+            advance_leads(state, self.renderer)
 
             # NPCs present witness the player examining evidence
             self._record_witnessed_event(
@@ -451,6 +497,7 @@ class CommandHandler:
                 is_evidence=True,
             )
             self.renderer.render_discovery(hotspot.examine_text)
+            advance_leads(state, self.renderer)
 
         # NPCs present witness the player taking something
         self._record_witnessed_event(

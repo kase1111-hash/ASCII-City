@@ -19,6 +19,7 @@ from .llm.client import LLMClient
 from .llm.validation import safe_parse_json, validate_location_response
 from .world_state import WorldState
 from .generation.location_generator import LocationGenerator
+from .testimony import Testimony
 
 logger = logging.getLogger(__name__)
 
@@ -127,22 +128,73 @@ class LocationManager:
         dest_id = destination.lower().replace(" ", "_").replace("'", "")
 
         # Check existing locations for a match
+        known_id = None
         for loc_id, location in state.locations.items():
             if dest_id == loc_id or destination.lower() == location.name.lower():
-                state.current_location_id = loc_id
-                state.memory.world.record(
-                    event_type=EventType.MOVEMENT,
-                    description=f"Player traveled to {location.name}",
-                    location=loc_id,
-                    actors=["player"],
-                )
-                return
+                known_id = loc_id
+                break
+        if known_id is None:
+            known_id = self.match_known_location(destination, state)
+        if known_id is not None:
+            location = state.locations[known_id]
+            state.current_location_id = known_id
+            state.memory.world.record(
+                event_type=EventType.MOVEMENT,
+                description=f"Player traveled to {location.name}",
+                location=known_id,
+                actors=["player"],
+            )
+            return
 
         # Destination doesn't exist — generate it
         self.renderer.render_narration(f"You set out for {destination}...")
         self.generate_and_move(
             dest_id, destination, current_location,
             state, config, add_character_fn,
+        )
+
+    _PLACE_STOPWORDS = {
+        "the", "a", "an", "to", "your", "my", "back", "exit", "toward",
+        "towards", "into", "inside", "go", "head", "return",
+    }
+
+    @classmethod
+    def _place_words(cls, text: str) -> set[str]:
+        return {
+            w for w in re.findall(r"[a-z0-9']+", text.lower().replace("_", " "))
+            if w not in cls._PLACE_STOPWORDS
+        }
+
+    def match_known_location(self, destination: str, state: 'GameState') -> Optional[str]:
+        """
+        Find a known place by any name the world has used for it — its
+        name, its id, or the label of an exit that leads there — so "go
+        office" or "go your office building" returns to the real office
+        instead of inventing a new one. Every word the player used has to
+        fit; anything new is left for generation.
+        """
+        wanted = self._place_words(destination)
+        if not wanted:
+            return None
+
+        own: dict[str, set[str]] = {
+            loc_id: self._place_words(loc.name) | self._place_words(loc_id)
+            for loc_id, loc in state.locations.items()
+        }
+        names = {loc_id: set(words) for loc_id, words in own.items()}
+        for loc in state.locations.values():
+            for hotspot in loc.hotspots:
+                if hotspot.hotspot_type == HotspotType.EXIT and hotspot.target_id in names:
+                    names[hotspot.target_id] |= self._place_words(hotspot.label)
+
+        matches = [loc_id for loc_id, words in names.items() if wanted <= words]
+        if not matches:
+            return None
+        # The place whose own name the player said most completely wins:
+        # "go office" means the office, not "office_north"
+        return min(
+            matches,
+            key=lambda loc_id: (len(own[loc_id] - wanted), len(names[loc_id]), loc_id),
         )
 
     def generate_and_move(
@@ -268,9 +320,32 @@ class LocationManager:
                 "generated_from": current_location.id if current_location else None,
             })
 
+            # People first, so the scene's person hotspots can be tied to
+            # real characters: everyone you can see, you can talk to
+            taken_ids = set(state.characters)
+            # Who each name/id in this response refers to; None means
+            # someone already standing elsewhere in the world
+            npc_refs: dict[str, Optional[Character]] = {}
+            new_npcs: list[Character] = []
+            arrivals: list[Character] = []   # existing cast turning up here
+            for npc_data in data.get("npcs", []):
+                existing = self._existing_character(None, npc_data.get("name"), state)
+                if existing is not None:
+                    # The LLM brought back someone we already know
+                    npc = self._arrive(existing, location.id, state)
+                    if npc is not None:
+                        arrivals.append(npc)
+                else:
+                    npc = self._build_npc(npc_data, location.id, taken_ids)
+                    new_npcs.append(npc)
+                for ref in (npc_data.get("id"), npc_data.get("name")):
+                    if ref:
+                        npc_refs[str(ref).lower()] = npc
+
             # Add hotspots
             # TODO: attach BehaviorCircuits to LLM-generated hotspots based on type
             # (currently only hand-built scenarios like dockside_job create circuits)
+            placed: set[str] = set()   # characters already given a place here
             for hs_data in data.get("hotspots", []):
                 hs_type_str = hs_data.get("type", "object")
                 hs_type = (
@@ -278,18 +353,25 @@ class LocationManager:
                     if hs_type_str in [e.value for e in HotspotType]
                     else HotspotType.OBJECT
                 )
+                hs_id = hs_data.get("id") or f"hs_{hs_data.get('label', 'unknown').lower().replace(' ', '_')}"
 
                 if hs_type == HotspotType.PERSON:
+                    character = self._character_for_person_hotspot(
+                        hs_data, location.id, npc_refs, new_npcs, state, taken_ids,
+                    )
+                    if character is None or character.id in placed:
+                        continue  # elsewhere in the world, or already here
+                    placed.add(character.id)
                     hotspot = Hotspot.create_person(
-                        id=hs_data.get("id", f"hs_{hs_data.get('label', 'unknown').lower().replace(' ', '_')}"),
-                        name=hs_data.get("label", "Someone"),
+                        id=hs_id,
+                        name=hs_data.get("label") or character.name,
                         position=(30, 10),
-                        character_id=hs_data.get("character_id"),
-                        description=hs_data.get("description", ""),
+                        character_id=character.id,
+                        description=hs_data.get("description", "") or character.description,
                     )
                 else:
                     hotspot = Hotspot(
-                        id=hs_data.get("id", f"hs_{hs_data.get('label', 'unknown').lower().replace(' ', '_')}"),
+                        id=hs_id,
                         label=hs_data.get("label", "Something"),
                         hotspot_type=hs_type,
                         position=(30, 10),
@@ -299,36 +381,30 @@ class LocationManager:
                     )
                 location.add_hotspot(hotspot)
 
-            # Create NPCs
-            for npc_data in data.get("npcs", []):
-                archetype_str = npc_data.get("archetype", "survivor").upper()
-                try:
-                    archetype = Archetype[archetype_str]
-                except KeyError:
-                    archetype = Archetype.SURVIVOR
-
-                npc = Character(
-                    id=npc_data.get("id", f"npc_{npc_data.get('name', 'stranger').lower().replace(' ', '_')}"),
-                    name=npc_data.get("name", "A Stranger"),
-                    archetype=archetype,
-                    description=npc_data.get("description", ""),
-                    secret_truth=npc_data.get("secret", ""),
-                    public_lie=npc_data.get("public_persona", ""),
-                    initial_location=location.id,
-                )
-                for topic in npc_data.get("topics", []):
-                    npc.add_topic(topic)
+            # Bring the newcomers into the world — and into the case
+            for npc in new_npcs:
                 add_character_fn(npc)
+                self.world_state.register_npc({
+                    "id": npc.id,
+                    "name": npc.name,
+                    "description": npc.description,
+                    "archetype": npc.archetype.value,
+                    "secret": npc.secret_truth,
+                    "public_persona": npc.public_lie,
+                    "topics": sorted(npc.available_topics),
+                }, location.id)
+                Testimony.weave_bystander(npc, state)
 
-                self.world_state.register_npc(npc_data, location.id)
-
-                location.add_hotspot(Hotspot.create_person(
-                    id=f"hs_{npc.id}",
-                    name=npc.name,
-                    position=(30, 10),
-                    character_id=npc.id,
-                    description=npc.description,
-                ))
+            for npc in new_npcs + arrivals:
+                if npc.id not in placed:
+                    placed.add(npc.id)
+                    location.add_hotspot(Hotspot.create_person(
+                        id=f"hs_{npc.id}",
+                        name=npc.name,
+                        position=(30, 10),
+                        character_id=npc.id,
+                        description=npc.description,
+                    ))
 
             # Store connections
             if "connections" in data:
@@ -350,6 +426,114 @@ class LocationManager:
         except (KeyError, TypeError, ValueError) as e:
             self.renderer.render_text(f"(Location creation issue: {e})")
             return None
+
+    @staticmethod
+    def _unique_character_id(base: str, taken_ids: set[str]) -> str:
+        """A character id that can't overwrite anyone already in the world."""
+        base = re.sub(r"[^a-z0-9_]", "", base.lower().replace(" ", "_").replace("'", "")) or "npc"
+        candidate, n = base, 2
+        while candidate in taken_ids:
+            candidate = f"{base}_{n}"
+            n += 1
+        taken_ids.add(candidate)
+        return candidate
+
+    def _build_npc(self, npc_data: dict, location_id: str, taken_ids: set[str]) -> Character:
+        """Create a character from the LLM's npc entry."""
+        archetype_str = str(npc_data.get("archetype", "survivor")).upper()
+        try:
+            archetype = Archetype[archetype_str]
+        except KeyError:
+            archetype = Archetype.SURVIVOR
+
+        name = npc_data.get("name") or "A Stranger"
+        npc = Character(
+            id=self._unique_character_id(
+                npc_data.get("id") or f"npc_{name}", taken_ids,
+            ),
+            name=name,
+            archetype=archetype,
+            description=npc_data.get("description", ""),
+            secret_truth=npc_data.get("secret", ""),
+            public_lie=npc_data.get("public_persona", ""),
+            initial_location=location_id,
+        )
+        for topic in npc_data.get("topics", []):
+            npc.add_topic(str(topic))
+        return npc
+
+    def _character_for_person_hotspot(
+        self,
+        hs_data: dict,
+        location_id: str,
+        npc_refs: dict[str, Character],
+        new_npcs: list[Character],
+        state: 'GameState',
+        taken_ids: set[str],
+    ) -> Optional[Character]:
+        """
+        Tie a person in the scene to a character. Matches this location's
+        new NPCs by id or name, then the existing cast; a person nobody
+        described becomes a character of their own. Returns None when the
+        person is someone already present elsewhere in the world.
+        """
+        label = hs_data.get("label") or ""
+        for ref in (hs_data.get("character_id"), label):
+            if ref and str(ref).lower() in npc_refs:
+                return npc_refs[str(ref).lower()]
+
+        existing = self._existing_character(hs_data.get("character_id"), label, state)
+        if existing is not None:
+            return self._arrive(existing, location_id, state)
+
+        npc = self._build_npc(
+            {
+                "id": f"npc_{label}" if label else "",
+                "name": label or "A Stranger",
+                "description": hs_data.get("description", ""),
+            },
+            location_id, taken_ids,
+        )
+        new_npcs.append(npc)
+        npc_refs[npc.name.lower()] = npc
+        return npc
+
+    @staticmethod
+    def _existing_character(
+        character_id: Optional[str], name: Optional[str], state: 'GameState',
+    ) -> Optional[Character]:
+        """Someone already in the cast, by id or by name."""
+        if character_id and character_id in state.characters:
+            return state.characters[character_id]
+        if name:
+            for character in state.characters.values():
+                if character.name.lower() == str(name).lower():
+                    return character
+        return None
+
+    def _arrive(
+        self, character: Character, location_id: str, state: 'GameState',
+    ) -> Optional[Character]:
+        """
+        An existing character turns up in a new location — unless they're
+        already standing somewhere else (or gone for good), in which case
+        the scene doesn't get a duplicate.
+        """
+        if not character.state.is_available or self._has_presence(character.id, state):
+            return None
+        character.move_to(location_id)
+        return character
+
+    @staticmethod
+    def _has_presence(character_id: str, state: 'GameState') -> bool:
+        """Is this character already standing somewhere in the world?"""
+        return any(
+            hs.hotspot_type == HotspotType.PERSON
+            and hs.target_id == character_id
+            and hs.active
+            for loc in state.locations.values()
+            for hs in loc.hotspots
+        )
 
     def create_fallback_location(
         self,

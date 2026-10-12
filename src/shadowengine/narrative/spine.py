@@ -58,6 +58,9 @@ class Revelation:
     # Optional: accumulating evidence discoveries at this location can
     # satisfy the revelation (see SPINE_EVIDENCE_THRESHOLD)
     location_id: Optional[str] = None
+    # Optional: what someone who knows this lead would tell the detective,
+    # as ground truth. Characters holding the lead voice it (see testimony)
+    testimony: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -66,7 +69,8 @@ class Revelation:
             "importance": self.importance,
             "prerequisites": self.prerequisites,
             "source": self.source,
-            "location_id": self.location_id
+            "location_id": self.location_id,
+            "testimony": self.testimony
         }
 
     @classmethod

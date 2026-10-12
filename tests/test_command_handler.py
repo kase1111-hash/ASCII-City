@@ -139,7 +139,18 @@ class TestExamine:
         handler.renderer.render_discovery.assert_called()
 
     def test_examine_updates_spine(self, handler, state, config):
-        spine = MagicMock()
+        from src.shadowengine.narrative import (
+            NarrativeSpine, ConflictType, TrueResolution, Revelation,
+        )
+        spine = NarrativeSpine(
+            conflict_type=ConflictType.MURDER,
+            conflict_description="A test case.",
+            true_resolution=TrueResolution(
+                culprit_id="x", motive="m", method="k", opportunity="o",
+                evidence_chain=["clue_1"],
+            ),
+            revelations=[Revelation(id="clue_1", description="The clue", importance=1)],
+        )
         state.spine = spine
         hotspot = Hotspot(
             id="hs_clue", label="Clue", hotspot_type=HotspotType.EVIDENCE,
@@ -149,7 +160,8 @@ class TestExamine:
         state.locations["bar"].add_hotspot(hotspot)
         cmd = Command(command_type=CommandType.EXAMINE, target="Clue", raw_input="examine clue")
         handler.handle_command(cmd, {}, state, config, lambda c: None)
-        spine.make_revelation.assert_called_with("clue_1")
+        assert "clue_1" in spine.revealed_facts
+        handler.renderer.render_discovery.assert_any_call("LEAD UNCOVERED: The clue")
 
     def test_examine_marks_discovered(self, handler, state, config):
         hotspot = Hotspot(
