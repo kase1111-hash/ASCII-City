@@ -57,6 +57,7 @@ class SaveSystem:
             "memory": state.memory.to_dict(),
             "inventory": list(state.inventory),
             "current_location_id": state.current_location_id,
+            "location_trail": list(state.location_trail),
             "locations": [loc.to_dict() for loc in state.locations.values()],
             "characters": [c.to_dict() for c in state.characters.values()],
             "spine": state.spine.to_dict() if state.spine else None,
@@ -78,13 +79,37 @@ class SaveSystem:
         directory = os.path.dirname(filepath)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        with open(filepath, "w") as f:
-            json.dump(envelope, f, indent=2)
+        # Write beside the slot, then swap it in: a failed or interrupted
+        # save never leaves a half-written file where a good one was
+        temp_path = f"{filepath}.tmp"
+        try:
+            with open(temp_path, "w") as f:
+                json.dump(envelope, f, indent=2)
+            os.replace(temp_path, filepath)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
         logger.info("Saved full game state to %s", filepath)
 
     # ------------------------------------------------------------------
     # Load
     # ------------------------------------------------------------------
+
+    def is_readable(self, filepath: str) -> bool:
+        """Would this save load? (Exists, parses, and its checksum holds.)"""
+        try:
+            with open(filepath) as f:
+                envelope = json.load(f)
+            if not isinstance(envelope, dict):
+                return False
+            if envelope.get("version", 1) < SAVE_VERSION:
+                return True   # legacy memory-only save: load() accepts it
+            data = envelope.get("data")
+            return isinstance(data, dict) and hmac.compare_digest(
+                str(envelope.get("checksum", "")), self._checksum(data),
+            )
+        except (OSError, ValueError, TypeError):
+            return False
 
     def load(self, filepath: str) -> None:
         """Restore a snapshot; raises on missing/corrupt files."""
@@ -119,6 +144,7 @@ class SaveSystem:
         state.memory = MemoryBank.from_dict(data["memory"])
         state.inventory = [str(i) for i in data.get("inventory", [])]
         state.current_location_id = data.get("current_location_id", "")
+        state.location_trail = [str(i) for i in data.get("location_trail", [])]
 
         state.locations = {}
         for loc_data in data.get("locations", []):

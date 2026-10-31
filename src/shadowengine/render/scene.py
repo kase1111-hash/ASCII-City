@@ -5,6 +5,7 @@ Scene and Location definitions.
 from dataclasses import dataclass, field
 from typing import Optional
 from ..interaction.hotspot import Hotspot, HotspotType
+from ..interaction.matching import best_match, FRAGMENTS
 
 
 @dataclass
@@ -49,14 +50,15 @@ class Location:
                 return h
         return None
 
-    def get_hotspot_by_label(self, label: str) -> Optional[Hotspot]:
-        """Get a hotspot by its label (partial match)."""
-        label_lower = label.lower()
-        for h in self.hotspots:
-            if h.visible and h.active:
-                if label_lower in h.label.lower() or h.label.lower() in label_lower:
-                    return h
-        return None
+    def get_hotspot_by_label(self, label: str, max_rank: float = FRAGMENTS) -> Optional[Hotspot]:
+        """
+        Get a visible hotspot by its label: an exact or whole-word match
+        beats a word beginning ("alley" is the Dark Alley, and never
+        O'Malley's Bar). Pass max_rank=WHOLE_WORDS to refuse fragments.
+        """
+        candidates = [h for h in self.hotspots if h.visible and h.active]
+        index = best_match(label, [h.label for h in candidates], max_rank=max_rank)
+        return candidates[index] if index is not None else None
 
     def get_people(self) -> list[Hotspot]:
         """Get all person hotspots in this location."""
@@ -124,40 +126,40 @@ class Scene:
     _rendered_art: list[str] = field(default_factory=list)
     _hotspot_legend: list[str] = field(default_factory=list)
 
-    def number_hotspots(self) -> None:
-        """Assign numbers to visible hotspots."""
+    def _legend_groups(self) -> tuple[list, list, list]:
+        """Visible hotspots as the legend lists them: people, things, exits."""
         visible = self.location.get_visible_hotspots()
-        for i, hotspot in enumerate(visible, 1):
+        people = [h for h in visible if h.hotspot_type.value == "person"]
+        objects = [h for h in visible if h.hotspot_type.value not in ("person", "exit")]
+        exits = [h for h in visible if h.hotspot_type.value == "exit"]
+        return people, objects, exits
+
+    def number_hotspots(self) -> None:
+        """Number visible hotspots in the order the legend lists them."""
+        people, objects, exits = self._legend_groups()
+        for i, hotspot in enumerate(people + objects + exits, 1):
             hotspot.number = i
 
     def get_hotspot_legend(self) -> list[str]:
-        """Generate legend showing what's in the scene."""
-        visible = self.location.get_visible_hotspots()
-        if not visible:
+        """Generate legend showing what's in the scene, numbered."""
+        people, objects, exits = self._legend_groups()
+        if not (people or objects or exits):
             return []
+        self.number_hotspots()
 
-        # Group by type for cleaner display
-        people = [h for h in visible if h.hotspot_type.value == "person"]
-        exits = [h for h in visible if h.hotspot_type.value == "exit"]
-        objects = [h for h in visible if h.hotspot_type.value not in ("person", "exit")]
+        def numbered(hotspots) -> str:
+            return ", ".join(f"[{h.number}] {h.label}" for h in hotspots)
 
         lines = [""]
-
         if people:
-            lines.append("People here: " + ", ".join(h.label for h in people))
-
+            lines.append("People here: " + numbered(people))
         if objects:
-            lines.append("You notice: " + ", ".join(h.label for h in objects))
-
+            lines.append("You notice: " + numbered(objects))
         if exits:
-            lines.append("Exits: " + ", ".join(h.label for h in exits))
+            lines.append("Exits: " + numbered(exits))
 
-        # Add interaction hint if there are numbered hotspots
-        numbered = [h for h in visible if h.number is not None]
-        if numbered:
-            lines.append("")
-            lines.append("(Type a number to interact with that item)")
-
+        lines.append("")
+        lines.append("(Type a number to interact with it, or name it. 'help' for more.)")
         return lines
 
     def get_rendered_scene(self) -> list[str]:

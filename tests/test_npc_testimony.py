@@ -241,7 +241,7 @@ class TestRapport:
         assert "motive_revealed" not in spine.revealed_facts  # needs the scene
 
         game.state.current_location_id = "bar"
-        drive(game, ["examine back booth"])
+        drive(game, talk_route("bartender"))      # the witness account
         game.state.current_location_id = "alley"
         drive(game, ["examine chalk outline"])
         assert {"witness_account", "physical_evidence", "motive_revealed"} <= spine.revealed_facts
@@ -524,7 +524,16 @@ class TestNavigation:
         game = noir("informant")
         game.state.current_location_id = "bar"
         drive(game, ["examine back booth"])
-        assert game.state.memory.player.has_discovered("witness_account")
+        assert game.state.memory.player.has_discovered("booth_napkin")
+
+    def test_napkin_is_a_clue_not_the_eyewitness(self):
+        """Examining the booth first must not silence the real witness."""
+        game = noir("informant")
+        game.state.current_location_id = "bar"
+        drive(game, ["examine back booth"])
+        assert not game.state.memory.player.has_discovered("witness_account")
+        drive(game, talk_route("bartender"))
+        assert discovery_sources(game)["witness_account"] == "Mickey O'Malley's testimony"
 
     def test_step_back_still_zooms_out(self):
         game = noir("informant")

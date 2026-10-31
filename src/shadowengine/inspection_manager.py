@@ -186,6 +186,7 @@ class InspectionManager:
         self._granted_items: set[tuple[str, str]] = set()
         self._aspect_cache: dict[tuple[str, str], dict] = {}
         self._tool_line: Optional[str] = None          # flavor line for tool use
+        self._attention: Optional[tuple[str, str]] = None  # (location id, hotspot id) in view
 
     # ------------------------------------------------------------------
     # Routing
@@ -226,12 +227,17 @@ class InspectionManager:
         self._sync_tools(state)
         self._sync_light(state)
 
-        # Resolve the target: explicit label, or the last thing inspected here
+        # Resolve the target: explicit label, what the player is looking at
+        # (just examined), or the last thing inspected here
         if command.target:
             hotspot = location.get_hotspot_by_label(command.target)
             if hotspot is None:
                 # Unknown target — let the LLM free-exploration narrate it
                 return False
+            obj = self._ensure_object(hotspot, state)
+            self.note_attention(hotspot, state.current_location_id)
+        elif (attended := self._attended_hotspot(location, state.current_location_id)) is not None:
+            hotspot = attended
             obj = self._ensure_object(hotspot, state)
         else:
             obj = self._recent_object(location)
@@ -634,6 +640,19 @@ class InspectionManager:
             )
         if hotspot.reveals_fact:
             return hotspot.examine_text or hotspot.description or None
+        return None
+
+    def note_attention(self, hotspot: 'Hotspot', location_id: str) -> None:
+        """The player is looking at this: a bare 'look closer' means it."""
+        self._attention = (location_id, hotspot.id)
+
+    def _attended_hotspot(self, location: 'Location', location_id: str) -> Optional['Hotspot']:
+        attention = self._attention
+        if not attention or attention[0] != location_id:
+            return None
+        for hs in location.hotspots:
+            if hs.id == attention[1] and hs.visible and hs.active:
+                return hs
         return None
 
     def _recent_object(self, location: 'Location') -> Optional[InspectableObject]:
